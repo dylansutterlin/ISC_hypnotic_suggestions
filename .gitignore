@@ -1,3 +1,22 @@
+# Virtual environments
+env/
+venv*/
+ENV/
+env.bak/
+venv.bak/
+isc-py39
+
+# Results and temporary files
+*.nii
+*.nii.gz
+*.hd5
+*.log
+*.tsv
+*.sqlite3
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
