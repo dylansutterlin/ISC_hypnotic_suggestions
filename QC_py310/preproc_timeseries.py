@@ -2,7 +2,7 @@
 # %% [markdown]
 # # Script to extract timeseries and check quality of the data
 # Includes Timeseries heatmaps, atlas fitting, report saving, GLM building
-# Support script : ../func.py
+    # Support script : ../func.py
 
 # %%
 import sys
@@ -136,6 +136,7 @@ with open(masker_params_path, "w") as f:
     json.dump(masker_params_dict, f, indent=4)
 
 print(f"Masker parameters saved to {masker_params_path}")
+
 
 
 # %% [markdown]
@@ -427,15 +428,18 @@ for i, sub in enumerate(setup.subjects):
     ts_ana = voxel_masker.preproc_2d_Ana[i]
     ts_hyper = voxel_masker.preproc_2d_Hyper[i]
 
-    nscans = ts_ana.shape[0]
-    frame_time = np.arange(nscans) * tr
+    nscans_ana = ts_ana.shape[0]
+    frame_time_ana = np.arange(nscans_ana) * tr
+
+    nscans_hyper = ts_hyper.shape[0]
+    frame_time_hyper = np.arange(nscans_hyper) * tr
 
     # Assert that nscans match for both runs
-    assert nscans == ts_hyper.shape[0], f"Mismatch in nscans for subject {sub}"
+    # warnings == ts_hyper.shape[0], f"Mismatch in nscans for subject {sub}"
 
     # Create design matrices for each run
     dm_ana = make_first_level_design_matrix(
-        frame_time,
+        frame_time_ana,
         setup.events_dfs["Ana"][i],
         hrf_model="spm",
         drift_model="cosine",
@@ -444,7 +448,7 @@ for i, sub in enumerate(setup.subjects):
     )
 
     dm_hyper = make_first_level_design_matrix(
-        frame_time,
+        frame_time_hyper,
         setup.events_dfs["Hyper"][i],
         hrf_model="spm",
         drift_model="cosine",
