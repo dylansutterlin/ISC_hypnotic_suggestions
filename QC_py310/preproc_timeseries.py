@@ -28,6 +28,14 @@ import warnings
 import nibabel as nib
 import importlib
 warnings.simplefilter("ignore")
+from nilearn.image import load_img
+from nilearn.plotting import plot_roi
+from nilearn.maskers import MultiNiftiLabelsMasker, NiftiLabelsMasker
+from nilearn.image import mean_img
+from nilearn.plotting import plot_stat_map, view_img
+from nilearn.glm.first_level import make_first_level_design_matrix
+from nilearn.plotting import plot_design_matrix
+import importlib
 
 parent_dir = os.path.abspath(os.path.join(os.path.dirname("func.py"), ".."))
 sys.path.append(parent_dir)
@@ -404,8 +412,6 @@ plt.close(fig_ana)
 setup.keys(), voxel_masker.keys()
 
 # %%
-from nilearn.glm.first_level import make_first_level_design_matrix
-from nilearn.plotting import plot_design_matrix
 
 # Create a dictionary to store combined design matrices for all subjects
 design_matrices_2runs = {}
@@ -504,8 +510,6 @@ setup.design_mat_2runs_files = design_matrices_2runs_files
 
 # %%
 import func
-import importlib
-
 importlib.reload(func)
 
 # Extract TRs indices for regressors of all subjects (dict for each sub)
@@ -593,8 +597,6 @@ for i, sub in enumerate(setup.subjects):
 # ### Gather all image filenames/paths in lists. One per condition
 
 # %%
-from nilearn.image import mean_img
-from nilearn.plotting import plot_stat_map, view_img
 
 # Initialize a dictionary to store concatenated images for each condition
 condition_concat_imgs = {cond: [] for cond in ["ANA", "N_ANA", "HYPER", "N_HYPER"]}
@@ -662,9 +664,7 @@ with open(voxel_masker_path, "wb") as f:
 # #### **Probabilistic atlas**
 #----------------------------
 # %%
-from nilearn.image import load_img
-from nilearn.plotting import plot_roi
-from nilearn.maskers import MultiNiftiLabelsMasker, NiftiLabelsMasker
+
 
 #  atlas-related variables
 atlas = {
