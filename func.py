@@ -111,7 +111,7 @@ def extract_timeseries_and_generate_individual_reports(subjects, func_list, atla
         List of masked timeseries for all subjects.
     """
     # Directory to save individual reports
-    report_dir = os.path.join(save_path, f'{masker_name}_reports_{condition_name}_{len(subjects)}-subjects')
+    report_dir = os.path.join(save_path, f'reports_{condition_name}_{len(subjects)}-subjects')
     os.makedirs(report_dir, exist_ok=True)
 
     print(f"------{condition_name}-----")
@@ -458,7 +458,7 @@ import os
 from nilearn.maskers import MultiNiftiLabelsMasker
 
 
-def generate_multinifti_report(func_list, mask_nifti, atlas_name, project_dir, condition_name="Analgesia"):
+def generate_multinifti_report(func_list, mask_nifti, atlas_name, save_dir, condition_name="Analgesia"):
     """
     Generate and save a MultiNiftiLabelsMasker report for a given condition.
 
@@ -488,21 +488,18 @@ def generate_multinifti_report(func_list, mask_nifti, atlas_name, project_dir, c
     multi_masker = MultiNiftiLabelsMasker(mask_nifti, standardize=True, detrend=True)
 
     # Fit-transform the functional files
-    multi_fit = multi_masker.fit_transform(func_list)
+    fitted_mask = multi_masker.fit_transform(func_list)
 
-    # Create directory for reports
-    report_dir = os.path.join(project_dir, 'results/imaging', f'{parcel_name}-ROI_{masker_type}-report_{condition_name}')
-    os.makedirs(report_dir, exist_ok=True)
 
     # Generate and save the report
     report = multi_masker.generate_report()
-    report_name = f'{masker_type}report_{condition_name}_{nsub}-subjects.html'
-    report_path = os.path.join(report_dir, report_name)
+    report_name = f'{atlas_name}_Multireport_{condition_name}_{nsub}-subjects.html'
+    report_path = os.path.join(save_dir, report_name)
     report.save_as_html(report_path)
 
     print(f"Report saved at: {report_path}")
 
-
+    return fitted_mask
 #======First LEvel GLM function==================
 
 def create_tr_masks_for_regressors(combined_dm, regressor_names=["ANA", "N_ANA", "HYPER", "N_HYPER"], verbose=True):
