@@ -1,0 +1,25 @@
+# Basic parameters
+project_dir: /data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions
+results_dir: ${project_dir}/results
+
+atlas_name: k50-2mm-parcel
+param_id: Standardized_Smoothed6mm
+
+masker:
+  standardize: true
+  detrend: true
+  smoothing_fwhm: 6
+  high_variance_confounds: false
+
+# Conditions
+conditions:
+  - ANA
+  - N_ANA
+  - HYPER
+  - N_HYPER
+
+# Output structure
+output_dirs:
+  quality_check: ${results_dir}/QC/${atlas_name}/${param_id}
+  first_level: ${results_dir}/firstLevel/${atlas_name}/${param_id}
+  imaging: ${results_dir}/imaging/${atlas_name}/${param_id}

@@ -7,6 +7,7 @@ venv.bak/
 isc-py39
 
 # Results and temporary files
+results/
 *.nii
 *.nii.gz
 *.hd5

@@ -16,6 +16,11 @@ from sklearn.covariance import GraphicalLassoCV
 from sklearn.preprocessing import MinMaxScaler
 from nilearn.connectome import GroupSparseCovarianceCV
 import scipy 
+import os
+import matplotlib.pyplot as plt
+import seaborn as sns
+from nilearn.maskers import NiftiLabelsMasker
+
 
 
 def load_process_y(xlsx_path, subjects):
@@ -73,6 +78,109 @@ def load_process_y(xlsx_path, subjects):
         Y.loc[namei] = row
 
     return Y
+
+
+def extract_timeseries_and_generate_individual_reports(subjects, func_list, atlas_masker_to_fit, masker_name, save_path, confounds = None,confounf_files= None, condition_name="Analgesia", do_heatmap = True):
+    """
+    Fit each subject 4D image and saves individual reports and ROI heatmaps for each subject.
+    Saves masker params in the 
+
+    Parameters
+    ----------
+    subjects : list of str
+        List of subject identifiers. This should correspond to the order of functional files in `func_list`.
+    func_list : list of str
+        List of paths to 4D functional files for each subject.
+    atlas_masker_to_fit : NiftiMasker, NiftiLabelsMasker or NiftiMapsMasker
+        Initialized Nifti masker object to fit. This can be a NiftiLabelsMasker or NiftiMapsMasker 
+        depending on the type of atlas used.
+        If niftiMasker, heatmap is not very informative, suggest do_heatmap=False.
+    masker_name : str
+        Name of the masker or atlas. This name will be included in the report and heatmap filenames.
+    project_dir : str
+        Path to the project directory where the results will be saved.
+    condition_name : str, optional
+        Name of the experimental condition (default is "Analgesia"). This will be used in naming the
+        report and heatmap files.
+    do_heatmap : bool, optional
+        Whether to generate and save heatmaps for each subject (default is True).
+
+    Returns
+    -------
+    list of numpy.ndarray
+        List of masked timeseries for all subjects.
+    """
+    # Directory to save individual reports
+    report_dir = os.path.join(save_path, f'{masker_name}_reports_{condition_name}_{len(subjects)}-subjects')
+    os.makedirs(report_dir, exist_ok=True)
+
+    print(f"------{condition_name}-----")
+    print(f"Masker initialized with {masker_name} atlas")
+
+    # Storage for masked timeseries
+    fitted_maskers = []
+    masked_timeseries = []
+
+    for i, file in enumerate(func_list):
+        sub_id = subjects[i]
+        print(f"Processing subject {sub_id}...")
+        
+        # Extract timeseries for the subject
+        fit_masker = atlas_masker_to_fit.fit(file)
+        fitted_maskers.append(fit_masker)
+
+        if confounds != None: #atlas_masker_to_fit.get_params()['high_variance_confounds'] == True:
+            print("Using confound file : ", confounf_files[i])
+            ts = fit_masker.transform(file, confounds = confounds[i])
+            masked_timeseries.append(ts)
+        else:
+            ts = fit_masker.transform(file)
+            masked_timeseries.append(ts)
+        #fit_mask_path = os.path.join(report_dir, f'fitted_masker_{sub_id}_{condition_name}.pkl')
+        
+        # Generate and save the report for this subject
+        report = fit_masker.generate_report()
+        report_path = os.path.join(save_path, f'{masker_name}-report_{sub_id}_{condition_name}.html')
+        report.save_as_html(report_path)
+
+        print(f"Report saved for {sub_id} at {report_path}")
+        
+        if do_heatmap:
+            
+            # Plot heatmap of ROI × TRs
+            fig, ax = plt.subplots(figsize=(10, 6))
+
+            sns.heatmap(ts.T, cmap='coolwarm', cbar=True, ax=ax)
+
+            ax.set_title(f"Subject {i + 1} - Time Series of All ROIs ({condition_name})", fontsize=16)
+            ax.set_xlabel('Timepoints', fontsize=12)
+            ax.set_ylabel('ROI Index', fontsize=12)
+            plt.tight_layout()
+
+            # Save heatmap
+            heatmap_path = os.path.join(report_dir, f'{sub_id}_ROI-heatmap_{condition_name}-run.png')
+            plt.savefig(heatmap_path, dpi=300)
+            plt.close()
+
+            print(f"Heatmap saved for {sub_id} at {heatmap_path}")
+       
+
+    # save masker params
+    masker_params_path = os.path.join(report_dir, f'{masker_name}_masker_prams.txt')
+
+    with open(masker_params_path, 'w') as f:
+        f.write("Masker Parameters:\n")
+        f.write("="*20 + "\n")
+        params = atlas_masker_to_fit.get_params()
+        for key, value in params.items():
+            f.write(f"{key}: {value}\n")
+
+    print(f"Masker parameters saved to {masker_params_path}")
+
+        #print(f'saved fitted masker for {sub_id} as {fit_mask_path}')
+
+    return masked_timeseries, fitted_maskers
+
 
 
 def get_timestamps(
@@ -198,7 +306,7 @@ def generate_individual_labelMasker_reports_heatmap(subjects, func_list, mask_ni
         # Plot heatmap of ROI × TRs
         fig, ax = plt.subplots(figsize=(10, 6))
         sns.heatmap(ts.T, cmap='coolwarm', cbar=True, ax=ax)
-        ax.set_title(f"Subject {i + 1} - Time Series of All ROIs ({condition_name})", fontsize=16)
+        ax.set_title(f"{sub_id} - Time Series of All ROIs ({condition_name})", fontsize=16)
         ax.set_xlabel('Timepoints', fontsize=12)
         ax.set_ylabel('ROI Index', fontsize=12)
         plt.tight_layout()
@@ -218,7 +326,9 @@ def generate_individual_labelMasker_reports_heatmap(subjects, func_list, mask_ni
 import pandas as pd
 import matplotlib.pyplot as plt
 
-def count_TRs_2conds_general(
+import matplotlib.patches as mpatches
+
+def count_plot_TRs_2conditions(
     event_files, 
     TR=3, 
     neutral_pattern="N_ANA.*instrbk", 
@@ -226,10 +336,11 @@ def count_TRs_2conds_general(
     title='Neutral and Modulation Suggestion TRs per Subjects',
     neutral_color="skyblue",
     modulation_color="salmon",
-    save_path = False
+    save_path=False
 ):
     """
-    Counts and compares the total number of TRs for neutral and modulation suggestion blocks across subjects.
+    Counts and compares the total number of TRs for neutral and modulation suggestion blocks across subjects,
+    with shading based on individual block durations.
 
     Parameters
     ----------
@@ -256,22 +367,16 @@ def count_TRs_2conds_general(
 
     Notes
     -----
-    Neutral and modulation suggestion blocks are identified using provided regex patterns.
-
-    Example
-    -------
-    TRs_df = count_TRs_2conds_general(
-        events_hyper, 
-        TR=3, 
-        neutral_pattern="N_HYPER.*instrbk", 
-        modulation_pattern="HYPER.*instrbk",
-        title='Neutral and Hyperalgesia Suggestion TRs per Subjects'
-    )
+    Neutral and modulation suggestion blocks are identified using provided regex patterns,
+    and each bar is shaded based on the individual block durations.
     """
-
     # Initialize lists to store TR counts for each condition
     neutral_TRs_list = []
     modulation_TRs_list = []
+
+    # Initialize storage for block details for shading
+    neutral_block_details = []
+    modulation_block_details = []
 
     # Loop through all subjects' event data
     for i, events in enumerate(event_files):
@@ -281,6 +386,7 @@ def count_TRs_2conds_general(
         neutral_total_duration = sum(neutral_durations)
         neutral_total_TRs = int(neutral_total_duration / TR)
         neutral_TRs_list.append(neutral_total_TRs)
+        neutral_block_details.append([(d / TR) for d in neutral_durations])
 
         # Filter for modulation suggestion blocks, excluding the neutral ones
         modulation_blocks = events[
@@ -291,6 +397,7 @@ def count_TRs_2conds_general(
         modulation_total_duration = sum(modulation_durations)
         modulation_total_TRs = int(modulation_total_duration / TR)
         modulation_TRs_list.append(modulation_total_TRs)
+        modulation_block_details.append([(d / TR) for d in modulation_durations])
 
     # Create a DataFrame for easier comparison
     TRs_df = pd.DataFrame({
@@ -307,31 +414,93 @@ def count_TRs_2conds_general(
     else:
         print("Discrepancies found in the number of TRs across subjects.")
 
-    # Plot the results
-    plt.figure(figsize=(12, 6))
+    # Plot the results with shading
+    fig, ax = plt.subplots(figsize=(12, 6))
     bar_width = 0.4
-    x_positions = range(len(TRs_df))
+    x_positions = np.arange(len(TRs_df))
 
-    # Plot neutral and modulation TRs
-    plt.bar([x - bar_width/2 for x in x_positions], TRs_df["Neutral_TRs"], width=bar_width, label="Neutral TRs", color=neutral_color)
-    plt.bar([x + bar_width/2 for x in x_positions], TRs_df["Modulation_TRs"], width=bar_width, label="Modulation TRs", color=modulation_color)
-    
-    # Add labels, title, and legend
-    plt.xlabel("Subjects", fontsize=14)
-    plt.ylabel("Total TRs", fontsize=14)
-    plt.title(title, fontsize=16)
-    plt.xticks(x_positions, TRs_df["Subject"], rotation=45, fontsize=10)
-    plt.legend()
+    # Plot neutral and modulation TRs with shading
+    for i, x in enumerate(x_positions):
+        # Neutral blocks
+        bottom = 0
+        for block_TRs in neutral_block_details[i]:
+            ax.bar(x - bar_width / 2, block_TRs, width=bar_width, color=neutral_color, bottom=bottom, edgecolor="black", alpha=0.8)
+            bottom += block_TRs
+
+        # Modulation blocks
+        bottom = 0
+        for block_TRs in modulation_block_details[i]:
+            ax.bar(x + bar_width / 2, block_TRs, width=bar_width, color=modulation_color, bottom=bottom, edgecolor="black", alpha=0.8)
+            bottom += block_TRs
+
+    ax.set_xlabel("Subjects", fontsize=14)
+    ax.set_ylabel("Total TRs", fontsize=14)
+    ax.set_title(title, fontsize=16)
+    ax.set_xticks(x_positions)
+    ax.set_xticklabels(TRs_df["Subject"], rotation=45, fontsize=10)
+
+    # Create a manual legend with distinct colors
+    neutral_patch = mpatches.Patch(color=neutral_color, label="Neutral TRs")
+    modulation_patch = mpatches.Patch(color=modulation_color, label="Modulation TRs")
+    ax.legend(handles=[neutral_patch, modulation_patch], fontsize=12)
+
     plt.tight_layout()
 
- 
     if save_path:
         plt.savefig(save_path)
 
     plt.show()
-    plt.close() 
- 
+    plt.close()
+
     return TRs_df, fig
+
+import os
+from nilearn.maskers import MultiNiftiLabelsMasker
+
+
+def generate_multinifti_report(func_list, mask_nifti, atlas_name, project_dir, condition_name="Analgesia"):
+    """
+    Generate and save a MultiNiftiLabelsMasker report for a given condition.
+
+    Parameters
+    ----------
+    func_list : list of str
+        List of paths to the functional files for the condition.
+    mask_nifti : str
+        Path to the 4D mask NIfTI file.
+    project_dir : str
+        Path to the project directory where results will be saved.
+    condition_name : str, optional
+        Name of the condition (default is "Analgesia").
+        This name will be used in folder and report names.
+
+    Returns
+    -------
+    None
+    """
+    # Ensure mask_nifti is a valid 4D mask
+    assert len(mask_nifti.shape) == 4, "Mask image must be 3D."
+
+    nsub = len(func_list)
+    
+    # Initialize MultiNiftiLabelsMasker
+    masker_type = 'MultiNiftiLabelsMasker'
+    multi_masker = MultiNiftiLabelsMasker(mask_nifti, standardize=True, detrend=True)
+
+    # Fit-transform the functional files
+    multi_fit = multi_masker.fit_transform(func_list)
+
+    # Create directory for reports
+    report_dir = os.path.join(project_dir, 'results/imaging', f'{parcel_name}-ROI_{masker_type}-report_{condition_name}')
+    os.makedirs(report_dir, exist_ok=True)
+
+    # Generate and save the report
+    report = multi_masker.generate_report()
+    report_name = f'{masker_type}report_{condition_name}_{nsub}-subjects.html'
+    report_path = os.path.join(report_dir, report_name)
+    report.save_as_html(report_path)
+
+    print(f"Report saved at: {report_path}")
 
 
 #======First LEvel GLM function==================
@@ -393,7 +562,7 @@ def extract_regressor_timeseries(masked_2d_timeseries,indices_dct):
     Parameters:
 
         masked_2d_timeseries : np.ndarray
-            Timeseries from the 'Analgesia' run.
+            2d Timeseries array. transformed from e.g. niftiMasker
         indices_dct : dict
             Condition indices. 1 key per regressor, value contains indices to extract (from design matrix).
 
@@ -411,3 +580,95 @@ def extract_regressor_timeseries(masked_2d_timeseries,indices_dct):
     }
 
     return condition_timeseries
+
+
+def plot_timecourses_from_ls(df_list, labels, save_to = False, n_rows=4, n_cols=4, condition_name="_", show=False, measure_lengend = 'Mean'):
+     
+    """
+    Plots the timecourse of all ROIs from a list of DataFrames. For each ROI (column), 
+    it plots the timecourse of all subjects in pale gray and the mean signal for that ROI in orange.
+
+    Parameters
+    ----------
+    df_list : list of pd.DataFrame
+        List of DataFrames, where each DataFrame corresponds to one subject.
+        Each DataFrame should have shape (timepoints, ROIs).
+    labels : list of str
+        ROI names used for subplot titles.
+    save_to : str or bool, optional
+        Directory path to save the plot. If False, the plot is not saved. Default is False.
+    n_rows : int, optional
+        Number of rows in the subplot layout. Default is 4.
+    n_cols : int, optional
+        Number of columns in the subplot layout. Default is 4.
+    condition_name : str, optional
+        A label for the condition (e.g., "Pre" or "Post") to include in the title. Default is "_".
+    show : bool, optional
+        If True, displays the plot. Default is False.
+    measure_lengend : str, optional
+        Legend label for the mean signal. Default is 'Mean'.
+
+    Returns
+    -------
+    None
+    """
+
+    n_subjects = len(df_list)  # Number of subjects
+    n_rois = df_list[0].shape[1]  # Number of ROIs (columns in the DataFrame)
+
+    # Create a figure with specified rows and columns
+    plt.figure(figsize=(15, n_rows * 3))  # Adjust figure size based on the number of rows
+
+    for roi in range(n_rois):
+        if roi >= (n_rows*n_cols):
+            break 
+        label = labels[roi]
+        plt.subplot(n_rows, n_cols, roi + 1)  # Create a subplot for each ROI
+
+        # Plot each subject's timecourse for this ROI (pale gray lines)
+        for subj in range(n_subjects):
+            plt.plot(df_list[subj][:, roi], color='lightgray', alpha=0.5)
+        
+        # Calculate and plot the mean timecourse for this ROI (orange line)
+        mean_roi_signal = np.mean([df[:, roi] for df in df_list], axis=0)
+        plt.plot(mean_roi_signal, color='orange', linewidth=2, label=f'{measure_lengend} ROI {roi + 1}')
+        
+        # Customize the plot
+        plt.title(f"{label}")
+        #plt.xlabel("Timepoints")
+        plt.ylabel("Signal")
+        plt.legend()
+
+    # Display the figure with a tight layout
+    plt.tight_layout()
+    fig_name = 'ROI_timecourse_cond-{}.png'.format(condition_name)
+    if type(save_to) is str:
+        plt.savefig(os.path.join(save_to, fig_name))
+        print('[plot_timecourse] Saving a timecourse figure in {}'.format(os.path.join(save_to, fig_name)))
+    if show == True:
+        plt.show()
+
+
+def write_masker_params(masker_get_param, masker_params_path):
+    """
+    Save the parameters of the masker to a text file.
+
+    Parameters
+    ----------
+    masker_get_param : dict
+        dict from masker.get_params() method.
+    masker_params_path : str
+        The path to save the masker parameters to.
+
+    Returns
+    -------
+    None
+    """
+
+    with open(masker_params_path, 'w') as f:
+            f.write("Masker Parameters:\n")
+            f.write("="*20 + "\n")
+
+            for key, value in masker_get_param.items():
+                if key != 'labels_img':
+                    f.write(f"{key}: {value}\n")
