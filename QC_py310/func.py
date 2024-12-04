@@ -140,7 +140,7 @@ def extract_timeseries_and_generate_individual_reports(subjects, func_list, atla
         
         # Generate and save the report for this subject
         report = fit_masker.generate_report()
-        report_path = os.path.join(save_path, f'{masker_name}-report_{sub_id}_{condition_name}.html')
+        report_path = os.path.join(report_dir, f'report_{sub_id}_{condition_name}.html')
         report.save_as_html(report_path)
 
         print(f"Report saved for {sub_id} at {report_path}")
