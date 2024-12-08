@@ -696,6 +696,52 @@ atlas['save'] = os.path.join(setup.save_dir,atlas['name'])
 print(atlas["MultiMasker"].get_params())
 
 
+# %%
+'''
+import numpy as np
+import nibabel as nib
+from nilearn.image import new_img_like
+from nilearn.input_data import NiftiSpheresMasker
+from nilearn.plotting import view_img, plot_roi
+import os
+
+# Load reference image for dimensions and affine
+setup.project_dir = "/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions"
+reference_img_path = os.path.join(setup.project_dir, "masks/MNI*.nii")
+reference_img = nib.load(reference_img_path)
+affine = reference_img.affine
+shape = reference_img.shape
+
+# Define sphere coordinates (in voxel or MNI space)
+sphere_centers = [(54,-28,26), (-2,20,32), (-20,-26,-14)] 
+radius = 10  # Sphere radius in mm
+
+# Initialize a list to hold ROI volumes
+roi_volumes = []
+
+for center in sphere_centers:
+    # Create a binary mask for the current sphere
+    masker = NiftiSpheresMasker([center], radius=radius, mask_img=None, standardize=False)
+    mask_img = masker.fit_transform([reference_img])  # This returns a 2D array
+    mask_volume = mask_img[0].reshape(shape)  # Reshape back to 3D
+    roi_volumes.append(mask_volume)
+
+
+# Stack the volumes into a 4D image (X, Y, Z, ROI index)
+roi_volumes_4d = np.stack(roi_volumes, axis=-1)
+
+
+# Create and save the combined atlas
+atlas_img = nib.Nifti1Image(roi_volumes_4d, affine)
+plot_roi(atlas_img, title="Desmartaux ROI 10mm spheres")
+
+output_path = os.path.join(setup.project_dir, "masks/desmartaux_roi_10mm_spheres.nii.gz")
+nib.save(atlas_img, output_path)
+
+print(f"Atlas saved to {output_path}")
+'''
+
+
 # %% [markdown]
 # ##### DiFuMo64
 
