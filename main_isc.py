@@ -4,11 +4,12 @@
 import utils
 from importlib import reload
 import nibabel as nib
+import numpy as np
 import os
 import pandas as pd
 from nilearn.image import concat_imgs
-#import brainiak
-#from brainiak.isc import isc, bootstrap_isc, permutation_isc
+import brainiak
+from brainiak.isc import isc, bootstrap_isc, permutation_isc, compute_summary_statistic
 reload(utils)
 # %% Load the data
 # Example usage
@@ -103,26 +104,106 @@ ts_path = os.path.join(test_results, 'transformed_Difumo256_modulation.pkl')
 masker_path = os.path.join(test_results, 'maskers_Difumo256_modulation.pkl')
 test_data = utils.load_pickle(ts_path)
 test_masker = utils.load_pickle(masker_path)
-transformed_data_per_cond = test_data
-fitted_maskers = test_masker
+transformed_data_per_cond = {}
+transformed_data_per_cond['modulation'] = test_data
+fitted_maskers = {}
+fitted_maskers['modulation'] = test_masker
 
-print(test_data.shape)
+
+
+print(test_data[0].shape)
 print(test_masker)
 
 # %%
 # Perform ISC
+n_boot = 100
 isc_results = {}
 
 for cond, data in transformed_data_per_cond.items():
     print(f'Performing ISC for condition: {cond}')
-    # Convert list of 2D arrays to 3D array (subjects, timepoints, regions)
-    data_3d = np.array(data)
-    # Perform ISC
-    isc_result = isc(data_3d, pairwise=False, summary_statistic=None)
+    # Convert list of 2D arrays to 3D array (n_TRs, n_voxels, n_subjects)
+    data_3d = np.stack(data, axis=-1)  # Perform ISC
+    isc_result = isc(data_3d, pairwise=True, summary_statistic=None)
     isc_results[cond] = isc_result
 
-# Save ISC results
-isc_results_path = os.path.join(results_dir, 'isc_results.npy')
-np.save(isc_results_path, isc_results)
-print(f'ISC results saved to {isc_results_path}')
+    observed, ci, p, distribution = bootstrap_isc(
+    isc_result,
+    pairwise=False,
+    summary_statistic="median",
+    n_bootstraps=n_boot,
+    ci_percentile=95,
+)
+    
+    median_isc = compute_summary_statistic(isc_result, 'median', axis=0) # per ROI : 1, n_voxels
+    total_median_isc = compute_summary_statistic(isc_result, 'median', axis=None)
+    print(f'Median ISC for {cond}: {total_median_isc}')
+    
 
+    isc_results[cond] = {
+    "isc": isc_result,
+    "observed": observed,
+    "confidence_intervals": ci,
+    "p_values": p,
+    "distribution": distribution,
+}
+
+# save results
+for cond, results in isc_results.items():
+    save_path = os.path.join(results_dir, f"isc_results_{cond}.pkl")
+    utils.save_data(save_path, results)
+    print(f"ISC results saved for {cond} at {save_path}")
+
+# summary stats
+
+# %%
+# Project isc values and p values to brain
+from nilearn import plotting
+from nilearn.plotting import plot_stat_map
+from nilearn.image import new_img_like
+
+# inverse trnasform isc with fitted maskers
+for cond in conditions:
+    if cond != 'modulation':
+        continue
+    masker = fitted_maskers[cond]
+    isc_result = isc_results[cond]
+    isc_img = masker.inverse_transform(isc_result['observed'])
+    p_img = masker.inverse_transform(isc_result['p_values'])
+   
+    # save images
+    # save_path = os.path.join(results_dir, f"isc_{cond}.nii.gz")
+    # isc_img.to_filename(save_path)
+    # print(f"ISC image saved to {save_path}")
+
+    # save_path = os.path.join(results_dir, f"p_values_{cond}.nii.gz")
+    # p_img.to_filename(save_path)
+    # print(f"p-values image saved to {save_path}")
+
+    # save_path = os.path.join(results_dir, f"confidence_intervals_{cond}.nii.gz")
+    # ci_img.to_filename(save_path)
+    # print(f"confidence intervals image saved to {save_path}")
+
+    # plot images
+    plot_stat_map(isc_img, title=f'ISC {cond}', colorbar=True, threshold=0.1, display_mode='z', cut_coords=10)
+    plot_stat_map(p_img, title=f'p-values {cond}', colorbar=True, threshold=0.05, display_mode='z', cut_coords=10)
+
+
+# %%
+# Permutation based on group labels
+
+# load behavioral data
+
+behav_path = r"/data/rainville/dSutterlin/projects/resting_hypnosis/resting_state_hypnosis/atlases/Hypnosis_variables_20190114_pr_jc.xlsx"
+APM_subjects = ['APM' + sub[4:] for sub in subjects] # make APMXX format instead of subXX
+
+import func
+import importlib
+importlib.reload(func) 
+
+phenotype= func.load_process_y(behav_path,APM_subjects)
+phenotype.head()
+
+# Create group labels based on sHSS and change in pain
+
+
+# 
