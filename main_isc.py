@@ -7,7 +7,8 @@ import nibabel as nib
 import os
 import pandas as pd
 from nilearn.image import concat_imgs
-
+#import brainiak
+#from brainiak.isc import isc, bootstrap_isc, permutation_isc
 reload(utils)
 # %% Load the data
 # Example usage
@@ -53,6 +54,7 @@ atlas_path = os.path.join(project_dir, 'masks/DiFuMo256/3mm/maps.nii.gz')
 atlas_dict_path = os.path.join(project_dir, 'masks/DiFuMo256/labels_256_dictionary.csv')
 atlas = nib.load(atlas_path)
 atlas_df = pd.read_csv(atlas_dict_path)
+atlas_name = 'Difumo64'
 print('atlas loaded with N ROI : ', atlas.shape)
 
 # %%
@@ -64,19 +66,63 @@ masker.fit()
 
 transformed_data_per_cond = {}
 fitted_maskers = {}
-#for cond in conditions:
-cond = conditions[1]
+# extract time series for each subject and condition
+for cond in conditions:
+    cond = conditions[1]
 
-condition_files = subject_file_dict[cond]
-concatenated_subjects = {sub : concat_imgs(sub_files) for sub, sub_files in condition_files.items()}
-# assert all images have the same shape
-for sub, img in concatenated_subjects.items():
-    assert img.shape == concatenated_subjects[subjects[0]].shape
+    condition_files = subject_file_dict[cond]
+    concatenated_subjects = {sub : concat_imgs(sub_files) for sub, sub_files in condition_files.items()}
+    # assert all images have the same shape
+    for sub, img in concatenated_subjects.items():
+        assert img.shape == concatenated_subjects[subjects[0]].shape
 
-print(f'fitting images for condition : {cond} with shape {concatenated_subjects[subjects[0]][0].shape}')
-transformed_data_per_cond[cond] = masker.transform(concatenated_subjects.values())
-fitted_maskers[cond] = masker
+    print(f'fitting images for condition : {cond} with shape {concatenated_subjects[subjects[0]][0].shape}')
+    transformed_data_per_cond[cond] = masker.transform(concatenated_subjects.values())
+    fitted_maskers[cond] = masker
+
+# save transformed data and masker
+for cond, data in transformed_data_per_cond.items():
+    cond_folder = os.path.join(results_dir, cond)
+    if not os.path.exists(cond_folder):
+        os.makedirs(cond_folder)
+
+    save_path = os.path.join(cond_folder, f'transformed_{atlas_name}_{cond}.pkl')
+    utils.save_data(save_path, data)
+
+    masker_path = os.path.join(cond_folder, f'maskers_{atlas_name}_{cond}.pkl')
+    utils.save_data(masker_path, fitted_maskers[cond])
+    print(f'Transformed timseries and maskers saved to {cond_folder}')
+
+
 
 # %%
 
+# test moddule
+test_results = '/home/dsutterlin/projects/ISC_hypnotic_suggestions/results/imaging/ISC/modulation'
+ts_path = os.path.join(test_results, 'transformed_Difumo256_modulation.pkl')
+masker_path = os.path.join(test_results, 'maskers_Difumo256_modulation.pkl')
+test_data = utils.load_pickle(ts_path)
+test_masker = utils.load_pickle(masker_path)
+transformed_data_per_cond = test_data
+fitted_maskers = test_masker
+
+print(test_data.shape)
+print(test_masker)
+
+# %%
+# Perform ISC
+isc_results = {}
+
+for cond, data in transformed_data_per_cond.items():
+    print(f'Performing ISC for condition: {cond}')
+    # Convert list of 2D arrays to 3D array (subjects, timepoints, regions)
+    data_3d = np.array(data)
+    # Perform ISC
+    isc_result = isc(data_3d, pairwise=False, summary_statistic=None)
+    isc_results[cond] = isc_result
+
+# Save ISC results
+isc_results_path = os.path.join(results_dir, 'isc_results.npy')
+np.save(isc_results_path, isc_results)
+print(f'ISC results saved to {isc_results_path}')
 

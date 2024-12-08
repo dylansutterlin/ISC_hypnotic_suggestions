@@ -1,7 +1,7 @@
 import os
 import nibabel as nib
 import pandas as pd
-
+import pickle as pkl
 def load_isc_data(base_path):
     """
     Load ISC data from the specified folder structure.
@@ -58,3 +58,11 @@ def get_files_for_condition_combination(subjects, task_combinations, sub_task_fi
 
     return func_file_dict # sub : : [file1, file2, file3]
 
+def save_data(save_path, data):
+    with open(save_path, 'wb') as f:
+        pkl.dump(data, f)
+
+def load_pickle(file_path):
+    with open(file_path, 'rb') as f:
+        data = pkl.load(f)
+    return data
