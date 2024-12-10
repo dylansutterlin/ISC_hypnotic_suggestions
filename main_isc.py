@@ -69,7 +69,7 @@ print("Conditions:", conditions)
 print("Condition combinations:", task_combinations)
 print(subject_file_dict)
 
-sub_check['cond_files_sub'] = subject_file_dict[conditions[0]].keys()
+sub_check['cond_files_sub'] = list(subject_file_dict[conditions[0]].keys())
 
 # save subjects paths
 for cond in conditions:
@@ -90,44 +90,58 @@ atlas_name = 'Difumo64'
 print('atlas loaded with N ROI : ', atlas.shape)
 print(f'will fit and trasnform images for {n_sub} subjects')
 
+ # extract sphere signal
+roi_coords = {
+"amcc": (-2, 20, 32),
+"lPO": (54, -28, 26),
+"lPHG": (-20, -26, -14),
+}
+sphere_radius = 6
+
+
 # %%
 # extract timseries from atlas
 
 if transform_imgs == True:
-	transformed_data_per_cond = {}
-	fitted_maskers = {}
+    transformed_data_per_cond = {}
+    fitted_maskers = {}
 
-        masker = MultiNiftiMapsMasker(maps_img=atlas, standardize=False, memory='nilearn_cache', verbose=5)
-        masker.fit()
+    masker = MultiNiftiMapsMasker(maps_img=atlas, standardize=False, memory='nilearn_cache', verbose=5)
+    masker.fit()
 
 	# extract time series for each subject and condition
-	for cond in conditions:
+    for cond in conditions:
 
-	    condition_files = subject_file_dict[cond]
-	    concatenated_subjects = {sub : concat_imgs(sub_files) for sub, sub_files in condition_files.items()}
+        condition_files = subject_file_dict[cond]
+        concatenated_subjects = {sub : concat_imgs(sub_files) for sub, sub_files in condition_files.items()}
 
 	    # assert all images have the same shape
 	    #for sub, img in concatenated_subjects.items():
-	    #    assert img.shape == concatenated_subjects[subjects[0]].shape
-	    print('Imgs shape : ', [img.shape for _, img in  concatenated_subjects.items()])
+        #    assert img.shape == concatenated_subjects[subjects[0]].shape
+        print('Imgs shape : ', [img.shape for _, img in  concatenated_subjects.items()])
 	    #print(f'fitting images for condition : {cond} with shape {concatenated_subjects[subjects[0]][0].shape}')
-	    transformed_data_per_cond[cond] = masker.transform(concatenated_subjects.values())
-	    fitted_maskers[cond] = masker
+        transformed_data_per_cond[cond] = masker.transform(concatenated_subjects.values())
+        fitted_maskers[cond] = masker
+
+        # sphere masker
+        utils.extract_save_sphere(concatenated_subjects, cond, results_dir, roi_coords, sphere_radius=sphere_radius)
 
 	# save transformed data and masker
-	for cond, data in transformed_data_per_cond.items():
-	    cond_folder = os.path.join(results_dir, cond)
-	    if not os.path.exists(cond_folder):
-	        os.makedirs(cond_folder)
+    for cond, data in transformed_data_per_cond.items():
+        cond_folder = os.path.join(results_dir, cond)
+        if not os.path.exists(cond_folder):
+            os.makedirs(cond_folder)
 
-	    save_path = os.path.join(cond_folder, f'transformed_data_{atlas_name}_{cond}_{nsub}sub.pkl')
-	    utils.save_data(save_path, data)
+            save_path = os.path.join(cond_folder, f'transformed_data_{atlas_name}_{cond}_{nsub}sub.pkl')
+            utils.save_data(save_path, data)
 
-	    masker_path = os.path.join(cond_folder, f'maskers_{atlas_name}_{cond}_{nsub}sub.pkl')
-	    utils.save_data(masker_path, fitted_maskers[cond])
-	    print(f'Transformed timseries and maskers saved to {cond_folder}')
+            masker_path = os.path.join(cond_folder, f'maskers_{atlas_name}_{cond}_{nsub}sub.pkl')
+            utils.save_data(masker_path, fitted_maskers[cond])
+            print(f'Transformed timseries and maskers saved to {cond_folder}')
 
-	print('====Done with data extraction====')
+   
+
+    print('====Done with data extraction====')
 
 # %%
 
@@ -144,16 +158,15 @@ if transform_imgs == True:
 
 else:
 # Loading data
-        transformed_data_per_cond = {}
-	fitted_maskers = {}
+    transformed_data_per_cond = {}
+    fitted_maskers = {}
 
-	for cond in conditions:
-	    load_path = os.path.join(results_dir, cond)
-	    transformed_file =  f'transformed_data_{atlas_name}_{cond}_{nsub}sub.pkl')
-	    transformed_data_per_cond[cond] = utils.load_data(os.path.join(load_path, transformed_file))
-
-	    fitted_mask_file = f'maskers_{atlas_name}_{cond}_{nsub}sub.pkl'
-	    fitted_maskers[cond] = utils.load_data(os.path.join(load_path, fitted_mask_file))
+    for cond in conditions:
+        load_path = os.path.join(results_dir, cond)
+        transformed_file =  f'transformed_data_{atlas_name}_{cond}_{nsub}sub.pkl'
+        transformed_data_per_cond[cond] = utils.load_pickle(os.path.join(load_path, transformed_file))
+        fitted_mask_file = f'maskers_{atlas_name}_{cond}_{nsub}sub.pkl'
+        fitted_maskers[cond] = utils.load_pickle(os.path.join(load_path, fitted_mask_file))
     print(f'Loading existing data and fitted maskers from : {load_path}')
 
 # %%
@@ -314,7 +327,14 @@ for cond, cond_results in isc_permutation_group_results.items():
     print(f"Permutation ISC results saved for {cond} at {save_path}")
 
 save_gen = os.path.join(results_dir, 'check_sub.pkl')
+
 utils.save_data(save_gen, sub_check)
 
 # %%
 print('Done with all!!')
+
+
+# import utils
+# p = '/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/ISC/model1-22sub/modulation/setup_func_path_modulation.pkl'
+# data = utils.load_pickle(p)
+
