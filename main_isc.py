@@ -9,7 +9,7 @@ import os
 import pandas as pd
 import json
 from nilearn.image import concat_imgs
-from brainiak.isc import isc, bootstrap_isc, permutation_isc, compute_summary_statistic
+from brainiak.isc import isc, bootstrap_isc, permutation_isc, compute_summary_statistic, phaseshift_isc
 from nilearn.maskers import MultiNiftiMapsMasker
 from sklearn.utils import Bunch
 #reload(utils)
@@ -44,12 +44,21 @@ isc_data_df = isc_data_df.sort_values(by='subject')
 subjects = isc_data_df['subject'].unique()
 n_sub = len(subjects)
 
-# results outpyt
+# hyperparams
 model_name = f'model2_zcore_sample-{str(n_sub)}sub'
+conditions = ['all_sugg', 'modulation', 'neutral']
+transform_imgs = False
+nsub = len(subjects)
+n_sub = len(subjects)
+n_boot = 10000
+do_pairwise = False
+n_perm = 10000
 
 results_dir = os.path.join(project_dir, f'results/imaging/ISC/{model_name}')
 if not os.path.exists(results_dir):
     os.makedirs(results_dir)
+elif transform_imgs == False:
+    print(f"Results directory {results_dir} already exists and will be used to save (new) isc results!!")
 else:
     print(f"Results directory {results_dir} already exists and will be overwritten!!")
     print("Press 'y' to overwrite or 'n' to exit")
@@ -69,11 +78,15 @@ setup.project_dir = project_dir
 setup.preproc_model = preproc_model_data
 setup.load_data_from = base_path
 setup.behav_path = behav_path
+setup.condition = conditions,
 setup.exclude_sub = exclude_sub
 setup.n_sub = n_sub
 setup.model_name = model_name
 setup.results_dir = results_dir
 setup.subjects = list(subjects)
+setup.n_boot = n_boot
+setup.do_pairwise = do_pairwise
+setup.n_perm = n_perm
 
 save_setup = os.path.join(setup.results_dir, "setup_parameters.json")
 with open(save_setup, 'w') as fp:
@@ -81,18 +94,11 @@ with open(save_setup, 'w') as fp:
 
 # %%
 # get dict will all cond files from all subjects
-transform_imgs = False
-nsub = len(subjects)
-n_sub = len(subjects)
-n_boot = 10000
-do_pairwise = False
-
 print("Subjects:", subjects)
 sub_check['init'] = subjects
 
 tasks_ordered = sorted(isc_data_df['task'].unique())
 # code conditions for all_sugg, (ANA+Hyper), (Neutral_H + Neutral_A)
-conditions = ['all_sugg', 'modulation', 'neutral']
 task_combinations = [tasks_ordered, tasks_ordered[0:2], tasks_ordered[2:4]]
 subject_file_dict = {}
 for i, cond in enumerate(conditions):
@@ -100,7 +106,7 @@ for i, cond in enumerate(conditions):
 
 print("Conditions:", conditions)
 print("Condition combinations:", task_combinations)
-print(subject_file_dict)
+#print(subject_file_dict)
 
 sub_check['cond_files_sub'] = list(subject_file_dict[conditions[0]].keys())
 
@@ -121,7 +127,6 @@ atlas_df = pd.read_csv(atlas_dict_path)
 atlas_labels = atlas_df['Difumo_names']
 atlas_name = 'Difumo256'
 print('atlas loaded with N ROI : ', atlas.shape)
-print(f'will fit and trasnform images for {n_sub} subjects')
 
  # extract sphere signal
 roi_coords = {
@@ -136,8 +141,10 @@ sphere_radius = 10
 # extract timseries from atlas
 
 if transform_imgs == True:
+    print(f'will fit and trasnform images for {n_sub} subjects')
     transformed_data_per_cond = {}
     fitted_maskers = {}
+    transformed_sphere_per_roi = {}
 
     masker = MultiNiftiMapsMasker(maps_img=atlas, standardize=False, memory='nilearn_cache', verbose=5)
     masker.fit()
@@ -154,7 +161,7 @@ if transform_imgs == True:
         fitted_maskers[cond] = masker
 
         # sphere masker
-        utils.extract_save_sphere(concatenated_subjects, cond, results_dir, roi_coords, sphere_radius=sphere_radius)
+        transformed_sphere_per_roi[cond] = utils.extract_save_sphere(concatenated_subjects, cond, results_dir, roi_coords, sphere_radius=sphere_radius)
 
 	# save transformed data and masker
     for cond, data in transformed_data_per_cond.items():
@@ -186,8 +193,10 @@ if transform_imgs == True:
 
 else:
 # Loading data
+    print(f'Loading existing data and fitted maskers')
     transformed_data_per_cond = {}
     fitted_maskers = {}
+    transformed_sphere_per_roi = {}
 
     for cond in conditions:
         load_path = os.path.join(results_dir, cond)
@@ -195,46 +204,49 @@ else:
         transformed_data_per_cond[cond] = utils.load_pickle(os.path.join(load_path, transformed_file))
         fitted_mask_file = f'maskers_{atlas_name}_{cond}_{nsub}sub.pkl'
         fitted_maskers[cond] = utils.load_pickle(os.path.join(load_path, fitted_mask_file))
+
+        load_roi = os.path.join(load_path, f"{sphere_radius}mm_{len(roi_coords)}ROIS_isc")
+        transformed_sphere_per_roi[cond] =utils.load_pickle(os.path.join(load_roi, f"{len(roi_coords)}ROIs_timeseries.pkl")) 
+
     print(f'Loading existing data and fitted maskers from : {load_path}')
 
 # %%
 # Perform ISC
 
-isc_results = {}
+isc_results_roi = {}
+for cond in conditions:
+    breakpoint()
 
+    # make cond dict as a timepoints x keys/roi array
+    roi_data = [roi_ts for transformed_sphere_per_roi[cond].values()]
+    roi_data_3d = np.stack(roi_data, axis=-1)
+    breakpoint()
+
+    print(f'Performing ISC for condition: {cond}')
+    roi_isc = {}
+    roi_isc[cond] = utils.isc_1sample(roi_data_3d, pairwise=do_pairwise, n_boot=n_boot, summary_statistic=None)
+
+roi_isc['roi_names'] = list(roi_coords.keys())
+
+for cond, isc_dict in roi_isc.items():
+    save_path = os.path.join(results_dir, cond, f"isc_{len(roi_coords)}spheres_{cond}_{n_boot}boot_pairWise{do_pairwise}.pkl")
+    utils.save_data(save_path, isc_dict)
+    print(f"ISC results saved for {cond} at {save_path}")
+
+
+isc_results = {}
 for cond, data in transformed_data_per_cond.items():
     print(f'Performing ISC for condition: {cond}')
     # Convert list of 2D arrays to 3D array (n_TRs, n_voxels, n_subjects)
     data_3d = np.stack(data, axis=-1)  # Perform ISC
-    isc_result = isc(data_3d, pairwise=do_pairwise, summary_statistic=None)
-    isc_results[cond] = isc_result
-
-    observed, ci, p, distribution = bootstrap_isc(
-    isc_result,
-    pairwise=do_pairwise,
-    summary_statistic="median",
-    n_bootstraps=n_boot,
-    ci_percentile=95,
-)
-
-    median_isc = compute_summary_statistic(isc_result, 'median', axis=0) # per ROI : 1, n_voxels
-    total_median_isc = compute_summary_statistic(isc_result, 'median', axis=None)
-    print(f'Median ISC for {cond}: {total_median_isc}')
-
-
-    isc_results[cond] = {
-    "isc": isc_result,
-    "observed": observed,
-    "confidence_intervals": ci,
-    "p_values": p,
-    "distribution": distribution,
-}
+    isc_results[cond] = utils.isc_1sample(data_3d, pairwise=do_pairwise,n_boot = n_boot, summary_statistic=None)
 
 # save results
 for cond, isc_dict in isc_results.items():
     save_path = os.path.join(results_dir, cond, f"isc_results_{cond}_{n_boot}boot_pairWise{do_pairwise}.pkl")
     utils.save_data(save_path, isc_dict)
     print(f"ISC results saved for {cond} at {save_path}")
+
 
 
 # %%
@@ -314,7 +326,7 @@ print(group_labels_df.head())
 
 # %%
 # Perform permutation based on group labels
-n_perm = 10000
+
 isc_permutation_group_results = {}
 
 for cond, isc_dict in isc_results.items():  # `isc_results` should already contain ISC values

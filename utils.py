@@ -2,8 +2,11 @@ import os
 import nibabel as nib
 import pandas as pd
 import pickle as pkl
+import json
 from nilearn.maskers import NiftiSpheresMasker
 from nilearn.image import concat_imgs
+from brainiak.isc import phaseshift_isc, compute_summary_statistic, isc, bootstrap_isc, phaseshift_isc
+
 
 def load_isc_data(base_path):
     """
@@ -70,35 +73,75 @@ def load_pickle(file_path):
         data = pkl.load(f)
     return data
 
+def load_json(file_path):
+    with open(file_path, 'r') as f:
+        data = json.load(f)
+    return data
 
 # Function to extract timeseries with NiftiSpheresMasker
 def extract_save_sphere(concatenated_imgs, condition, results_dir, roi_coords, sphere_radius):
 
-        roi_timeseries = {}
-        n_rois = len(list(roi_coords.keys()))
-        print(f"---Processing spheres for condition: {condition}---")
+    roi_timeseries = {}
+    n_rois = len(list(roi_coords.keys()))
+    print(f"---Processing spheres for condition: {condition}---")
 
-        condition_path = os.path.join(results_dir, condition)
-        sphere_results_dir = os.path.join(condition_path, f"sphere_{sphere_radius}mm_{n_rois}ROIS_isc")
-        os.makedirs(sphere_results_dir, exist_ok=True)
+    condition_path = os.path.join(results_dir, condition)
+    sphere_results_dir = os.path.join(condition_path, f"sphere_{sphere_radius}mm_{n_rois}ROIS_isc")
+    os.makedirs(sphere_results_dir, exist_ok=True)
 
-        # func_path = os.path.join(condition_path, f"setup_func_path_{condition}.pkl")
-        # subject_file_dict = load_pickle(func_path)
+    # func_path = os.path.join(condition_path, f"setup_func_path_{condition}.pkl")
+    # subject_file_dict = load_pickle(func_path)
 
-        for roi_name, roi_coord in roi_coords.items():
-            print(f"Processing ROI: {roi_name} at {roi_coord}")
-            
-            masker = NiftiSpheresMasker(seeds=[roi_coord], radius=sphere_radius, standardize=False)
-            roi_timeseries[roi_name] = {}
+    for roi_name, roi_coord in roi_coords.items():
+        print(f"Processing ROI: {roi_name} at {roi_coord}")
+        
+        masker = NiftiSpheresMasker(seeds=[roi_coord], radius=sphere_radius, standardize=False)
+        roi_timeseries[roi_name] = {}
 
-            # Process each subject
-            for subject, concatenated_img in concatenated_imgs.items():
-                timeseries = masker.fit_transform(concatenated_img)
-                roi_timeseries[roi_name][subject] = timeseries
-            
-        # Save timeseries and masker
-        timeseries_path = os.path.join(sphere_results_dir, f"{n_rois}ROIs_timeseries.pkl")
-        # masker_path = os.path.join(sphere_results_dir, f"{roi_name}_masker.pkl")
-        save_data(timeseries_path, roi_timeseries)
-        # save_data(masker_path, masker)
-        print(f"Saved sphere timeseries of {list(roi_coords.keys())} as {timeseries_path}")
+        # Process each subject
+        for subject, concatenated_img in concatenated_imgs.items():
+            timeseries = masker.fit_transform(concatenated_img)
+            roi_timeseries[roi_name][subject] = timeseries
+        
+    # Save timeseries and masker
+    timeseries_path = os.path.join(sphere_results_dir, f"{n_rois}ROIs_timeseries.pkl")
+    # masker_path = os.path.join(sphere_results_dir, f"{roi_name}_masker.pkl")
+    save_data(timeseries_path, roi_timeseries)
+    # save_data(masker_path, masker)
+    print(f"Saved sphere timeseries of {list(roi_coords.keys())} as {timeseries_path}")
+
+    return roi_timeseries
+
+
+def isc_1sample(data_3d, do_pairwise, n_boot=5000, side = 'two-sided', summary_statistic=None):
+    
+    isc_result = isc(data_3d, pairwise=do_pairwise, summary_statistic=None)
+    
+    observed, ci, p, distribution = bootstrap_isc(
+    isc_result,
+    pairwise=do_pairwise,
+    summary_statistic="median",
+    n_bootstraps=n_boot,
+    side = side,
+    ci_percentile=95,
+    )
+    phase_obs, phase_ci, phase_p, phase_dist = phaseshift_isc(isc_result, pairwise=do_pairwise, summary_statistic="median",side= side, n_bootstraps=n_boot, ci_percentile=95)
+
+    median_isc = compute_summary_statistic(isc_result, 'median', axis=0) # per ROI : 1, n_voxels
+    total_median_isc = compute_summary_statistic(isc_result, 'median', axis=None)
+    print(f'Median ISC : {total_median_isc}')
+
+    isc_results = {
+    "isc": isc_result,
+    "observed": observed,
+    "confidence_intervals": ci,
+    "p_values": p,
+    "distribution": distribution,
+    "phase_obs": phase_obs,
+    "phase_ci": phase_ci,
+    "phase_p": phase_p,
+    "phase_dist": phase_dist,
+    "median_isc": median_isc
+    }
+
+    return isc_results
