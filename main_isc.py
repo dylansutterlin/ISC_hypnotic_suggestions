@@ -10,14 +10,17 @@ import pandas as pd
 from nilearn.image import concat_imgs
 from brainiak.isc import isc, bootstrap_isc, permutation_isc, compute_summary_statistic
 from nilearn.maskers import MultiNiftiMapsMasker
-
+from sklearn.utils import Bunch
 #reload(utils)
 # %% Load the data
 
 project_dir = "/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions"
 # base_path = "/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/data/test_data_sugg_3sub"
-base_path = os.path.join(project_dir, 'results/imaging/preproc_data/23subjects_Zscored_detrend_FWHM6_low-pass428_03-12-24/suggestion_blocks_concat_4D_23sub')
+preproc_model_data = '23subjects_zscore_sample_detrend_FWHM6_low-pass428_10-12-24/suggestion_blocks_concat_4D_23sub'
+base_path = os.path.join(project_dir, 'results/imaging/preproc_data', preproc_model_data)
 behav_path = os.path.join(project_dir, 'results/behavioral/behavioral_data_cleaned.csv')
+exclude_sub = ['sub-02']
+keep_n_subjects = None
 
 import sys
 sys.path.append(os.path.join(project_dir, 'QC_py310'))
@@ -26,10 +29,13 @@ import func
 # base_path = '/home/dsutterlin/projects/test_data/suggestion_block_concat_4D_3subj'
 # project_dir = '/home/dsutterlin/projects/ISC_hypnotic_suggestions'
 # behav_path = os.path.join('/home/dsutterlin/projects/ISC_hypnotic_suggestions/results/behavioral', 'behavioral_data_cleaned.csv')
-exclude_sub = ['sub-02']
-sub_check = {}
 
 isc_data_df = utils.load_isc_data(base_path)
+sub_check = {}
+# Select a subset of subjects
+if keep_n_subjects is not None:
+    isc_data_df = isc_data_df[isc_data_df['subject'].isin(isc_data_df['subject'].unique()[:keep_n_subjects])]
+    subjects = isc_data_df['subject'].unique()
 
 # exclude subjects
 isc_data_df = isc_data_df[~isc_data_df['subject'].isin(exclude_sub)]
@@ -41,15 +47,43 @@ model_name = f'model1-{str(n_sub)}sub'
 results_dir = os.path.join(project_dir, f'results/imaging/ISC/{model_name}')
 if not os.path.exists(results_dir):
     os.makedirs(results_dir)
+else:
+    print(f"Results directory {results_dir} already exists and will be overwritten!!")
+    print("Press 'y' to continue or 'n' to exit")
+    while True:
+        user_input = input("Enter your choice: ").lower()
+        if user_input == 'y':
+            break
+        elif user_input == 'n':
+            print("Exiting...")
+            exit()
+        else:
+            print("Invalid input. Please enter 'y' or 'n'.")
 
 isc_data_df = isc_data_df.sort_values(by='subject')
-# Display the DataFrame
-#print(isc_data_df.head())
+
+setup = Bunch()
+setup.project_dir = project_dir
+setup.preproc_model = preproc_model_data
+setup.load_data_from = base_path
+setup.behav_path = behav_path
+setup.exclude_sub = exclude_sub
+setup.n_sub = n_sub
+setup.model_name = model_name
+setup.results_dir = results_dir
+
+setup_dict = setup.to_dict()
+
+# Save to JSON
+json_path = os.path.join(setup.results_dir, "setup_parameters.json")
+os.makedirs(setup.results_dir, exist_ok=True)
+with open(json_path, "w") as json_file:
+    json.dump(setup_dict, json_file, indent=4)
+
 
 # %%
 # get dict will all cond files from all subjects
-transform_imgs = False
-
+transform_imgs = True
 nsub = len(subjects)
 n_sub = len(subjects)
 n_boot = 5000
@@ -66,7 +100,7 @@ for i, cond in enumerate(conditions):
     subject_file_dict[cond] = utils.get_files_for_condition_combination(subjects, task_combinations[i], isc_data_df)
 
 print("Conditions:", conditions)
-print("Condition combinations:", task_combinations)
+print("Condition combinations:", task_combinations)v
 print(subject_file_dict)
 
 sub_check['cond_files_sub'] = list(subject_file_dict[conditions[0]].keys())
@@ -93,10 +127,10 @@ print(f'will fit and trasnform images for {n_sub} subjects')
  # extract sphere signal
 roi_coords = {
 "amcc": (-2, 20, 32),
-"lPO": (54, -28, 26),
+"rPO": (54, -28, 26),
 "lPHG": (-20, -26, -14),
 }
-sphere_radius = 6
+sphere_radius = 10
 
 
 # %%
@@ -115,7 +149,7 @@ if transform_imgs == True:
         condition_files = subject_file_dict[cond]
         concatenated_subjects = {sub : concat_imgs(sub_files) for sub, sub_files in condition_files.items()}
 
-	    # assert all images have the same shape
+        # assert all images have the same shape
 	    #for sub, img in concatenated_subjects.items():
         #    assert img.shape == concatenated_subjects[subjects[0]].shape
         print('Imgs shape : ', [img.shape for _, img in  concatenated_subjects.items()])
