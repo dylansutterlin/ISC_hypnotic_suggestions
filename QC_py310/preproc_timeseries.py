@@ -369,6 +369,7 @@ len(events_hyper), setup.save_dir
 
 # hyper condition
 TRs_df, fig_hyper = func.count_plot_TRs_2conditions(
+    setup.subjects,
     events_hyper,
     TR=3,
     neutral_pattern="N_HYPER.*instrbk",
@@ -717,6 +718,8 @@ print('Done with all!!')
 
 # %% [markdown]
 # #### Apply group label masker and generate report
+
+# %%
 '''
 #%%
 importlib.reload(func)

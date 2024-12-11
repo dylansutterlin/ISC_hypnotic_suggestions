@@ -329,6 +329,7 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 
 def count_plot_TRs_2conditions(
+    subjects,
     event_files, 
     TR=3, 
     neutral_pattern="N_ANA.*instrbk", 
@@ -370,20 +371,22 @@ def count_plot_TRs_2conditions(
     Neutral and modulation suggestion blocks are identified using provided regex patterns,
     and each bar is shaded based on the individual block durations.
     """
-    # Initialize lists to store TR counts for each condition
+
     neutral_TRs_list = []
     modulation_TRs_list = []
 
-    # Initialize storage for block details for shading
     neutral_block_details = []
     modulation_block_details = []
 
-    # Loop through all subjects' event data
     for i, events in enumerate(event_files):
+        sub_id = subjects[i]
         # Filter for neutral suggestion blocks
         neutral_blocks = events[events['trial_type'].str.contains(neutral_pattern, na=False, regex=True)]
         neutral_durations = neutral_blocks['duration'].tolist()
         neutral_total_duration = sum(neutral_durations)
+        print('--count TRs--')
+        print('sub :', sub_id, 'neutral_total_duration :', neutral_total_duration)
+
         neutral_total_TRs = int(neutral_total_duration / TR)
         neutral_TRs_list.append(neutral_total_TRs)
         neutral_block_details.append([(d / TR) for d in neutral_durations])
@@ -399,9 +402,8 @@ def count_plot_TRs_2conditions(
         modulation_TRs_list.append(modulation_total_TRs)
         modulation_block_details.append([(d / TR) for d in modulation_durations])
 
-    # Create a DataFrame for easier comparison
     TRs_df = pd.DataFrame({
-        "Subject": [f"Subject_{i+1}" for i in range(len(event_files))],
+        "Subject": [f"{subjects[i]}" for i in range(len(event_files))],
         "Neutral_TRs": neutral_TRs_list,
         "Modulation_TRs": modulation_TRs_list
     })
