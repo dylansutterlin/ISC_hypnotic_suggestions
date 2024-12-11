@@ -7,6 +7,8 @@ venv.bak/
 isc-py39
 *conda*
 
+nilearn_cache/*
+
 # Results and temporary files
 results/
 *.nii
@@ -15,6 +17,7 @@ results/
 *.log
 *.tsv
 *.sqlite3
+*.csv
 
 # Jupyter Notebook checkpoints
 .ipynb_checkpoints/
