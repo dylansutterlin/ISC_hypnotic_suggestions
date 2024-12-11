@@ -97,21 +97,21 @@ atlas_name = "k50-2mm-parcel"
 # parcel_type = 'labelsMasker'
 
 masker_params_dict = {
-    "standardize": True,
+    "standardize": 'zscore_sample',
     "detrend": True,
     "low_pass": None,
     "high_pass": 0.00234,  # 1/428 sec.
     "t_r": 3,
     "smoothing_fwhm": 6,
     "standardize_confounds": True,
-    "verbose": 1,
+    "verbose": 5,
     "high_variance_confounds": True,
     "mask_strategy": "whole-brain-template",  # ignore for atlas maskers
 }
 
 # Create save directory
-preproc_model_name = "{}subjects_Zscored_detrend_FWHM6_low-pass428_{}".format(
-    len(setup.subjects), datetime.today().strftime("%d-%m-%y")
+preproc_model_name = "{}subjects_{}_detrend_FWHM6_low-pass428_{}".format(
+    len(setup.subjects),masker_params_dict['standardize'], datetime.today().strftime("%d-%m-%y")
 )
 save_dir = os.path.join(setup.results_dir, preproc_model_name)
 if os.path.exists(save_dir):
@@ -695,7 +695,7 @@ atlas['save'] = os.path.join(setup.save_dir,atlas['name'])
 # Print masker parameters for verification
 print(atlas["MultiMasker"].get_params())
 
-
+print('Done with all!!')
 # %% [markdown]
 # ##### DiFuMo64
 
