@@ -72,11 +72,11 @@ def load_pickle(file_path):
 
 
 # Function to extract timeseries with NiftiSpheresMasker
-def extract_save_sphere(concatenated_subjects, condition, results_dir, roi_coords, sphere_radius):
+def extract_save_sphere(concatenated_imgs, condition, results_dir, roi_coords, sphere_radius):
 
-
+        roi_timeseries = {}
         n_rois = len(list(roi_coords.keys()))
-        print(f"Processing spheres for condition: {condition}")
+        print(f"---Processing spheres for condition: {condition}---")
 
         condition_path = os.path.join(results_dir, condition)
         sphere_results_dir = os.path.join(condition_path, f"sphere_{sphere_radius}mm_{n_rois}ROIS_isc")
@@ -89,11 +89,10 @@ def extract_save_sphere(concatenated_subjects, condition, results_dir, roi_coord
             print(f"Processing ROI: {roi_name} at {roi_coord}")
             
             masker = NiftiSpheresMasker(seeds=[roi_coord], radius=sphere_radius, standardize=False)
-            roi_timeseries = {}
+            roi_timeseries[roi_name] = {}
 
             # Process each subject
-            for subject, subject_files in subject_file_dict.items():
-                concatenated_img = concatenated_subjects[subject]
+            for subject, concatenated_img in concatenated_imgs.items():
                 timeseries = masker.fit_transform(concatenated_img)
                 roi_timeseries[roi_name][subject] = timeseries
             
@@ -102,4 +101,4 @@ def extract_save_sphere(concatenated_subjects, condition, results_dir, roi_coord
         # masker_path = os.path.join(sphere_results_dir, f"{roi_name}_masker.pkl")
         save_data(timeseries_path, roi_timeseries)
         # save_data(masker_path, masker)
-        print(f"Saved timeseries to {timeseries_path} and masker to {masker_path}")
+        print(f"Saved sphere timeseries of {list(roi_coords.keys())} as {timeseries_path}")

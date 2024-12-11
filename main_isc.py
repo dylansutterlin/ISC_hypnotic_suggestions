@@ -7,6 +7,7 @@ import nibabel as nib
 import numpy as np
 import os
 import pandas as pd
+import json
 from nilearn.image import concat_imgs
 from brainiak.isc import isc, bootstrap_isc, permutation_isc, compute_summary_statistic
 from nilearn.maskers import MultiNiftiMapsMasker
@@ -39,17 +40,19 @@ if keep_n_subjects is not None:
 
 # exclude subjects
 isc_data_df = isc_data_df[~isc_data_df['subject'].isin(exclude_sub)]
+isc_data_df = isc_data_df.sort_values(by='subject')
 subjects = isc_data_df['subject'].unique()
-
 n_sub = len(subjects)
-model_name = f'model1-{str(n_sub)}sub'
+
+# results outpyt
+model_name = f'model2_zcore_sample-{str(n_sub)}sub'
 
 results_dir = os.path.join(project_dir, f'results/imaging/ISC/{model_name}')
 if not os.path.exists(results_dir):
     os.makedirs(results_dir)
 else:
     print(f"Results directory {results_dir} already exists and will be overwritten!!")
-    print("Press 'y' to continue or 'n' to exit")
+    print("Press 'y' to overwrite or 'n' to exit")
     while True:
         user_input = input("Enter your choice: ").lower()
         if user_input == 'y':
@@ -60,7 +63,6 @@ else:
         else:
             print("Invalid input. Please enter 'y' or 'n'.")
 
-isc_data_df = isc_data_df.sort_values(by='subject')
 
 setup = Bunch()
 setup.project_dir = project_dir
@@ -71,15 +73,11 @@ setup.exclude_sub = exclude_sub
 setup.n_sub = n_sub
 setup.model_name = model_name
 setup.results_dir = results_dir
+setup.subjects = list(subjects)
 
-setup_dict = setup.to_dict()
-
-# Save to JSON
-json_path = os.path.join(setup.results_dir, "setup_parameters.json")
-os.makedirs(setup.results_dir, exist_ok=True)
-with open(json_path, "w") as json_file:
-    json.dump(setup_dict, json_file, indent=4)
-
+save_setup = os.path.join(setup.results_dir, "setup_parameters.json")
+with open(save_setup, 'w') as fp:
+    json.dump(dict(setup), fp, indent=4)
 
 # %%
 # get dict will all cond files from all subjects
@@ -100,7 +98,7 @@ for i, cond in enumerate(conditions):
     subject_file_dict[cond] = utils.get_files_for_condition_combination(subjects, task_combinations[i], isc_data_df)
 
 print("Conditions:", conditions)
-print("Condition combinations:", task_combinations)v
+print("Condition combinations:", task_combinations)
 print(subject_file_dict)
 
 sub_check['cond_files_sub'] = list(subject_file_dict[conditions[0]].keys())
