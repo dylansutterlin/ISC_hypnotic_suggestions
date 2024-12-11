@@ -81,10 +81,11 @@ with open(save_setup, 'w') as fp:
 
 # %%
 # get dict will all cond files from all subjects
-transform_imgs = True
+transform_imgs = False
 nsub = len(subjects)
 n_sub = len(subjects)
-n_boot = 5000
+n_boot = 10000
+do_pairwise = False
 
 print("Subjects:", subjects)
 sub_check['init'] = subjects
@@ -118,7 +119,7 @@ atlas_dict_path = os.path.join(project_dir, 'masks/DiFuMo256/labels_256_dictiona
 atlas = nib.load(atlas_path)
 atlas_df = pd.read_csv(atlas_dict_path)
 atlas_labels = atlas_df['Difumo_names']
-atlas_name = 'Difumo64'
+atlas_name = 'Difumo256'
 print('atlas loaded with N ROI : ', atlas.shape)
 print(f'will fit and trasnform images for {n_sub} subjects')
 
@@ -146,11 +147,8 @@ if transform_imgs == True:
 
         condition_files = subject_file_dict[cond]
         concatenated_subjects = {sub : concat_imgs(sub_files) for sub, sub_files in condition_files.items()}
-
-        # assert all images have the same shape
-	    #for sub, img in concatenated_subjects.items():
-        #    assert img.shape == concatenated_subjects[subjects[0]].shape
         print('Imgs shape : ', [img.shape for _, img in  concatenated_subjects.items()])
+
 	    #print(f'fitting images for condition : {cond} with shape {concatenated_subjects[subjects[0]][0].shape}')
         transformed_data_per_cond[cond] = masker.transform(concatenated_subjects.values())
         fitted_maskers[cond] = masker
@@ -164,14 +162,12 @@ if transform_imgs == True:
         if not os.path.exists(cond_folder):
             os.makedirs(cond_folder)
 
-            save_path = os.path.join(cond_folder, f'transformed_data_{atlas_name}_{cond}_{nsub}sub.pkl')
-            utils.save_data(save_path, data)
+        save_path = os.path.join(cond_folder, f'transformed_data_{atlas_name}_{cond}_{nsub}sub.pkl')
+        utils.save_data(save_path, data)
 
-            masker_path = os.path.join(cond_folder, f'maskers_{atlas_name}_{cond}_{nsub}sub.pkl')
-            utils.save_data(masker_path, fitted_maskers[cond])
-            print(f'Transformed timseries and maskers saved to {cond_folder}')
-
-   
+        masker_path = os.path.join(cond_folder, f'maskers_{atlas_name}_{cond}_{nsub}sub.pkl')
+        utils.save_data(masker_path, fitted_maskers[cond])
+        print(f'Transformed timseries and maskers saved to {cond_folder}')
 
     print('====Done with data extraction====')
 
@@ -203,8 +199,7 @@ else:
 
 # %%
 # Perform ISC
-n_boot = 5000
-do_pairwise = False
+
 isc_results = {}
 
 for cond, data in transformed_data_per_cond.items():
@@ -237,7 +232,7 @@ for cond, data in transformed_data_per_cond.items():
 
 # save results
 for cond, isc_dict in isc_results.items():
-    save_path = os.path.join(results_dir, cond, f"isc_results_{cond}_pairWise{do_pairwise}.pkl")
+    save_path = os.path.join(results_dir, cond, f"isc_results_{cond}_{n_boot}boot_pairWise{do_pairwise}.pkl")
     utils.save_data(save_path, isc_dict)
     print(f"ISC results saved for {cond} at {save_path}")
 
@@ -319,7 +314,7 @@ print(group_labels_df.head())
 
 # %%
 # Perform permutation based on group labels
-n_perm = 5000
+n_perm = 10000
 isc_permutation_group_results = {}
 
 for cond, isc_dict in isc_results.items():  # `isc_results` should already contain ISC values
@@ -354,7 +349,7 @@ for cond, isc_dict in isc_results.items():  # `isc_results` should already conta
 
 # Save the permutation results
 for cond, cond_results in isc_permutation_group_results.items():
-    save_path = os.path.join(results_dir, cond, f"isc_permutation_results_{cond}_pairwise{do_pairwise}.pkl")
+    save_path = os.path.join(results_dir, cond, f"isc_{n_perm}permutation_results_{cond}_pairwise{do_pairwise}.pkl")
     utils.save_data(save_path, cond_results)
     print(f"Permutation ISC results saved for {cond} at {save_path}")
 
