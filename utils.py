@@ -113,19 +113,19 @@ def extract_save_sphere(concatenated_imgs, condition, results_dir, roi_coords, s
     return roi_timeseries
 
 
-def isc_1sample(data_3d, do_pairwise, n_boot=5000, side = 'two-sided', summary_statistic=None):
+def isc_1sample(data_3d, pairwise, n_boot=5000, side = 'two-sided', summary_statistic=None):
     
-    isc_result = isc(data_3d, pairwise=do_pairwise, summary_statistic=None)
+    isc_result = isc(data_3d, pairwise=pairwise, summary_statistic=None)
     
     observed, ci, p, distribution = bootstrap_isc(
     isc_result,
-    pairwise=do_pairwise,
+    pairwise=pairwise,
     summary_statistic="median",
     n_bootstraps=n_boot,
     side = side,
     ci_percentile=95,
     )
-    phase_obs, phase_ci, phase_p, phase_dist = phaseshift_isc(isc_result, pairwise=do_pairwise, summary_statistic="median",side= side, n_bootstraps=n_boot, ci_percentile=95)
+    #phase_obs, phase_p, phase_dist = phaseshift_isc(isc_result, pairwise=pairwise, summary_statistic="median",side= side, n_shifts=n_boot)
 
     median_isc = compute_summary_statistic(isc_result, 'median', axis=0) # per ROI : 1, n_voxels
     total_median_isc = compute_summary_statistic(isc_result, 'median', axis=None)
@@ -137,11 +137,17 @@ def isc_1sample(data_3d, do_pairwise, n_boot=5000, side = 'two-sided', summary_s
     "confidence_intervals": ci,
     "p_values": p,
     "distribution": distribution,
-    "phase_obs": phase_obs,
-    "phase_ci": phase_ci,
-    "phase_p": phase_p,
-    "phase_dist": phase_dist,
-    "median_isc": median_isc
     }
+    # isc_results = {
+    # "isc": isc_result,
+    # "observed": observed,
+    # "confidence_intervals": ci,
+    # "p_values": p,
+    # "distribution": distribution,
+    # "phase_obs": phase_obs,
+    # "phase_p": phase_p,
+    # "phase_dist": phase_dist,
+    # "median_isc": median_isc
+    # }
 
     return isc_results

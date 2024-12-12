@@ -51,7 +51,7 @@ transform_imgs = False
 nsub = len(subjects)
 n_sub = len(subjects)
 n_boot = 10000
-do_pairwise = False
+do_pairwise = True
 n_perm = 10000
 
 results_dir = os.path.join(project_dir, f'results/imaging/ISC/{model_name}')
@@ -135,7 +135,7 @@ roi_coords = {
 "lPHG": (-20, -26, -14),
 }
 sphere_radius = 10
-
+roi_folder = f"sphere_{sphere_radius}mm_{len(roi_coords)}ROIS_isc"
 
 # %%
 # extract timseries from atlas
@@ -205,7 +205,7 @@ else:
         fitted_mask_file = f'maskers_{atlas_name}_{cond}_{nsub}sub.pkl'
         fitted_maskers[cond] = utils.load_pickle(os.path.join(load_path, fitted_mask_file))
 
-        load_roi = os.path.join(load_path, f"{sphere_radius}mm_{len(roi_coords)}ROIS_isc")
+        load_roi = os.path.join(load_path, roi_folder)
         transformed_sphere_per_roi[cond] =utils.load_pickle(os.path.join(load_roi, f"{len(roi_coords)}ROIs_timeseries.pkl")) 
 
     print(f'Loading existing data and fitted maskers from : {load_path}')
@@ -213,27 +213,30 @@ else:
 # %%
 # Perform ISC
 
+# isc with spheres ROI
 isc_results_roi = {}
 for cond in conditions:
-    breakpoint()
 
-    # make cond dict as a timepoints x keys/roi array
-    roi_data = [roi_ts for transformed_sphere_per_roi[cond].values()]
-    roi_data_3d = np.stack(roi_data, axis=-1)
-    breakpoint()
+    print(f'Performing sphere ISC for condition: {cond}')
+    roi_ls = [] #stack list of roi timepoints x subjects 
+    for roi in roi_coords.keys():
+        roi_dict = transformed_sphere_per_roi[cond][roi]
+        roi_ts = [] # stack timepoints x subjects
+        for sub in roi_dict.keys():
+            roi_ts.append(np.array(roi_dict[sub])) # list timepoints x 1 vector
+        roi_ls.append(np.array(roi_ts)) # list of roi timepoints x subjects
+    roi_data_3d = np.stack(np.squeeze(roi_ls), axis=1).T # timepoints x roi x subjects
+    
+    isc_results_roi[cond] = utils.isc_1sample(roi_data_3d, pairwise=do_pairwise, n_boot=n_boot, summary_statistic=None)
+    
+#roi_isc['roi_names'] = list(roi_coords.keys())
 
-    print(f'Performing ISC for condition: {cond}')
-    roi_isc = {}
-    roi_isc[cond] = utils.isc_1sample(roi_data_3d, pairwise=do_pairwise, n_boot=n_boot, summary_statistic=None)
-
-roi_isc['roi_names'] = list(roi_coords.keys())
-
-for cond, isc_dict in roi_isc.items():
-    save_path = os.path.join(results_dir, cond, f"isc_{len(roi_coords)}spheres_{cond}_{n_boot}boot_pairWise{do_pairwise}.pkl")
+for cond, isc_dict in isc_results_roi.items():
+    save_path = os.path.join(results_dir, cond, roi_folder, f"isc_{len(roi_coords)}spheres_{cond}_{n_boot}boot_pairWise{do_pairwise}.pkl")
     utils.save_data(save_path, isc_dict)
     print(f"ISC results saved for {cond} at {save_path}")
 
-
+# ISC with ROI from atlas
 isc_results = {}
 for cond, data in transformed_data_per_cond.items():
     print(f'Performing ISC for condition: {cond}')
@@ -295,9 +298,9 @@ sub_check['APM_behav'] = APM_subjects
 # phenotype= func.load_process_y(behav_path,APM_subjects)
 phenotype =pd.read_csv(behav_path, index_col=0)
 phenotype.head()
-
+y_interest = ['SHSS_score', 'total_chge_pain_hypAna', 'Abs_diff_automaticity']
 # Create group labels based on sHSS and change in pain
-group_data = phenotype[['SHSS_score', 'total_chge_pain_hypAna', 'Abs_diff_automaticity']]
+group_data = phenotype[y_interest]
 
 #rewrite subjects (APM) to match subjects in the ISC data
 pheno_sub = phenotype.index
@@ -312,23 +315,92 @@ group_data = group_data.loc[subjects]
 # create group labels
 group_labels = {}
 
-for var in ['SHSS_score', 'total_chge_pain_hypAna', 'Abs_diff_automaticity']:
+for var in y_interest:
     median_value = group_data[var].median()
     group_labels[var] = (group_data[var] > median_value).astype(int)  # 1 if above median, 0 otherwise
-
-# Convert group labels to a DataFrame for easier manipulation
-group_labels_df = pd.DataFrame(group_labels)
+new_group_col = [col+'median_split' for col in group_labels.keys()]
+group_labels_df = pd.DataFrame(group_labels, columns=new_group_col)
 group_labels_df.index = group_data.index
+
+group_data_with_labels = group_data[y_interest].join(group_labels_df)
+group_data_with_labels.reset_index(inplace=True)
+group_data_with_labels.rename(columns={"index": "Subject"}, inplace=True)
+output_csv_path = "behav_data_group_labels.csv"
+group_data_with_labels.to_csv(output_csv_path, index=False)
+
 
 print("Group Labels Based on Median Split:")
 print(group_labels_df.head())
 
 
 # %%
+# ----------------
+# sphere permutation
+# isc_results_roi = {}
+# for cond in conditions:
+
+#     print(f'Performing sphere ISC for condition: {cond}')
+#     roi_ls = [] #stack list of roi timepoints x subjects 
+#     for roi in roi_coords.keys():
+#         roi_dict = transformed_sphere_per_roi[cond][roi]
+#         roi_ts = [] # stack timepoints x subjects
+#         for sub in roi_dict.keys():
+#             roi_ts.append(np.array(roi_dict[sub])) # list timepoints x 1 vector
+#         roi_ls.append(np.array(roi_ts)) # list of roi timepoints x subjects
+    
+#     roi_data_3d = np.stack(np.squeeze(roi_ls), axis=1).T # timepoints x roi x subjects
+#     isc_results_roi[cond] = utils.isc_1sample(roi_data_3d, pairwise=do_pairwise, n_boot=n_boot, summary_statistic=None)
+    
+# #roi_isc['roi_names'] = list(roi_coords.keys())
+
+# for cond, isc_dict in isc_results_roi.items():
+#     save_path = os.path.join(results_dir, cond, roi_folder, f"isc_{len(roi_coords)}spheres_{cond}_{n_boot}boot_pairWise{do_pairwise}.pkl")
+#     utils.save_data(save_path, isc_dict)
+#     print(f"ISC results saved for {cond} at {save_path}")
+
+isc_sphere_permutation_group_results = {}
+for cond, isc_dict in isc_results_roi.items():  # `isc_results` should already contain ISC values
+    print(f"Performing permutation ISC for condition: {cond}")
+
+    isc_values = isc_dict['isc']
+
+    for var in group_labels_df.columns:
+        group_assignment = group_labels_df[var].values  # Get group labels for this variable
+
+        # Perform ISC permutation test
+        observed, p_value, distribution = permutation_isc(
+            isc_values,  # This should be the ISC matrix from the main analysis
+            group_assignment=group_assignment,
+            pairwise=do_pairwise,
+            summary_statistic="median",  # Median ISC
+            n_permutations=n_perm,
+            side="two-sided",
+            random_state=42
+        )
+
+        if cond not in isc_sphere_permutation_group_results:
+            isc_sphere_permutation_group_results[cond] = {}
+
+        isc_sphere_permutation_group_results[cond][var] = {
+            "observed": observed,
+            "p_value": p_value,
+            "distribution": distribution
+        }
+
+        print(f"Completed SPHERE permutation ISC for condition: {cond}, variable: {var}")
+
+# Save the permutation results
+for cond, cond_results in isc_sphere_permutation_group_results.items():
+    save_path = os.path.join(results_dir, cond, roi_folder, f"isc_{n_perm}permutation_results_{cond}_pairwise{do_pairwise}.pkl")
+    utils.save_data(save_path, cond_results)
+    print(f"sphere Permutation ISC results saved for {cond} at {save_path}")
+
+
+
+# ------------
 # Perform permutation based on group labels
 
 isc_permutation_group_results = {}
-
 for cond, isc_dict in isc_results.items():  # `isc_results` should already contain ISC values
     print(f"Performing permutation ISC for condition: {cond}")
 
@@ -369,6 +441,7 @@ save_gen = os.path.join(results_dir, 'check_sub.pkl')
 
 utils.save_data(save_gen, sub_check)
 
+
 # %%
 print('Done with all!!')
 
@@ -377,3 +450,7 @@ print('Done with all!!')
 # p = '/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/ISC/model1-22sub/modulation/setup_func_path_modulation.pkl'
 # data = utils.load_pickle(p)
 
+# %%
+t = r'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/ISC/model2_zcore_sample-22sub/all_sugg/sphere_10mm_3ROIS_isc/isc_3spheres_all_sugg_10000boot_pairWiseFalse.pkl'
+t = r'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/ISC/model2_zcore_sample-22sub/all_sugg/isc_results_all_sugg_10000boot_pairWiseFalse.pkl'
+isc = utils.load_pickle(t)
