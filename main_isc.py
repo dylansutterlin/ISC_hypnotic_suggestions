@@ -137,6 +137,54 @@ roi_coords = {
 sphere_radius = 10
 roi_folder = f"sphere_{sphere_radius}mm_{len(roi_coords)}ROIS_isc"
 
+# %% load behavioral data
+#==============================================
+# append ../func path
+
+APM_subjects = ['APM' + sub[4:] for sub in subjects] # make APMXX format instead of subXX
+print(APM_subjects)
+sub_check['APM_behav'] = APM_subjects
+
+# phenotype= func.load_process_y(behav_path,APM_subjects)
+phenotype =pd.read_csv(behav_path, index_col=0)
+phenotype.head()
+y_interest = ['SHSS_score', 'total_chge_pain_hypAna', 'Abs_diff_automaticity']
+# Create group labels based on sHSS and change in pain
+group_data = phenotype[y_interest]
+
+#rewrite subjects (APM) to match subjects in the ISC data
+pheno_sub = phenotype.index
+pheno_sub = ['sub-' + sub[3:] for sub in pheno_sub]
+group_data.index = pheno_sub
+
+sub_check['pheno_sub'] = pheno_sub
+
+# ensure that the subjects are in the same order et same number
+group_data = group_data.loc[subjects]
+
+# create group labels
+group_labels = {}
+
+for var in y_interest:
+    median_value = group_data[var].median()
+    group_labels[var] = (group_data[var] > median_value).astype(int)  # 1 if above median, 0 otherwise
+new_group_col = [col+'median_split' for col in group_labels.keys()]
+group_labels_df = pd.DataFrame(group_labels)
+
+group_labels_df.index = group_labels_df.index.astype(str).str.strip()
+group_data.index = group_data.index.astype(str).str.strip()
+# concatenate the group labels to the data
+combined_df = pd.concat([group_data, group_labels_df], axis=1)
+
+#group_data_with_labels.reset_index(inplace=True)
+#group_data_with_labels.rename(columns={"index": "Subject"}, inplace=True)
+output_csv_path = os.path.join(setup.results_dir, "behav_data_group_labels.csv")
+combined_df.to_csv(output_csv_path, index=True)
+
+print("Group Labels Based on Median Split:")
+print(group_labels_df.head())
+setup.group_labels = group_labels_df
+
 # %%
 # extract timseries from atlas
 
@@ -288,52 +336,6 @@ for cond, isc_dict in isc_results.items():
 # %%
 # Permutation based on group labels
 
-# load behavioral data
-# append ../func path
-
-APM_subjects = ['APM' + sub[4:] for sub in subjects] # make APMXX format instead of subXX
-print(APM_subjects)
-sub_check['APM_behav'] = APM_subjects
-
-# phenotype= func.load_process_y(behav_path,APM_subjects)
-phenotype =pd.read_csv(behav_path, index_col=0)
-phenotype.head()
-y_interest = ['SHSS_score', 'total_chge_pain_hypAna', 'Abs_diff_automaticity']
-# Create group labels based on sHSS and change in pain
-group_data = phenotype[y_interest]
-
-#rewrite subjects (APM) to match subjects in the ISC data
-pheno_sub = phenotype.index
-pheno_sub = ['sub-' + sub[3:] for sub in pheno_sub]
-group_data.index = pheno_sub
-
-sub_check['pheno_sub'] = pheno_sub
-
-# ensure that the subjects are in the same order et same number
-group_data = group_data.loc[subjects]
-
-# create group labels
-group_labels = {}
-
-for var in y_interest:
-    median_value = group_data[var].median()
-    group_labels[var] = (group_data[var] > median_value).astype(int)  # 1 if above median, 0 otherwise
-new_group_col = [col+'median_split' for col in group_labels.keys()]
-group_labels_df = pd.DataFrame(group_labels, columns=new_group_col)
-group_labels_df.index = group_data.index
-
-group_data_with_labels = group_data[y_interest].join(group_labels_df)
-group_data_with_labels.reset_index(inplace=True)
-group_data_with_labels.rename(columns={"index": "Subject"}, inplace=True)
-output_csv_path = "behav_data_group_labels.csv"
-group_data_with_labels.to_csv(output_csv_path, index=False)
-
-
-print("Group Labels Based on Median Split:")
-print(group_labels_df.head())
-
-
-# %%
 # ----------------
 # sphere permutation
 # isc_results_roi = {}

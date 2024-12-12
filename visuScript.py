@@ -11,13 +11,17 @@ import utils
 import os
 import matplotlib.pyplot as plt
 from statsmodels.stats.multitest import multipletests
-
+import visu_utils as vu
 # Threshold values
 p_threshold_uncorrected = 0.1  # Uncorrected
 p_threshold_001 = 0.001
 fdr_threshold = 0.05
 
-
+roi_coords = {
+"amcc": (-2, 20, 32),
+"rPO": (54, -28, 26),
+"lPHG": (-20, -26, -14),
+}
 # %%
 # Function to ensure visualization directories exist
 
@@ -90,24 +94,34 @@ def visualize_isc_maps(results_dir, conditions):
         
         # Plot uncorrected ISC map
         isc_uncorrected_path = os.path.join(visu_dir, f"{condition}_isc_uncorrected.png")
-        display = plotting.plot_stat_map(isc_img, title=f"ISC Map (Uncorrected) - {condition}", colorbar=True)
-        plt.savefig(isc_uncorrected_path)
-        plt.close()
+        # display = plotting.plot_stat_map(isc_img, title=f"ISC Map (Uncorrected) - {condition}", colorbar=True)
+        # plt.savefig(isc_uncorrected_path)
+        # plt.show()
+        # plt.close()
         
         # Mask ISC map at p < 0.001
-        isc_masked_001 = threshold_and_mask(isc_img, pval_img, p_threshold_001)
+        # isc_masked_001 = threshold_and_mask(isc_img, pval_img, p_threshold_001)
+        
         isc_p001_path = os.path.join(visu_dir, f"{condition}_isc_p001.png")
-        display = plotting.plot_stat_map(isc_masked_001, title=f"ISC Map (p<0.001) - {condition}", colorbar=True)
-        plt.savefig(isc_p001_path)
+        plotting.plot_stat_map(
+            isc_img,
+            title=f"unc. ISC maps - {condition}",
+            colorbar=True,
+            display_mode='x',
+            output_file=isc_uncorrected_path
+        )
+        #display = plotting.plot_stat_map(isc_masked_001, title=f"ISC Map (p<0.001) - {condition}", colorbar=True)
+        #plt.savefig(isc_p001_path)
+        plt.show()
         plt.close()
         
-        # Mask ISC map with FDR correction
-        isc_masked_fdr = threshold_and_mask(isc_img, pval_img, fdr_threshold)
-        isc_fdr_path = os.path.join(visu_dir, f"{condition}_isc_fdr.png")
-        display = plotting.plot_stat_map(isc_masked_fdr, title=f"ISC Map (FDR Corrected) - {condition}", colorbar=True)
-        plt.savefig(isc_fdr_path)
-        plt.close()
-        print(f"ISC maps saved for {condition} in {visu_dir}")
+        # # Mask ISC map with FDR correction
+        # isc_masked_fdr = threshold_and_mask(isc_img, pval_img, fdr_threshold)
+        # isc_fdr_path = os.path.join(visu_dir, f"{condition}_isc_fdr.png")
+        # display = plotting.plot_stat_map(isc_masked_fdr, title=f"ISC Map (FDR Corrected) - {condition}", colorbar=True)
+        # plt.savefig(isc_fdr_path)
+        # plt.close()
+        # print(f"ISC maps saved for {condition} in {visu_dir}")
 
 import os
 import matplotlib.pyplot as plt
@@ -210,7 +224,7 @@ import numpy as np
 import os
 from statsmodels.stats.multitest import multipletests
 
-def visu_permutation(setup, condition, results_dir, atlas_labels, p_threshold=0.01, 
+def visu_permutation(setup, condition, results_dir, atlas_labels,sphere_folder=None, p_threshold=0.01, 
                       significant_color='red', nonsignificant_color='gray', show=False):
     """
     Visualizes ISC permutation results for a specific condition and behavioral variable,
@@ -249,7 +263,10 @@ def visu_permutation(setup, condition, results_dir, atlas_labels, p_threshold=0.
     n_perm = setup['n_perm']
 
     # Load ISC results
-    isc_file = os.path.join(results_dir, condition, f"isc_permutation_results_{condition}_pairwiseFalse.pkl")
+    if sphere_folder != None:
+        isc_file = os.path.join(results_dir, condition,sphere_folder, f"isc_{n_perm}permutation_results_{condition}_pairwiseFalse.pkl")
+    else:
+        isc_file = os.path.join(results_dir, condition, f"isc_permutation_results_{condition}_pairwiseFalse.pkl")
     isc_results = utils.load_pickle(isc_file)
     y_names = list(isc_results.keys())
 
@@ -287,7 +304,10 @@ def visu_permutation(setup, condition, results_dir, atlas_labels, p_threshold=0.
         inset_ax.tick_params(axis='both', which='major', labelsize=6)
 
         # Save the plot
-        output_dir = os.path.join(results_dir, condition, "visu")
+        if sphere_folder != None:
+            output_dir = os.path.join(results_dir, condition,sphere_folder, "visu")
+        else:
+            output_dir = os.path.join(results_dir, condition, "visu")
         os.makedirs(output_dir, exist_ok=True)
         save_path = os.path.join(output_dir, f"barplot_group_{n_perm}permutation_isc_{y_name}_sig-{p_threshold_str}.png")
         plt.savefig(save_path, dpi=1000)
@@ -330,6 +350,12 @@ atlas = nib.load(atlas_path)
 atlas_df = pd.read_csv(atlas_dict_path)
 atlas_labels = atlas_df['Difumo_names']
 
+setup = utils.load_json(os.path.join(results_dir, 'setup_parameters.json'))
+n_boot = setup['n_boot']
+n_perm = setup['n_perm']
+do_pairwise = setup['do_pairwise']
+
+behavioral_scores = pd.read_csv(r'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/ISC/model2_zcore_sample-22sub/behav_data_group_labels.csv', index_col=0)
 # %%
 #for cond in conditions:
 visu_isc(setup, cond, results_dir, atlas_labels, p_threshold=0.001, significant_color='red', nonsignificant_color='gray')
@@ -343,16 +369,219 @@ visualize_mean_activation(results_dir, atlas_path, conditions)
 for cond in conditions:
     print(f'Permutation plots for {cond}')
     #visu_permutation(setup, cond, results_dir, atlas_labels, p_threshold=0.01, significant_color='red', nonsignificant_color='gray')
-    visu_permutation(setup, cond, results_dir, atlas_labels, p_threshold=0.05,show=True, significant_color='red', nonsignificant_color='gray')
+    visu_permutation(setup, cond, results_dir, atlas_labels, p_threshold=0.01,show=True, significant_color='red', nonsignificant_color='gray')
 
 # %%
-#main(results_dir, atlas_path, conditions)
-# permutation
+import importlib
+importlib.reload(utils)
+importlib.reload(vu)
+
+# load isc results ROI LOO approach
+for cond in conditions:
+    # cond = 'modulation'
+    do_pairwise = False
+    cond_path = os.path.join(results_dir, cond)
+    isc_sphere = f'isc_3spheres_{cond}_{n_boot}boot_pairWiseFalse.pkl'
+    isc_sphere = os.path.join(cond_path, f'sphere_10mm_3ROIS_isc/isc_3spheres_{cond}_10000boot_pairWiseFalse.pkl')
+    isc_nopairwise = utils.load_pickle(isc_sphere)
+
+    isc, observed_isc, p_values, ci, median_isc, distributions = vu.load_isc_results(isc_nopairwise)
+    isc_df = pd.DataFrame(isc, columns=roi_coords.keys())
+
+    save_to = os.path.join(cond_path, f'sphere_10mm_3ROIS_isc', f'hist_isc_{n_boot}boot_pairWise{do_pairwise}.png')
+    vu.plot_isc_distributions(isc_df, p_values, median_isc, distributions, save_to=save_to, title=f"{cond} ISC Distributions (LOO)")
+# %%
+#------------------
+# Pairewise ISC
+import importlib
+importlib.reload(vu)
+
+for cond in conditions:
+    # cond = 'modulation'
+    do_pairwise = True
+    cond_path = os.path.join(results_dir, cond)
+    isc_sphere = f'isc_3spheres_{cond}_{n_boot}boot_pairWiseTrue.pkl'
+    isc_sphere = os.path.join(cond_path, f'sphere_10mm_3ROIS_isc/isc_3spheres_{cond}_10000boot_pairWiseTrue.pkl')
+    isc_pairwise = utils.load_pickle(isc_sphere)
+
+    isc, observed_isc, p_values, ci, distributions = vu.load_isc_results_pairwise(isc_pairwise)
+    isc_df = pd.DataFrame(isc, columns=roi_coords.keys())
+    behav = 'SHSS'
+    pain_score = behavioral_scores['total_chge_pain_hypAna']
+    pain_score = behavioral_scores['SHSS_score']
+    save_to = os.path.join(cond_path, f'sphere_10mm_3ROIS_isc', f'heatmap_isc_{n_boot}boot_pairWise{do_pairwise}_sort{behav}.png')
+    vu.heatmap_pairwise_isc_combined(isc_df,setup['subjects'], save_to = save_to, behavioral_scores=pain_score, title=f"{cond} Pairwise ISC spheres (10mm)")
+
+
+
+    # # isc_df = pd.DataFrame(isc, columns=roi_coords.keys())
+
+    # save_to = os.path.join(cond_path, f'sphere_10mm_3ROIS_isc', f'hist_isc_{n_boot}boot_pairWise{do_pairwise}.png')
+    # vu.plot_isc_distributions(isc_df, p_values, median_isc, distributions, save_to=save_to, title=f"{cond} ISC Distributions (LOO)")
+
+#============
+# %%
+# ROI permutaion LOO
+sphere_folder = 'sphere_10mm_3ROIS_isc'
+visu_permutation(setup, cond,  results_dir, atlas_labels,sphere_folder =sphere_folder, p_threshold=0.01,show=True, significant_color='red', nonsignificant_color='gray')
+
 
 # %%
+# =============== atlas brain maps boot
+
+visualize_isc_maps(results_dir, conditions)
 
 # isc per ROI with bootstrap
+# %%
+condition='neutral'
 
+isc_img, pval_img = load_images(results_dir, condition)
+visu_dir = os.path.join(results_dir, condition, "visu")
+isc_uncorrected_path = os.path.join(visu_dir, f"{condition}_isc_uncorrected.png")
+# display = plotting.plot_stat_map(isc_img, title=f"ISC Map (Uncorrected) - {condition}", colorbar=True)
+# plt.savefig(isc_uncorrected_path)
+# plt.show()
+# plt.close()
+
+# Mask ISC map at p < 0.001
+# isc_masked_001 = threshold_and_mask(isc_img, pval_img, p_threshold_001)
+
+isc_p001_path = os.path.join(visu_dir, f"{condition}_isc_p001.png")
+plotting.plot_stat_map(
+    isc_img,
+
+    title=f"unc. ISC maps - {condition}",
+    colorbar=True,
+    display_mode='z',
+    output_file=isc_uncorrected_path
+)
+
+plt.show()
+
+# +++++++++++++++++++++++=======
+# %% VISUALIZE ATLAS
+# load difumo atlas
+
+import numpy as np
+import matplotlib.pyplot as plt
+from nilearn import plotting, datasets
+from nilearn.maskers import NiftiSpheresMasker
+import nibabel as nib
+import os
+
+atlas_path = os.path.join(project_dir, 'masks/DiFuMo256/3mm/maps.nii.gz')
+atlas_dict_path = os.path.join(project_dir, 'masks/DiFuMo256/labels_256_dictionary.csv')
+atlas = nib.load(atlas_path)
+atlas_df = pd.read_csv(atlas_dict_path)
+atlas_labels = atlas_df['Difumo_names']
+atlas_name = 'Difumo256'
+print('atlas loaded with N ROI : ', atlas.shape)
+
+ # extract sphere signal
+
+sphere_radius = 10
+roi_folder = f"sphere_{sphere_radius}mm_{len(roi_coords)}ROIS_isc"
+sphere_coords = [(-2, 20, 32), (54, -28, 26), (-20, -26, -14)]
+# the atlas map
+atlas_img = nib.load(atlas_path)
+
+sphere_imgs = []
+
+sphere_masker = NiftiSpheresMasker(sphere_coords, radius=sphere_radius, allow_overlap=True)
+sphere_masker.fit()
+sphere_masker.generate_report()
+
+# %%
+sphere_imgs.append(sphere_img)
+
+# Combine sphere masks into one
+combined_sphere_data = np.zeros(sphere_imgs[0].shape)
+for img in sphere_imgs:
+    combined_sphere_data += img.get_fdata()
+
+combined_sphere_img = nib.Nifti1Image(combined_sphere_data, sphere_imgs[0].affine)
+
+# Plot the atlas
+fig, axes = plt.subplots(1, 2, figsize=(12, 6), subplot_kw={"projection": "3d"})
+
+# Plot atlas
+plotting.plot_roi(
+    atlas_img,
+    title="Atlas Maps",
+    axes=axes[0],
+    cut_coords=[0, 0, 0],
+    draw_cross=False,
+    cmap="tab10"
+)
+
+# Plot spheres
+plotting.plot_roi(
+    combined_sphere_img,
+    title="Spheres",
+    axes=axes[1],
+    cut_coords=[0, 0, 0],
+    draw_cross=False,
+    cmap="autumn"
+)
+
+plt.tight_layout()
+plt.show()
+
+
+
+# %%
+import numpy as np
+import pandas as pd
+from scipy.stats import rankdata
+from sklearn.metrics import pairwise_distances
+import seaborn as sns
+import matplotlib.pyplot as plt
+
+def distance_to_similarity(distance_matrix):
+    """
+    Converts a distance matrix to a similarity matrix.
+    Similarity = 1 / (1 + distance).
+    """
+    similarity_matrix = 1 / (1 + distance_matrix)
+    return similarity_matrix
+
+def sort_square_matrix(matrix, behavioral_vector, subjects):
+    """
+    Sorts a square matrix based on the order of the behavioral vector.
+    """
+    sort_indices = np.argsort(behavioral_vector)
+    sorted_matrix = matrix[np.ix_(sort_indices, sort_indices)]
+    sorted_subjects = [subjects[i] for i in sort_indices]
+    return sorted_matrix, sorted_subjects
+
+behav = 'SHSS'
+pain_score = behavioral_scores['SHSS_score']
+
+subjects = setup['subjects']
+behav_rank = rankdata(pain_score)
+distance_matrix = pairwise_distances(behav_rank.reshape(-1, 1), metric="euclidean")
+
+# Convert distances to similarities
+behav_sim_nn = distance_to_similarity(distance_matrix)
+sorted_matrix, sorted_subjects = sort_square_matrix(behav_sim_nn, behav_rank, subjects)
+
+# Plot the similarity matrix
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(13, 5))
+
+# Original similarity matrix
+sns.heatmap(behav_sim_nn, ax=ax1, square=True, cmap="coolwarm", cbar_kws={"label": "Similarity"},
+            xticklabels=subjects, yticklabels=subjects)
+ax1.set_title(f"{behav} Similarity Matrix (Unsorted)", fontsize=14)
+ax1.tick_params(axis='x', rotation=90)
+
+# Sorted similarity matrix
+sns.heatmap(sorted_matrix, ax=ax2, square=True, cmap="coolwarm", cbar_kws={"label": "Similarity"},
+            xticklabels=sorted_subjects, yticklabels=sorted_subjects)
+ax2.set_title(f"{behav} Similarity Matrix (Sorted)", fontsize=14)
+ax2.tick_params(axis='x', rotation=90)
+
+plt.tight_layout()
+plt.show()
 
 # %%
 visualize_isc_maps(results_dir, conditions)
