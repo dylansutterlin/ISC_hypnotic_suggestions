@@ -375,21 +375,26 @@ for cond in conditions:
 import importlib
 importlib.reload(utils)
 importlib.reload(vu)
+cond = 'modulation'
+masker = utils.load_pickle(os.path.join(results_dir, cond, 'maskers_Difumo256_modulation_22sub.pkl'))
 
+# %%
 # load isc results ROI LOO approach
-for cond in conditions:
-    # cond = 'modulation'
-    do_pairwise = False
-    cond_path = os.path.join(results_dir, cond)
-    isc_sphere = f'isc_3spheres_{cond}_{n_boot}boot_pairWiseFalse.pkl'
-    isc_sphere = os.path.join(cond_path, f'sphere_10mm_3ROIS_isc/isc_3spheres_{cond}_10000boot_pairWiseFalse.pkl')
-    isc_nopairwise = utils.load_pickle(isc_sphere)
+cond = 'all_sugg'
+#for cond in conditions:
+# cond = 'modulation'
+do_pairwise = False
+cond_path = os.path.join(results_dir, cond)
+isc_sphere = f'isc_3spheres_{cond}_{n_boot}boot_pairWiseFalse.pkl'
+isc_sphere = os.path.join(cond_path, f'sphere_10mm_3ROIS_isc/isc_3spheres_{cond}_10000boot_pairWiseFalse.pkl')
+isc_nopairwise = utils.load_pickle(isc_sphere)
 
-    isc, observed_isc, p_values, ci, median_isc, distributions = vu.load_isc_results(isc_nopairwise)
-    isc_df = pd.DataFrame(isc, columns=roi_coords.keys())
+isc, observed_isc, p_values, ci, median_isc, distributions = vu.load_isc_results(isc_nopairwise)
+isc_df = pd.DataFrame(isc, columns=roi_coords.keys())
 
-    save_to = os.path.join(cond_path, f'sphere_10mm_3ROIS_isc', f'hist_isc_{n_boot}boot_pairWise{do_pairwise}.png')
-    vu.plot_isc_distributions(isc_df, p_values, median_isc, distributions, save_to=save_to, title=f"{cond} ISC Distributions (LOO)")
+save_to = os.path.join(cond_path, f'sphere_10mm_3ROIS_isc', f'hist_isc_{n_boot}boot_pairWise{do_pairwise}.png')
+#vu.plot_isc_distributions(isc_df, p_values, median_isc, distributions, save_to=save_to, title=f"{cond} ISC Distributions (LOO)")
+
 # %%
 #------------------
 # Pairewise ISC
@@ -410,7 +415,7 @@ for cond in conditions:
     pain_score = behavioral_scores['total_chge_pain_hypAna']
     pain_score = behavioral_scores['SHSS_score']
     save_to = os.path.join(cond_path, f'sphere_10mm_3ROIS_isc', f'heatmap_isc_{n_boot}boot_pairWise{do_pairwise}_sort{behav}.png')
-    vu.heatmap_pairwise_isc_combined(isc_df,setup['subjects'], save_to = save_to, behavioral_scores=pain_score, title=f"{cond} Pairwise ISC spheres (10mm)")
+    #vu.heatmap_pairwise_isc_combined(isc_df,setup['subjects'], save_to = save_to, behavioral_scores=pain_score, title=f"{cond} Pairwise ISC spheres (10mm)")
 
 
 

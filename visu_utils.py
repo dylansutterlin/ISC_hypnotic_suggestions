@@ -22,6 +22,12 @@ def load_isc_results_pairwise(isc_results):
     
     return isc, observed_isc, p_values, ci, distributions
 
+def load_isc_results_permutation(isc_results):
+    
+    observed_isc = isc_results['observed']
+    p_values = isc_results['p_value']
+    distributions = isc_results['distribution']
+    return observed_isc, p_values, distributions
 
 
 def plot_isc_distributions(observed_isc, p_values, median_isc, bootstrap_distributions,save_to=None, title="ISC Distributions"):
@@ -173,3 +179,23 @@ def heatmap_pairwise_isc_combined(isc_df, subjects, behavioral_scores=None, save
         plt.show()
     else:
         plt.close()
+
+
+def load_boot_images(results_dir, condition):
+    isc_img_path = os.path.join(results_dir, condition, f"isc_val_{condition}_boot5000_pariwiseFalse.nii.gz")
+    pval_img_path = os.path.join(results_dir, condition, f"p_values_{condition}_boot5000_pairwiseFalse.nii.gz")
+    
+    isc_img = nib.load(isc_img_path)
+    pval_img = nib.load(pval_img_path)
+    
+    return isc_img, pval_img
+
+def load_perm_images(results_dir, condition):
+    isc_img_path = os.path.join(results_dir, condition, f"isc_val_{condition}_boot5000_pariwiseFalse.nii.gz")
+    pval_img_path = os.path.join(results_dir, condition, f"p_values_{condition}_boot5000_pairwiseFalse.nii.gz")
+    
+    isc_img = nib.load(isc_img_path)
+    pval_img = nib.load(pval_img_path)
+    
+    return isc_img, pval_img
+
