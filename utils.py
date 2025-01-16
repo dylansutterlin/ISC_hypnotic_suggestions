@@ -1,14 +1,15 @@
 import os
 import nibabel as nib
 import pandas as pd
+import numpy as np
 import pickle as pkl
 import json
 from nilearn.maskers import NiftiSpheresMasker
 from nilearn.image import concat_imgs
-from brainiak.isc import phaseshift_isc, compute_summary_statistic, isc, bootstrap_isc, phaseshift_isc
+from brainiak.isc import phaseshift_isc, compute_summary_statistic, isc, bootstrap_isc, phaseshift_isc, permutation_isc
 
 
-def load_isc_data(base_path):
+def load_isc_data(base_path, folder_is='task'):
     """
     Load ISC data from the specified folder structure.
 
@@ -16,6 +17,8 @@ def load_isc_data(base_path):
     ----------
     base_path : str
         The base directory containing the subfolders with ISC data.
+    folder : str
+        if folder is subjecct instead of task, the df is reorganized
 
     Returns
     -------
@@ -23,29 +26,39 @@ def load_isc_data(base_path):
         A DataFrame containing the loaded data with columns:
         'folder', 'subject', 'file_path', and 'data'.
     """
-    # Initialize a list to store metadata and data
+
     data_list = []
 
 
     # Iterate through folders in the base path
     for folder in os.listdir(base_path):
         folder_path = os.path.join(base_path, folder)
-        if os.path.isdir(folder_path):  # Ensure it's a folder
-            # Iterate through files in each folder
-            for file in os.listdir(folder_path):
+        if os.path.isdir(folder_path):  
+    
+            for file in os.listdir(folder_path): #file is subject normally
                 if file.endswith('.nii.gz'):  # Check for .nii.gz files
                     file_path = os.path.join(folder_path, file)
-                    subject = file.split('_')[0]  # Extract subject from filename
-                    
-                    # Append metadata and data to the list
-                    data_list.append({
-                        'subject': subject,
-                        'task': folder,
-                        'file_path': file_path,
-    
-                    })
-    
-    # Convert the list to a pandas DataFrame
+                    file_id = file.split('_')[0]  # Extract subject from filename
+
+                    if folder_is == 'task':
+                        # Append metadata and data to the list
+                        data_list.append({
+                            'subject': file_id,
+                            'task': folder,
+                            'file_path': file_path,
+        
+                        })
+                    # adjusted 15-01-25 for jeni preproc where subj/ contains all tasks files
+                    elif folder_is =='subject':
+                        if file_id == 'N': # adjust for neutral cond : N_Ana / N_Hyper
+                            file_id = file.split('_')[0] + file.split('_')[1]
+                        data_list.append({
+                            'subject': folder,
+                            'task': file_id,
+                            'file_path': file_path,
+
+                        })
+ 
     df = pd.DataFrame(data_list)
 
     return df
@@ -60,7 +73,10 @@ def get_files_for_condition_combination(subjects, task_combinations, sub_task_fi
         # get file paths for each task
         sub_data = sub_task_files[sub_task_files['subject'] == sub]
         task_data = sub_data.set_index('task').loc[task_combinations]
-        func_file_dict[sub] = task_data['file_path'].tolist()
+        if isinstance(task_combinations, str):
+            func_file_dict[sub] = task_data['file_path']
+        else:
+            func_file_dict[sub] = task_data['file_path'].tolist()
 
     return func_file_dict # sub : : [file1, file2, file3]
 
@@ -77,6 +93,52 @@ def load_json(file_path):
     with open(file_path, 'r') as f:
         data = json.load(f)
     return data
+
+def load_process_behav(phenotype, y_interest, setup, sub_check):
+    '''
+        Load and process behavioral data for ISC analysis.
+        Makes groups based on median split of the y_interest variables.
+
+        return : 
+        - combined_df : DataFrame with behavioral data and group labels
+        - sub_check * is just a test to keep track of subjects update*
+        '''
+    subjects = setup.subjects
+    # Create group labels based on sHSS and change in pain
+    proproc_data = phenotype[y_interest]
+
+    #rewrite subjects (APM) to match subjects in the ISC data
+    pheno_index = phenotype.index
+    pheno_sub = ['sub-' + sub[3:] for sub in pheno_index]
+    proproc_data.index = pheno_sub
+
+    sub_check['pheno_sub'] = pheno_sub
+
+    # ensure that the subjects are in the same order et same number
+    proproc_data = proproc_data.loc[subjects]
+    group_labels = {}
+
+    for var in y_interest:
+        median_value = proproc_data[var].median()
+        group_labels[var] = (proproc_data[var] > median_value).astype(int)  # 1 if above median, 0 otherwise
+    new_group_col = [col+'_median_grp' for col in group_labels.keys()]
+    group_labels_df = pd.DataFrame(group_labels)
+    group_labels_df.columns = new_group_col
+    group_labels_df.index = group_labels_df.index.astype(str).str.strip()
+    proproc_data.index = proproc_data.index.astype(str).str.strip()
+    # concatenate the group labels to the data
+    combined_df = pd.concat([proproc_data, group_labels_df], axis=1)
+
+    #group_data_with_labels.reset_index(inplace=True)
+    #group_data_with_labels.rename(columns={"index": "Subject"}, inplace=True)
+    output_csv_path = os.path.join(setup.results_dir, "behav_data_group_labels.csv")
+    combined_df.to_csv(output_csv_path, index=True)
+
+    print("Group Labels Based on Median Split:")
+    print(group_labels_df.head())
+
+    return combined_df, group_labels_df, sub_check
+
 
 # Function to extract timeseries with NiftiSpheresMasker
 def extract_save_sphere(concatenated_imgs, condition, results_dir, roi_coords, sphere_radius):
@@ -116,6 +178,7 @@ def extract_save_sphere(concatenated_imgs, condition, results_dir, roi_coords, s
 def isc_1sample(data_3d, pairwise, n_boot=5000, side = 'two-sided', summary_statistic=None):
     
     isc_result = isc(data_3d, pairwise=pairwise, summary_statistic=None)
+    print(f"ISC shape: {isc_result.shape}")
     
     observed, ci, p, distribution = bootstrap_isc(
     isc_result,
@@ -151,3 +214,53 @@ def isc_1sample(data_3d, pairwise, n_boot=5000, side = 'two-sided', summary_stat
     # }
 
     return isc_results
+
+def trim_TRs(hyper_data_3d, ana_data_3d):
+    """
+    Adjust Ana and Hyper conditions to match TRs for direct contrast.
+
+    Parameters
+    ----------
+    ana_data : np.ndarray
+        Ana condition data (TRs x ROIs x subjects).
+    hyper_data : np.ndarray
+        Hyper condition data (TRs x ROIs x subjects).
+
+    Returns
+    -------
+    adjusted_ana : np.ndarray
+        Adjusted Ana data with the first and last planes removed.
+    adjusted_hyper : np.ndarray
+        Adjusted Hyper data with the last plane repeated.
+    """
+    # Remove the first and last planes from Ana
+    adjusted_ana = ana_data_3d[1:-1, :, :]
+    
+    # Repeat the last plane in Hyper
+    last_tr = hyper_data_3d[-1:, :, :]  # Select the last plane
+    adjusted_hyper = np.concatenate([hyper_data_3d, last_tr], axis=0)  # Append repeated plane
+
+    return adjusted_hyper, adjusted_ana
+
+def group_permutation(isc_values, group_ids, n_perm, do_pairwise, side = 'two-sided', summary_statistic='median'):
+
+
+    # Perform ISC permutation test
+    observed, p_value, distribution = permutation_isc(
+        isc_values,  # This should be the ISC matrix from the main analysis
+        group_assignment=group_ids,
+        pairwise=do_pairwise,
+        summary_statistic=summary_statistic,  # Median ISC
+        n_permutations=n_perm,
+        side=side,
+        random_state=42
+    )
+
+    perm_results = {
+        "grouped_isc": isc_values,
+        "observed_diff": observed,
+        "p_value": p_value,
+        "distribution": distribution
+    }
+
+    return perm_results
