@@ -50,14 +50,15 @@ subjects = isc_data_df['subject'].unique()
 n_sub = len(subjects)
 
 # hyperparams
-model_name = f'model3_jeni_preproc_test-{str(n_sub)}sub'
+model_name = f'model3_jeni_preproc-{str(n_sub)}sub'
 conditions = ['Hyper', 'Ana', 'NHyper', 'NAna'] #['all_sugg', 'modulation', 'neutral']
-transform_imgs = True
+transform_imgs = False
 nsub = len(subjects)
 n_sub = len(subjects)
 n_boot = 5000
 do_pairwise = True
 n_perm = 5000
+n_perm_rsa = 10000
 
 results_dir = os.path.join(project_dir, f'results/imaging/ISC/{model_name}')
 if not os.path.exists(results_dir):
@@ -207,6 +208,39 @@ if transform_imgs == True:
         utils.save_data(masker_path, fitted_maskers[cond])
         print(f'Transformed timseries and maskers saved to {cond_folder}')
     print('====Done with data extraction====')
+# %%
+# sim_model= 'annak'
+# rsa_save_dir = os.path.join(results_dir, f'rsa_isc_results_{sim_model}simil')
+# os.makedirs(rsa_save_dir, exist_ok=True)
+
+# for cond in conditions:
+#     save_cond_rsa = os.path.join(rsa_save_dir, f'rsa-isc_{cond}') # make condition folder
+#     os.makedirs(save_cond_rsa, exist_ok=True)
+
+#     isc_pairwise = isc_results[cond]['isc']
+#     values_rsa_perm = {}
+#     distribution_rsa_perm = {}
+
+#     for behav_y in y_interest: # repeated for each Yi
+#         y = np.array(X_pheno[behav_y])
+#         sim_behav_annak = utils.compute_behav_similarity(y, metric = sim_model)
+
+#         for col_j in range(isc_pairwise.shape[0]):
+#             if atlas_name == 'voxelWise':
+#                 roi_name = f'voxel_{col_j}'
+#             else:
+#                 roi_name = atlas_labels[col_j]
+
+#             isc_roi_vec = isc_pairwise[:, col_j]
+#             rsa_results = utils.matrix_permutation(sim_behav_annak, isc_roi_vec, n_permute=n_perm_rsa, metric="spearman", how="upper", return_perms = True)
+#             values_rsa_perm[roi_name] = {'correlation': rsa_results['correlation'], 'p_value': rsa_results['p']}
+#             distribution_rsa_perm[roi_name] = rsa_results['perm_dist']
+
+#         #save
+#         df_rsa = pd.DataFrame.from_dict(values_rsa_perm, orient='index')
+#         df_rsa.to_csv(os.path.join(save_cond_rsa, f'{behav_y}_rsa_isc_{sim_model}simil_{n_perm}perm_pvalues.csv'))
+#         utils.save_data(os.path.join(save_cond_rsa, f'{behav_y}_rsa_isc_{n_perm}perm_distribution.pkl'), distribution_rsa_perm)
+
 
 # test moddule
 # test_results = '/home/dsutterlin/projects/ISC_hypnotic_suggestions/results/imaging/ISC/modulation'
@@ -470,15 +504,77 @@ for cond, cond_results in isc_permutation_group_results.items():
     # print(f"Saved ISC permutation results for condition: {cond} at {save_path}")
 
 # %%
-# # Save the permutation results
-# for cond, cond_results in isc_permutation_group_results.items():
-#     save_path = os.path.join(results_dir, cond, f"isc_{n_perm}permutation_results_{cond}_pairwise{do_pairwise}.pkl")
-#     utils.save_data(save_path, cond_results)
-#     print(f"Permutation ISC results saved for {cond} at {save_path}")
+# ISC-RSA
+reload(utils)
+print('============================')
+print('ISC-RSA for each condition')
+for sim_model in ['euclidean', 'annak']:
 
-# save_gen = os.path.join(results_dir, 'check_sub.pkl')
+    rsa_save_dir = os.path.join(results_dir, f'rsa_isc_results_{sim_model}')
+    os.makedirs(rsa_save_dir, exist_ok=True)
 
-# utils.save_data(save_gen, sub_check)
+    for cond in conditions:
+        save_cond_rsa = os.path.join(rsa_save_dir, f'rsa-isc_{cond}') # make condition folder
+        os.makedirs(save_cond_rsa, exist_ok=True)
+
+        isc_pairwise = isc_results[cond]['isc']
+        values_rsa_perm = {}
+        distribution_rsa_perm = {}
+
+        for behav_y in y_interest: # repeated for each Yi
+            y = np.array(X_pheno[behav_y])
+            sim_behav = utils.compute_behav_similarity(y, metric = sim_model)
+
+            for col_j in range(isc_pairwise.shape[0]):
+                if atlas_name == 'voxelWise':
+                    roi_name = f'voxel_{col_j}'
+                else:
+                    roi_name = atlas_labels[col_j]
+
+                isc_roi_vec = isc_pairwise[:, col_j]
+                rsa_results = utils.matrix_permutation(sim_behav, isc_roi_vec, n_permute=n_perm_rsa, metric="spearman", how="upper", return_perms = True)
+                values_rsa_perm[roi_name] = {'correlation': rsa_results['correlation'], 'p_value': rsa_results['p']}
+                distribution_rsa_perm[roi_name] = rsa_results['perm_dist']
+            distribution_rsa_perm['similarity_matrix'] = sim_behav
+            #save
+            df_rsa = pd.DataFrame.from_dict(values_rsa_perm, orient='index')
+            df_rsa.to_csv(os.path.join(save_cond_rsa, f'{behav_y}_rsa_isc_{sim_model}simil_{n_perm}perm_pvalues.csv'))
+            utils.save_data(os.path.join(save_cond_rsa, f'{behav_y}_rsa_isc_{n_perm}perm_distribution.pkl'), distribution_rsa_perm)
+        
+        print(f'Done RSA-ISC ({sim_model} simil. model) for condition:', cond)
+# # %%
+# sim_model= 'annak'
+# rsa_save_dir = os.path.join(results_dir, f'rsa_isc_results_{sim_model}simil')
+# os.makedirs(rsa_save_dir, exist_ok=True)
+
+# for cond in conditions:
+#     save_cond_rsa = os.path.join(rsa_save_dir, f'rsa-isc_{cond}') # make condition folder
+#     os.makedirs(save_cond_rsa, exist_ok=True)
+
+#     isc_pairwise = isc_results[cond]['isc']
+#     values_rsa_perm = {}
+#     distribution_rsa_perm = {}
+
+#     for behav_y in y_interest: # repeated for each Yi
+#         y = np.array(X_pheno[behav_y])
+#         sim_behav_annak = utils.compute_behav_similarity(y, metric = sim_model)
+
+#         for col_j in range(isc_pairwise.shape[0]):
+#             if atlas_name == 'voxelWise':
+#                 roi_name = f'voxel_{col_j}'
+#             else:
+#                 roi_name = atlas_labels[col_j]
+
+#             isc_roi_vec = isc_pairwise[:, col_j]
+#             rsa_results = utils.matrix_permutation(sim_behav_annak, isc_roi_vec, n_permute=n_perm_rsa, metric="spearman", how="upper", return_perms = True)
+#             values_rsa_perm[roi_name] = {'correlation': rsa_results['correlation'], 'p_value': rsa_results['p']}
+#             distribution_rsa_perm[roi_name] = rsa_results['perm_dist']
+
+#         #save
+#         df_rsa = pd.DataFrame.from_dict(values_rsa_perm, orient='index')
+#         df_rsa.to_csv(os.path.join(save_cond_rsa, f'{behav_y}_rsa_isc_{sim_model}simil_{n_perm}perm_pvalues.csv'))
+#         utils.save_data(os.path.join(save_cond_rsa, f'{behav_y}_rsa_isc_{n_perm}perm_distribution.pkl'), distribution_rsa_perm)
+
 
 
 # %%
@@ -488,6 +584,7 @@ result_paths = {
     "isc_combined_results": {},
     "condition_contrast_results": {},
     "group_permutation_results": {},
+    "rsa_isc_results": {},
     "setup_parameters": save_setup
 }
 
@@ -511,10 +608,22 @@ for contrast in contrast_conditions:
    
 # Save behavioral group permutation results
 results_save_dir = os.path.join(results_dir, 'behavioral_group_permutation')
-os.makedirs(results_save_dir, exist_ok=True)
 for cond, cond_results in isc_permutation_group_results.items():
     save_path = os.path.join(results_save_dir, f"{cond}_group_permutation_results_{n_perm}perm.pkl")
     result_paths["group_permutation_results"][cond] = save_path
+
+# ISC-RSA results
+sim_model= 'euclidean'
+for sim_model in ['euclidean', 'annak']: 
+    result_paths['rsa_isc_results'][sim_model] = {}
+    rsa_save_dir = os.path.join(results_dir, f'rsa_isc_results_{sim_model}')
+    for cond in conditions:
+        result_paths['rsa_isc_results'][sim_model][cond] = {}
+        save_cond_rsa = os.path.join(rsa_save_dir, f'rsa-isc_{cond}') # make condition folder
+        for behav_y in y_interest:
+            csv_path = os.path.join(save_cond_rsa, f'{behav_y}_rsa_isc_{sim_model}simil_{n_perm}perm_pvalues.csv')
+            dist_path = os.path.join(save_cond_rsa, f'{behav_y}_rsa_isc_{n_perm}perm_distribution.pkl')
+            result_paths['rsa_isc_results'][sim_model][cond][behav_y] = {'csv': csv_path, 'distribution': dist_path}
 
 # Save the result paths dictionary
 result_paths_save_path = os.path.join(results_dir, "result_paths.json")
@@ -524,3 +633,5 @@ with open(result_paths_save_path, 'w') as f:
 print(f"Result paths saved at {result_paths_save_path}")
 
 print('Done with all!!')
+
+# %%

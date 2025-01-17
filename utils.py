@@ -7,7 +7,8 @@ import json
 from nilearn.maskers import NiftiSpheresMasker
 from nilearn.image import concat_imgs
 from brainiak.isc import phaseshift_isc, compute_summary_statistic, isc, bootstrap_isc, phaseshift_isc, permutation_isc
-
+from scipy.stats import rankdata, spearmanr
+from sklearn.metrics import pairwise_distances
 
 def load_isc_data(base_path, folder_is='task'):
     """
@@ -264,3 +265,154 @@ def group_permutation(isc_values, group_ids, n_perm, do_pairwise, side = 'two-si
     }
 
     return perm_results
+
+
+def compute_behav_similarity(behavior, metric='euclidean'):
+    n_subs = len(behavior)
+    behavior = behavior.reshape(-1, 1)
+    if metric == 'euclidean':
+        dist_matrix = pairwise_distances(behavior[:,], metric='euclidean')
+        sim_matrix = 1 - dist_matrix / np.max(dist_matrix)  # Normalize to similarity
+    
+    elif metric == 'annak':
+        sim_matrix = np.zeros((n_subs, n_subs))
+        for i in range(n_subs):
+            for j in range(i, n_subs):
+                sim_ij = np.mean([behavior[i], behavior[j]]) / np.max(behavior)
+                sim_matrix[i, j] = sim_matrix[j, i] = sim_ij
+
+    return sim_matrix
+
+from scipy.stats import spearmanr
+from sklearn.utils import check_random_state
+from joblib import Parallel, delayed
+
+#===========================================
+# Permutation tests implemented frmo nlTools 
+# https://nltools.org/api.html#nltools.stats.matrix_permutation
+# Permutation from chenc 2016
+
+# Helper function for correlation computation
+def _permute_func(data1, data2, metric, how, include_diag=False, random_state=None):
+    """
+    Permute the rows and columns of a matrix and compute the correlation.
+
+    Parameters:
+    - data1: np.array, square similarity matrix to permute
+    - data2: np.array, vectorized matrix (same size as upper triangle of data1)
+    - metric: str, correlation metric ('spearman', 'pearson', 'kendall')
+    - how: str, which part of the matrix to use ('upper', 'lower', 'full')
+    - include_diag: bool, whether to include diagonal elements for 'full'
+    - random_state: RandomState, random state for reproducibility
+
+    Returns:
+    - r: float, correlation value
+    """
+    random_state = check_random_state(random_state)
+
+    # Permute rows and columns together
+    permuted_ix = random_state.permutation(data1.shape[0])
+    permuted_matrix = data1[np.ix_(permuted_ix, permuted_ix)]
+
+    # Extract relevant part of the permuted matrix
+    if how == "upper":
+        permuted_vec = permuted_matrix[np.triu_indices(permuted_matrix.shape[0], k=1)]
+    elif how == "lower":
+        permuted_vec = permuted_matrix[np.tril_indices(permuted_matrix.shape[0], k=-1)]
+    elif how == "full":
+        if include_diag:
+            permuted_vec = permuted_matrix.ravel()
+        else:
+            permuted_vec = np.concatenate([
+                permuted_matrix[np.triu_indices(permuted_matrix.shape[0], k=1)],
+                permuted_matrix[np.tril_indices(permuted_matrix.shape[0], k=-1)]
+            ])
+
+    # Compute correlation
+    if metric == "spearman":
+        r, _ = spearmanr(permuted_vec, data2)
+    else:
+        raise ValueError("Only 'spearman' metric is currently supported.")
+
+    return r
+
+# Main Mantel test function [! 15 jan. 25 DSG changed data2 to vec2
+# for inputing vectorized output isc values]
+def matrix_permutation(
+    data1,
+    vec2,
+    n_permute=10000,
+    metric="spearman",
+    how="upper",
+    include_diag=False,
+    tail=2,
+    n_jobs=-1,
+    return_perms=False,
+    random_state=None,
+):
+    """
+    Perform a permutation-based Mantel test. Shuffles data1 !
+
+    Parameters:
+    - data1: np.array, square similarity matrix
+    - vec2: np.array, square similarity matrix
+    - n_permute: int, number of permutations
+    - metric: str, correlation metric ('spearman')
+    - how: str, which part of the matrix to use ('upper', 'lower', 'full')
+    - include_diag: bool, include diagonal elements for 'full'
+    - tail: int, 1 for one-tailed or 2 for two-tailed test
+    - n_jobs: int, number of CPUs to use (-1 for all CPUs)
+    - return_perms: bool, return permutation distribution
+    - random_state: int or RandomState, random seed or state
+
+    Returns:
+    - stats: dict, contains observed correlation, p-value, and optionally permutation distribution
+    """
+    random_state = check_random_state(random_state)
+
+    # Validate and extract parts of the matrices
+    if how == "upper":
+        vec1 = data1[np.triu_indices(data1.shape[0], k=1)]
+        #vec2 = data2[np.triu_indices(data2.shape[0], k=1)]
+    elif how == "lower":
+        vec1 = data1[np.tril_indices(data1.shape[0], k=-1)]
+        #vec2 = data2[np.tril_indices(data2.shape[0], k=-1)]
+    elif how == "full":
+        if include_diag:
+            vec1 = data1.ravel()
+            #vec2 = data2.ravel()
+        else:
+            vec1 = np.concatenate([
+                data1[np.triu_indices(data1.shape[0], k=1)],
+                data1[np.tril_indices(data1.shape[0], k=-1)],
+            ])
+            #vec2 = np.concatenate([
+                # data2[np.triu_indices(data2.shape[0], k=1)],
+                # data2[np.tril_indices(data2.shape[0], k=-1)],
+            # ])
+
+    # Compute observed correlation
+    observed_r, _ = spearmanr(vec1, vec2)
+
+    # Run permutations in parallel
+    seeds = random_state.randint(0, 2**32 - 1, size=n_permute)
+    permuted_r = Parallel(n_jobs=n_jobs)(
+        delayed(_permute_func)(
+            data1, vec2, metric=metric, how=how, include_diag=include_diag, random_state=seeds[i]
+        ) for i in range(n_permute)
+    )
+
+    # Calculate p-value
+    permuted_r = np.array(permuted_r)
+    if tail == 2:
+        p_value = np.mean(np.abs(permuted_r) >= np.abs(observed_r))
+    elif tail == 1:
+        p_value = np.mean(permuted_r >= observed_r)
+    else:
+        raise ValueError("tail must be 1 or 2.")
+
+    stats = {"correlation": observed_r, "p": p_value}
+    if return_perms:
+        stats["perm_dist"] = permuted_r
+
+    return stats
