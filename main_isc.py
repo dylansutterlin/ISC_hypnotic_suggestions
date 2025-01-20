@@ -11,7 +11,7 @@ import pandas as pd
 import json
 from nilearn.image import concat_imgs
 from brainiak.isc import isc, bootstrap_isc, permutation_isc, compute_summary_statistic, phaseshift_isc
-from nilearn.maskers import MultiNiftiMapsMasker
+from nilearn.maskers import MultiNiftiMapsMasker, MultiNiftiMasker, NiftiMasker
 from sklearn.utils import Bunch
 reload(utils)
 # %% Load the data
@@ -50,15 +50,16 @@ subjects = isc_data_df['subject'].unique()
 n_sub = len(subjects)
 
 # hyperparams
-model_name = f'model3_jeni_preproc-{str(n_sub)}sub'
+model_name = f'model4_jeni_preproc-{str(n_sub)}sub_voxelWise'
+model_name = f'model3_jeni_preproc-23sub'
 conditions = ['Hyper', 'Ana', 'NHyper', 'NAna'] #['all_sugg', 'modulation', 'neutral']
-transform_imgs = False
+transform_imgs = False #False
 nsub = len(subjects)
 n_sub = len(subjects)
-n_boot = 5000
+n_boot = 10000
 do_pairwise = True
-n_perm = 5000
-n_perm_rsa = 10000
+n_perm = 10000
+n_perm_rsa = 10000 #change to 10 000!
 
 results_dir = os.path.join(project_dir, f'results/imaging/ISC/{model_name}')
 if not os.path.exists(results_dir):
@@ -132,7 +133,8 @@ atlas_dict_path = os.path.join(project_dir, 'masks/DiFuMo256/labels_256_dictiona
 atlas = nib.load(atlas_path)
 atlas_df = pd.read_csv(atlas_dict_path)
 atlas_labels = atlas_df['Difumo_names']
-atlas_name = 'Difumo256'
+atlas_name = 'Difumo256' # !!!!!!! 'Difumo256'
+
 print('atlas loaded with N ROI : ', atlas.shape)
 
  # extract sphere signal
@@ -173,7 +175,8 @@ if transform_imgs == True:
     transformed_sphere_per_roi = {}
 
     masker = MultiNiftiMapsMasker(maps_img=atlas, standardize=False, memory='nilearn_cache', verbose=5, n_jobs= 1)
-    masker.fit()
+    masker = NiftiMasker(verbose=5)
+    #masker.fit()
 
 	# extract time series for each subject and condition/task
     for cond in conditions:
@@ -183,8 +186,13 @@ if transform_imgs == True:
         print('Imgs shape : ', [img.shape for _, img in  concatenated_subjects.items()])
 
 	    #print(f'fitting images for condition : {cond} with shape {concatenated_subjects[subjects[0]][0].shape}')
-        transformed_data_per_cond[cond] = masker.transform(concatenated_subjects.values())
+        breakpoint() # !!!
+        ls_voxel_wise = [masker.fit_transform(concatenated_subjects[sub]) for sub in subjects]
+        print('ls_voxel_wise shape : ', [img.shape for img in ls_voxel_wise])
+        transformed_data_per_cond[cond] = ls_voxel_wise
         fitted_maskers[cond] = masker
+        # transformed_data_per_cond[cond] = masker.fit_transform(concatenated_subjects.values())
+        # fitted_maskers[cond] = masker
 
         # sphere masker
         #transformed_sphere_per_roi[cond] = utils.extract_save_sphere(concatenated_subjects, cond, results_dir, roi_coords, sphere_radius=sphere_radius)
@@ -208,7 +216,6 @@ if transform_imgs == True:
         utils.save_data(masker_path, fitted_maskers[cond])
         print(f'Transformed timseries and maskers saved to {cond_folder}')
     print('====Done with data extraction====')
-# %%
 # sim_model= 'annak'
 # rsa_save_dir = os.path.join(results_dir, f'rsa_isc_results_{sim_model}simil')
 # os.makedirs(rsa_save_dir, exist_ok=True)
@@ -344,7 +351,7 @@ for i, comb_cond in enumerate(combined_conditions):
     print(f"ISC results saved for {comb_cond} at {save_path}")
 
 
-# %%
+# %%    
 # Project isc values and p values to brain
 from nilearn import plotting
 from nilearn.plotting import plot_stat_map
@@ -508,12 +515,14 @@ for cond, cond_results in isc_permutation_group_results.items():
 reload(utils)
 print('============================')
 print('ISC-RSA for each condition')
+all_conditions = ['Hyper', 'Ana', 'NHyper', 'NAna', 'all_sugg', 'modulation', 'neutral']
 for sim_model in ['euclidean', 'annak']:
 
     rsa_save_dir = os.path.join(results_dir, f'rsa_isc_results_{sim_model}')
     os.makedirs(rsa_save_dir, exist_ok=True)
 
-    for cond in conditions:
+    for cond in all_conditions:
+
         save_cond_rsa = os.path.join(rsa_save_dir, f'rsa-isc_{cond}') # make condition folder
         os.makedirs(save_cond_rsa, exist_ok=True)
 

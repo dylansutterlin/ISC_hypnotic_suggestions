@@ -416,3 +416,33 @@ def matrix_permutation(
         stats["perm_dist"] = permuted_r
 
     return stats
+
+
+def fdr(p, q=0.05):
+    """Determine FDR threshold given a p value array and desired false
+    discovery rate q. Written by Tal Yarkoni
+
+    Args:
+        p: (np.array) vector of p-values
+        q: (float) false discovery rate level
+
+    Returns:
+        fdr_p: (float) p-value threshold based on independence or positive
+                dependence
+
+    """
+
+    if not isinstance(p, np.ndarray):
+        raise ValueError("Make sure vector of p-values is a numpy array")
+    if any(p < 0) or any(p > 1):
+        raise ValueError("array contains p-values that are outside the range 0-1")
+
+    if np.any(p > 1) or np.any(p < 0):
+        raise ValueError("Does not include valid p-values.")
+
+    s = np.sort(p)
+    nvox = p.shape[0]
+    null = np.array(range(1, nvox + 1), dtype="float") * q / nvox
+    below = np.where(s <= null)[0]
+    return s[max(below)] if len(below) else -1
+
