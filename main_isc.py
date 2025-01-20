@@ -11,8 +11,10 @@ import pandas as pd
 import json
 from nilearn.image import concat_imgs
 from brainiak.isc import isc, bootstrap_isc, permutation_isc, compute_summary_statistic, phaseshift_isc
-from nilearn.maskers import MultiNiftiMapsMasker, MultiNiftiMasker, NiftiMasker
+from nilearn.maskers import MultiNiftiMapsMasker, MultiNiftiMasker, NiftiMasker, NiftiLabelsMasker
 from sklearn.utils import Bunch
+from nilearn.datasets import fetch_atlas_schaefer_2018
+
 reload(utils)
 # %% Load the data
 
@@ -37,20 +39,38 @@ import func
 # behav_path = os.path.join('/home/dsutterlin/projects/ISC_hypnotic_suggestions/results/behavioral', 'behavioral_data_cleaned.csv')
 
 isc_data_df = utils.load_isc_data(base_path, folder_is='subject') # !! change params if change base_dir
+isc_data_df = isc_data_df.sort_values(by='subject')
+
+ana_lvl = '/data/rainville/Hypnosis_ISC/4D_data/segmented_Ana_Instr_leveled/concat_Ana_Instr_leveled'
+ana_df = utils.load_isc_data(ana_lvl, folder_is='subject')
+ana_df['task'] = 'Ana'
+ana_df = ana_df.sort_values(by='subject')
+
+ana_file_map = ana_df.set_index('subject')['file_path']  # Map of subject to Ana file paths
+isc_data_df.loc[isc_data_df['task'] == 'Ana', 'file_path'] = isc_data_df.loc[
+    isc_data_df['task'] == 'Ana', 'subject'
+].map(ana_file_map)
+
+
+# exclude subjects
+isc_data_df = isc_data_df[~isc_data_df['subject'].isin(exclude_sub)]
+#isc_data_df = isc_data_df.sort_values(by='subject')
+subjects = isc_data_df['subject'].unique()
+n_sub = len(subjects)
+
 sub_check = {}
 # Select a subset of subjects
 if keep_n_subjects is not None:
     isc_data_df = isc_data_df[isc_data_df['subject'].isin(isc_data_df['subject'].unique()[:keep_n_subjects])]
     subjects = isc_data_df['subject'].unique()
+    n_sub = len(subjects)
 
-# exclude subjects
-isc_data_df = isc_data_df[~isc_data_df['subject'].isin(exclude_sub)]
-isc_data_df = isc_data_df.sort_values(by='subject')
-subjects = isc_data_df['subject'].unique()
-n_sub = len(subjects)
+
+
 
 # hyperparams
-model_name = f'model4_jeni_preproc-{str(n_sub)}sub_voxelWise'
+atlas_name = 'schafer100_2mm' #'voxelWise' #Difumo256' # !!!!!!! 'Difumo256'
+model_name = f'model5_jeni_lvlpreproc-{str(n_sub)}sub_{atlas_name}'
 #model_name = f'model3_jeni_preproc-23sub'
 conditions = ['Hyper', 'Ana', 'NHyper', 'NAna'] #['all_sugg', 'modulation', 'neutral']
 transform_imgs = True #False
@@ -98,6 +118,15 @@ save_setup = os.path.join(setup.results_dir, "setup_parameters.json")
 with open(save_setup, 'w') as fp:
     json.dump(dict(setup), fp, indent=4)
 
+result_paths = {
+    "isc_results": {},
+    "isc_combined_results": {},
+    "condition_contrast_results": {},
+    "group_permutation_results": {},
+    "rsa_isc_results": {},
+    "setup_parameters": save_setup
+}
+
 # %%
 # get dict will all cond files from all subjects
 print("Subjects:", subjects)
@@ -128,12 +157,19 @@ for cond in conditions:
 # %%
 
 # load difumo atlas
-atlas_path = os.path.join(project_dir, 'masks/DiFuMo256/3mm/maps.nii.gz')
-atlas_dict_path = os.path.join(project_dir, 'masks/DiFuMo256/labels_256_dictionary.csv')
-atlas = nib.load(atlas_path)
-atlas_df = pd.read_csv(atlas_dict_path)
-atlas_labels = atlas_df['Difumo_names']
-atlas_name = 'voxelWise' #Difumo256' # !!!!!!! 'Difumo256'
+#atlas_name = 'voxelWise' #Difumo256' # !!!!!!! 'Difumo256'
+if atlas_name == 'voxelWise' or atlas_name == 'Difumo256':
+    atlas_path = os.path.join(project_dir, 'masks/DiFuMo256/3mm/maps.nii.gz')
+    atlas_dict_path = os.path.join(project_dir, 'masks/DiFuMo256/labels_256_dictionary.csv')
+    atlas = nib.load(atlas_path)
+    # atlas_df = pd.read_csv(atlas_dict_path)
+    # atlas_labels = atlas_df['Difumo_names']
+elif atlas_name == 'schafer100_2mm':
+    atlas_data = fetch_atlas_schaefer_2018(n_rois = 100, resolution_mm=2)
+    atlas = nib.load(atlas_data['maps'])
+    atlas_path = atlas_data['maps'] #os.path.join(project_dir,os.path.join(project_dir, 'masks', 'k50_2mm', '*.nii*'))
+    atlas_labels = list(atlas_data['labels'])
+
 
 print('atlas loaded with N ROI : ', atlas.shape)
 
@@ -174,6 +210,16 @@ if transform_imgs == True:
     fitted_maskers = {}
     transformed_sphere_per_roi = {}
 
+    if atlas_name =='voxelWise':
+        data_shape = nib.load(subject_file_dict[conditions[0]][subjects[0]]).shape[0:3] #3D
+        data_affine = nib.load(subject_file_dict[conditions[0]][subjects[0]]).affine
+        mask = '/data/rainville/Hypnosis_ISC/masks/brainmask_91-109-91.nii'
+        masker = NiftiMasker(mask_img=mask, target_shape = data_shape, target_affine = data_affine, mask_strategy='whole-brain-template', verbose=5)
+    elif atlas_name == 'Difumo256':
+        masker = MultiNiftiMapsMasker(maps_img=atlas, standardize=False, memory='nilearn_cache', verbose=5, n_jobs= 1)
+    elif atlas_name == 'schafer100_2mm':
+        masker = NiftiLabelsMasker(labels_img=atlas, labels = atlas_labels, standardize=False, memory='nilearn_cache', verbose=5, n_jobs= 1)
+
     #masker = MultiNiftiMapsMasker(maps_img=atlas, standardize=False, memory='nilearn_cache', verbose=5, n_jobs= 1)
     #masker = NiftiMasker(verbose=5)
     #masker.fit()
@@ -186,17 +232,15 @@ if transform_imgs == True:
         print('Imgs shape : ', [img.shape for _, img in  concatenated_subjects.items()])
 
 	    #print(f'fitting images for condition : {cond} with shape {concatenated_subjects[subjects[0]][0].shape}')
-        if altas_name =='voxelWise' :
-            masker = NiftiMasker(verbose=5)
+        if atlas_name =='voxelWise' or atlas_name == 'schafer100_2mm':
             ls_voxel_wise = [masker.fit_transform(concatenated_subjects[sub]) for sub in subjects]
             print('ls_voxel_wise shape : ', [img.shape for img in ls_voxel_wise])
             transformed_data_per_cond[cond] = ls_voxel_wise
             fitted_maskers[cond] = masker
         if atlas_name == 'Difumo256':
-            masker = MultiNiftiMapsMasker(maps_img=atlas, standardize=False, memory='nilearn_cache', verbose=5, n_jobs= 1)
             transformed_data_per_cond[cond] = masker.fit_transform(concatenated_subjects.values())
             fitted_maskers[cond] = masker
-            
+
         # transformed_data_per_cond[cond] = masker.fit_transform(concatenated_subjects.values())
         # fitted_maskers[cond] = masker
 
@@ -208,8 +252,10 @@ if transform_imgs == True:
     end_total_time = time.time()
     print(f"Total time for data extraction: {end_total_time - start_total_time:.2f} seconds")
 
+    #breakpoint() #!!!
 	# save transformed data and masker
-    for cond, data in transformed_data_per_cond.items():
+    for cond in conditions:
+        data = transformed_data_per_cond[cond]
         cond_folder = os.path.join(results_dir, cond)
         if not os.path.exists(cond_folder):
             os.makedirs(cond_folder)
@@ -331,6 +377,8 @@ for cond, data in transformed_data_per_cond.items():
     # save results
     save_path = os.path.join(results_dir, cond, f"isc_results_{cond}_{n_boot}boot_pairWise{do_pairwise}.pkl")
     utils.save_data(save_path, isc_results[cond])
+    result_paths["isc_results"][cond] = save_path
+
     print(f"ISC results saved for {cond} at {save_path}")
 
 # %%
@@ -355,6 +403,8 @@ for i, comb_cond in enumerate(combined_conditions):
     # save results
     save_path = os.path.join(concat_cond_save, f"isc_results_{comb_cond}_{n_scans}TRs_{n_boot}boot_pairWise{do_pairwise}.pkl")
     utils.save_data(save_path, isc_results[comb_cond])
+    result_paths["isc_combined_results"][comb_cond] = save_path
+
     print(f"ISC results saved for {comb_cond} at {save_path}")
 
 
@@ -469,17 +519,19 @@ reload(utils)
 for i, contrast in enumerate(contrast_conditions):
     print(f'Performing 2 group permutation ISC : {contrast}')
 
-    combined_data_ls = [transformed_data_per_cond[task] for task in contrast_to_test[i]]
-    if contrast == 'Hyper-Ana':
-        adjusted_Hyper, adjusted_Ana = utils.trim_TRs(combined_data_ls[0], combined_data_ls[1])
-        print('/!\ Trimed 2 TRs for Ana and added 1 for Hyper ')
-    elif contrast == 'Ana-Hyper':
-        adjusted_Ana, adjusted_Hyper = utils.trim_TRs(combined_data_ls[1], combined_data_ls[0])
-        print('/!\ Trimed 2 TRs for Hyper and added 1 for Ana ')
-    if i == 2: # for the neutral condtions, no need to trim
-        combined_data = np.concatenate(combined_data_ls, axis=2)
-    else:
-        combined_data = np.concatenate([adjusted_Hyper, adjusted_Ana], axis=2)
+    # combined_data_ls = [transformed_data_per_cond[task] for task in contrast_to_test[i]]
+    # if contrast == 'Hyper-Ana':
+    #     adjusted_Hyper, adjusted_Ana = utils.trim_TRs(combined_data_ls[0], combined_data_ls[1])
+    #     print('/!\ Trimed 2 TRs for Ana and added 1 for Hyper ')
+    # elif contrast == 'Ana-Hyper':
+    #     adjusted_Ana, adjusted_Hyper = utils.trim_TRs(combined_data_ls[1], combined_data_ls[0])
+    #     print('/!\ Trimed 2 TRs for Hyper and added 1 for Ana ')
+    # if i == 2: # for the neutral condtions, no need to trim
+    #     combined_data = np.concatenate(combined_data_ls, axis=2)
+    # else:
+    #     combined_data = np.concatenate([adjusted_Hyper, adjusted_Ana], axis=2)
+
+    combined_data = np.concatenate(combined_data_ls, axis=2)
     n_scans = combined_data.shape[0]
 
     isc_grouped = isc(combined_data, pairwise=do_pairwise, summary_statistic=None)
@@ -488,6 +540,7 @@ for i, contrast in enumerate(contrast_conditions):
 
     save_path = os.path.join(contrast_perm_save, f"isc_results_{contrast}_{n_scans}TRs_{n_perm}perm_pairWise{do_pairwise}.pkl")
     utils.save_data(save_path, isc_permutation_cond_contrast[contrast])
+    result_paths["condition_contrast_results"][contrast] = save_path
     
 
 # %%
@@ -515,6 +568,8 @@ os.makedirs(results_save_dir, exist_ok=True)
 for cond, cond_results in isc_permutation_group_results.items():
     save_path = os.path.join(results_save_dir, f'{cond}_group_permutation_results_{n_perm}perm.pkl')
     utils.save_data(save_path, cond_results)
+    result_paths["group_permutation_results"][cond] = save_path
+
     # print(f"Saved ISC permutation results for condition: {cond} at {save_path}")
 
 # %%
@@ -554,9 +609,12 @@ for sim_model in ['euclidean', 'annak']:
             distribution_rsa_perm['similarity_matrix'] = sim_behav
             #save
             df_rsa = pd.DataFrame.from_dict(values_rsa_perm, orient='index')
-            df_rsa.to_csv(os.path.join(save_cond_rsa, f'{behav_y}_rsa_isc_{sim_model}simil_{n_perm}perm_pvalues.csv'))
-            utils.save_data(os.path.join(save_cond_rsa, f'{behav_y}_rsa_isc_{n_perm}perm_distribution.pkl'), distribution_rsa_perm)
-        
+            csv_path = os.path.join(save_cond_rsa, f'{behav_y}_rsa_isc_{sim_model}simil_{n_perm}perm_pvalues.csv')
+            df_rsa.to_csv(csv_path)
+            dist_path = os.path.join(save_cond_rsa, f'{behav_y}_rsa_isc_{n_perm}perm_distribution.pkl')
+            utils.save_data(dist_path, distribution_rsa_perm)
+            result_paths['rsa_isc_results'][sim_model][cond][behav_y] = {'csv': csv_path, 'distribution': dist_path}
+
         print(f'Done RSA-ISC ({sim_model} simil. model) for condition:', cond)
 # # %%
 # sim_model= 'annak'
@@ -604,66 +662,66 @@ result_paths = {
     "setup_parameters": save_setup
 }
 
-# Save ISC results per condition
-for cond, isc_dict in isc_results.items():
-    save_path = os.path.join(results_dir, cond, f"isc_results_{cond}_{n_boot}boot_pairWise{do_pairwise}.pkl")
-    result_paths["isc_results"][cond] = save_path
+# # Save ISC results per condition
+# for cond, isc_dict in isc_results.items():
+#     save_path = os.path.join(results_dir, cond, f"isc_results_{cond}_{n_boot}boot_pairWise{do_pairwise}.pkl")
+#     result_paths["isc_results"][cond] = save_path
 
-# Save combined condition ISC results
-combined_conditions = ['all_sugg', 'modulation', 'neutral']
-task_to_test = [conditions, conditions[0:2], conditions[2:4]]
-concat_cond_save = os.path.join(results_dir, 'concat_suggs_1samp_boot')
+# # Save combined condition ISC results
+# combined_conditions = ['all_sugg', 'modulation', 'neutral']
+# task_to_test = [conditions, conditions[0:2], conditions[2:4]]
+# concat_cond_save = os.path.join(results_dir, 'concat_suggs_1samp_boot')
 
-for i, comb_cond in enumerate(combined_conditions):
-    combined_data = np.concatenate([transformed_data_per_cond[task] for task in task_to_test[i]], axis=0)
-    n_scans = combined_data.shape[0]
-    save_path = os.path.join(concat_cond_save, f"isc_results_{comb_cond}_{n_scans}TRs_{n_boot}boot_pairWise{do_pairwise}.pkl")
-    result_paths["isc_combined_results"][comb_cond] = save_path
+# for i, comb_cond in enumerate(combined_conditions):
+#     combined_data = np.concatenate([transformed_data_per_cond[task] for task in task_to_test[i]], axis=0)
+#     n_scans = combined_data.shape[0]
+#     save_path = os.path.join(concat_cond_save, f"isc_results_{comb_cond}_{n_scans}TRs_{n_boot}boot_pairWise{do_pairwise}.pkl")
+#     result_paths["isc_combined_results"][comb_cond] = save_path
 
-# Save condition contrast permutation results
-# contrast_perm_save = os.path.join(results_dir, 'condition_contrast_results')
-# for contrast in contrast_conditions:
-#     save_path = os.path.join(contrast_perm_save, f"isc_results_{contrast}_{n_perm}perm_pairWise{do_pairwise}.pkl")
-#     result_paths["condition_contrast_results"][contrast] = save_path
+# # Save condition contrast permutation results
+# # contrast_perm_save = os.path.join(results_dir, 'condition_contrast_results')
+# # for contrast in contrast_conditions:
+# #     save_path = os.path.join(contrast_perm_save, f"isc_results_{contrast}_{n_perm}perm_pairWise{do_pairwise}.pkl")
+# #     result_paths["condition_contrast_results"][contrast] = save_path
     
-# save condition contrast permutation results
-contrast_conditions = ['Hyper-Ana', 'Ana-Hyper', 'NHyper-NAna']
-contrast_to_test = [conditions[0:2], conditions[0:2][::-1], conditions[2:4]]
-contrast_perm_save = os.path.join(results_dir, 'cond_contrast_permutation')
+# # save condition contrast permutation results
+# # contrast_conditions = ['Hyper-Ana', 'Ana-Hyper', 'NHyper-NAna']
+# # contrast_to_test = [conditions[0:2], conditions[0:2][::-1], conditions[2:4]]
+# # contrast_perm_save = os.path.join(results_dir, 'cond_contrast_permutation')
 
-for i, contrast in enumerate(contrast_conditions):
+# # for i, contrast in enumerate(contrast_conditions):
 
-    combined_data_ls = [transformed_data_per_cond[task] for task in contrast_to_test[i]]
-    if contrast == 'Hyper-Ana':
-        adjusted_Hyper, adjusted_Ana = utils.trim_TRs(combined_data_ls[0], combined_data_ls[1])
-    elif contrast == 'Ana-Hyper':
-        adjusted_Ana, adjusted_Hyper = utils.trim_TRs(combined_data_ls[1], combined_data_ls[0])
-    if i == 2: # for the neutral condtions, no need to trim
-        combined_data = np.concatenate(combined_data_ls, axis=2)
-    else:
-        combined_data = np.concatenate([adjusted_Hyper, adjusted_Ana], axis=2)
-    n_scans = combined_data.shape[0]
-    save_path = os.path.join(contrast_perm_save, f"isc_results_{contrast}_{n_scans}TRs_{n_perm}perm_pairWise{do_pairwise}.pkl")
-    result_paths["condition_contrast_results"][contrast] = save_path
+# #     combined_data_ls = [transformed_data_per_cond[task] for task in contrast_to_test[i]]
+# #     if contrast == 'Hyper-Ana':
+# #         adjusted_Hyper, adjusted_Ana = utils.trim_TRs(combined_data_ls[0], combined_data_ls[1])
+# #     elif contrast == 'Ana-Hyper':
+# #         adjusted_Ana, adjusted_Hyper = utils.trim_TRs(combined_data_ls[1], combined_data_ls[0])
+# #     if i == 2: # for the neutral condtions, no need to trim
+# #         combined_data = np.concatenate(combined_data_ls, axis=2)
+# #     else:
+# #         combined_data = np.concatenate([adjusted_Hyper, adjusted_Ana], axis=2)
+# #     n_scans = combined_data.shape[0]
+# #     save_path = os.path.join(contrast_perm_save, f"isc_results_{contrast}_{n_scans}TRs_{n_perm}perm_pairWise{do_pairwise}.pkl")
+# #     result_paths["condition_contrast_results"][contrast] = save_path
     
-# Save behavioral group permutation results
-results_save_dir = os.path.join(results_dir, 'behavioral_group_permutation')
-for cond, cond_results in isc_permutation_group_results.items():
-    save_path = os.path.join(results_save_dir, f"{cond}_group_permutation_results_{n_perm}perm.pkl")
-    result_paths["group_permutation_results"][cond] = save_path
+# # # Save behavioral group permutation results
+# # results_save_dir = os.path.join(results_dir, 'behavioral_group_permutation')
+# # for cond, cond_results in isc_permutation_group_results.items():
+# #     save_path = os.path.join(results_save_dir, f"{cond}_group_permutation_results_{n_perm}perm.pkl")
+# #     result_paths["group_permutation_results"][cond] = save_path
 
-# ISC-RSA results
-sim_model= 'euclidean'
-for sim_model in ['euclidean', 'annak']: 
-    result_paths['rsa_isc_results'][sim_model] = {}
-    rsa_save_dir = os.path.join(results_dir, f'rsa_isc_results_{sim_model}')
-    for cond in conditions:
-        result_paths['rsa_isc_results'][sim_model][cond] = {}
-        save_cond_rsa = os.path.join(rsa_save_dir, f'rsa-isc_{cond}') # make condition folder
-        for behav_y in y_interest:
-            csv_path = os.path.join(save_cond_rsa, f'{behav_y}_rsa_isc_{sim_model}simil_{n_perm}perm_pvalues.csv')
-            dist_path = os.path.join(save_cond_rsa, f'{behav_y}_rsa_isc_{n_perm}perm_distribution.pkl')
-            result_paths['rsa_isc_results'][sim_model][cond][behav_y] = {'csv': csv_path, 'distribution': dist_path}
+# # # ISC-RSA results
+# # sim_model= 'euclidean'
+# # for sim_model in ['euclidean', 'annak']: 
+# #     result_paths['rsa_isc_results'][sim_model] = {}
+# #     rsa_save_dir = os.path.join(results_dir, f'rsa_isc_results_{sim_model}')
+# #     for cond in conditions:
+# #         result_paths['rsa_isc_results'][sim_model][cond] = {}
+# #         save_cond_rsa = os.path.join(rsa_save_dir, f'rsa-isc_{cond}') # make condition folder
+# #         for behav_y in y_interest:
+# #             csv_path = os.path.join(save_cond_rsa, f'{behav_y}_rsa_isc_{sim_model}simil_{n_perm}perm_pvalues.csv')
+# #             dist_path = os.path.join(save_cond_rsa, f'{behav_y}_rsa_isc_{n_perm}perm_distribution.pkl')
+# #             result_paths['rsa_isc_results'][sim_model][cond][behav_y] = {'csv': csv_path, 'distribution': dist_path}
 
 # Save the result paths dictionary
 result_paths_save_path = os.path.join(results_dir, "result_paths.json")
@@ -671,7 +729,6 @@ with open(result_paths_save_path, 'w') as f:
     json.dump(result_paths, f, indent=4)
 
 print(f"Result paths saved at {result_paths_save_path}")
-
 print('Done with all!!')
 
 # %%
