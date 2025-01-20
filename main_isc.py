@@ -51,14 +51,14 @@ n_sub = len(subjects)
 
 # hyperparams
 model_name = f'model4_jeni_preproc-{str(n_sub)}sub_voxelWise'
-model_name = f'model3_jeni_preproc-23sub'
+#model_name = f'model3_jeni_preproc-23sub'
 conditions = ['Hyper', 'Ana', 'NHyper', 'NAna'] #['all_sugg', 'modulation', 'neutral']
-transform_imgs = False #False
+transform_imgs = True #False
 nsub = len(subjects)
 n_sub = len(subjects)
-n_boot = 10000
+n_boot = 5000
 do_pairwise = True
-n_perm = 10000
+n_perm = 5000
 n_perm_rsa = 10000 #change to 10 000!
 
 results_dir = os.path.join(project_dir, f'results/imaging/ISC/{model_name}')
@@ -133,7 +133,7 @@ atlas_dict_path = os.path.join(project_dir, 'masks/DiFuMo256/labels_256_dictiona
 atlas = nib.load(atlas_path)
 atlas_df = pd.read_csv(atlas_dict_path)
 atlas_labels = atlas_df['Difumo_names']
-atlas_name = 'Difumo256' # !!!!!!! 'Difumo256'
+atlas_name = 'voxelWise' #Difumo256' # !!!!!!! 'Difumo256'
 
 print('atlas loaded with N ROI : ', atlas.shape)
 
@@ -174,8 +174,8 @@ if transform_imgs == True:
     fitted_maskers = {}
     transformed_sphere_per_roi = {}
 
-    masker = MultiNiftiMapsMasker(maps_img=atlas, standardize=False, memory='nilearn_cache', verbose=5, n_jobs= 1)
-    masker = NiftiMasker(verbose=5)
+    #masker = MultiNiftiMapsMasker(maps_img=atlas, standardize=False, memory='nilearn_cache', verbose=5, n_jobs= 1)
+    #masker = NiftiMasker(verbose=5)
     #masker.fit()
 
 	# extract time series for each subject and condition/task
@@ -186,11 +186,17 @@ if transform_imgs == True:
         print('Imgs shape : ', [img.shape for _, img in  concatenated_subjects.items()])
 
 	    #print(f'fitting images for condition : {cond} with shape {concatenated_subjects[subjects[0]][0].shape}')
-        breakpoint() # !!!
-        ls_voxel_wise = [masker.fit_transform(concatenated_subjects[sub]) for sub in subjects]
-        print('ls_voxel_wise shape : ', [img.shape for img in ls_voxel_wise])
-        transformed_data_per_cond[cond] = ls_voxel_wise
-        fitted_maskers[cond] = masker
+        if altas_name =='voxelWise' :
+            masker = NiftiMasker(verbose=5)
+            ls_voxel_wise = [masker.fit_transform(concatenated_subjects[sub]) for sub in subjects]
+            print('ls_voxel_wise shape : ', [img.shape for img in ls_voxel_wise])
+            transformed_data_per_cond[cond] = ls_voxel_wise
+            fitted_maskers[cond] = masker
+        if atlas_name == 'Difumo256':
+            masker = MultiNiftiMapsMasker(maps_img=atlas, standardize=False, memory='nilearn_cache', verbose=5, n_jobs= 1)
+            transformed_data_per_cond[cond] = masker.fit_transform(concatenated_subjects.values())
+            fitted_maskers[cond] = masker
+            
         # transformed_data_per_cond[cond] = masker.fit_transform(concatenated_subjects.values())
         # fitted_maskers[cond] = masker
 
@@ -216,6 +222,7 @@ if transform_imgs == True:
         utils.save_data(masker_path, fitted_maskers[cond])
         print(f'Transformed timseries and maskers saved to {cond_folder}')
     print('====Done with data extraction====')
+    
 # sim_model= 'annak'
 # rsa_save_dir = os.path.join(results_dir, f'rsa_isc_results_{sim_model}simil')
 # os.makedirs(rsa_save_dir, exist_ok=True)
@@ -603,18 +610,42 @@ for cond, isc_dict in isc_results.items():
     result_paths["isc_results"][cond] = save_path
 
 # Save combined condition ISC results
+combined_conditions = ['all_sugg', 'modulation', 'neutral']
+task_to_test = [conditions, conditions[0:2], conditions[2:4]]
 concat_cond_save = os.path.join(results_dir, 'concat_suggs_1samp_boot')
 
 for i, comb_cond in enumerate(combined_conditions):
-    save_path = os.path.join(concat_cond_save, f"isc_results_{comb_cond}_{n_boot}boot_pairWise{do_pairwise}.pkl")
+    combined_data = np.concatenate([transformed_data_per_cond[task] for task in task_to_test[i]], axis=0)
+    n_scans = combined_data.shape[0]
+    save_path = os.path.join(concat_cond_save, f"isc_results_{comb_cond}_{n_scans}TRs_{n_boot}boot_pairWise{do_pairwise}.pkl")
     result_paths["isc_combined_results"][comb_cond] = save_path
 
 # Save condition contrast permutation results
+# contrast_perm_save = os.path.join(results_dir, 'condition_contrast_results')
+# for contrast in contrast_conditions:
+#     save_path = os.path.join(contrast_perm_save, f"isc_results_{contrast}_{n_perm}perm_pairWise{do_pairwise}.pkl")
+#     result_paths["condition_contrast_results"][contrast] = save_path
+    
+# save condition contrast permutation results
+contrast_conditions = ['Hyper-Ana', 'Ana-Hyper', 'NHyper-NAna']
+contrast_to_test = [conditions[0:2], conditions[0:2][::-1], conditions[2:4]]
 contrast_perm_save = os.path.join(results_dir, 'cond_contrast_permutation')
-for contrast in contrast_conditions:
-    save_path = os.path.join(contrast_perm_save, f"isc_results_{contrast}_{n_perm}perm_pairWise{do_pairwise}.pkl")
+
+for i, contrast in enumerate(contrast_conditions):
+
+    combined_data_ls = [transformed_data_per_cond[task] for task in contrast_to_test[i]]
+    if contrast == 'Hyper-Ana':
+        adjusted_Hyper, adjusted_Ana = utils.trim_TRs(combined_data_ls[0], combined_data_ls[1])
+    elif contrast == 'Ana-Hyper':
+        adjusted_Ana, adjusted_Hyper = utils.trim_TRs(combined_data_ls[1], combined_data_ls[0])
+    if i == 2: # for the neutral condtions, no need to trim
+        combined_data = np.concatenate(combined_data_ls, axis=2)
+    else:
+        combined_data = np.concatenate([adjusted_Hyper, adjusted_Ana], axis=2)
+    n_scans = combined_data.shape[0]
+    save_path = os.path.join(contrast_perm_save, f"isc_results_{contrast}_{n_scans}TRs_{n_perm}perm_pairWise{do_pairwise}.pkl")
     result_paths["condition_contrast_results"][contrast] = save_path
-   
+    
 # Save behavioral group permutation results
 results_save_dir = os.path.join(results_dir, 'behavioral_group_permutation')
 for cond, cond_results in isc_permutation_group_results.items():
