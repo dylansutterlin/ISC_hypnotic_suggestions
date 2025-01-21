@@ -73,7 +73,7 @@ atlas_name = 'schafer100_2mm' #'voxelWise' #Difumo256' # !!!!!!! 'Difumo256'
 model_name = f'model5_jeni_lvlpreproc-{str(n_sub)}sub_{atlas_name}'
 #model_name = f'model3_jeni_preproc-23sub'
 conditions = ['Hyper', 'Ana', 'NHyper', 'NAna'] #['all_sugg', 'modulation', 'neutral']
-transform_imgs = True #False
+transform_imgs = False #False
 nsub = len(subjects)
 n_sub = len(subjects)
 n_boot = 5000
@@ -519,7 +519,7 @@ reload(utils)
 for i, contrast in enumerate(contrast_conditions):
     print(f'Performing 2 group permutation ISC : {contrast}')
 
-    # combined_data_ls = [transformed_data_per_cond[task] for task in contrast_to_test[i]]
+    combined_data_ls = [transformed_data_per_cond[task] for task in contrast_to_test[i]]
     # if contrast == 'Hyper-Ana':
     #     adjusted_Hyper, adjusted_Ana = utils.trim_TRs(combined_data_ls[0], combined_data_ls[1])
     #     print('/!\ Trimed 2 TRs for Ana and added 1 for Hyper ')
@@ -542,6 +542,48 @@ for i, contrast in enumerate(contrast_conditions):
     utils.save_data(save_path, isc_permutation_cond_contrast[contrast])
     result_paths["condition_contrast_results"][contrast] = save_path
     
+#%%
+shss_grps = ['low_shss', 'high_shss']
+contrast_conditions = ['Hyper-Ana', 'Ana-Hyper', 'NHyper-NAna']
+contrast_to_test = [conditions[0:2], conditions[0:2][::-1], conditions[2:4]]
+
+isc_permutation_cond_contrast = {}
+
+
+reload(utils)
+
+for g, shss_grp in enumerate(shss_grps):
+    # print(f'==== Doing {shss_grp}, suppose to have 12 if low and 11 if high ====')
+    contrast_perm_shss = os.path.join(results_dir, f'group_perm_{shss_grp}')
+    os.makedirs(contrast_perm_shss, exist_ok=True)
+
+    if shss_grp == 'low_shss':
+        shss_idx = np.array(group_labels_df['SHSS_score_median_grp'] == 0)
+        keep_n = len(shss_idx[shss_idx == True]) # inverse!
+    elif shss_grp == 'high_shss':
+        shss_idx = np.array(group_labels_df['SHSS_score_median_grp'] == 1)
+        keep_n = len(shss_idx[shss_idx == True])
+
+    shss_idx_concat = np.concatenate([shss_idx, shss_idx])
+    group_ids_selected = np.array([0] * keep_n + [1] * keep_n)
+
+    print(f'-----{shss_grp} grp with {keep_n} subjects')
+    for i, contrast in enumerate(contrast_conditions):
+
+        combined_data_ls = [transformed_data_per_cond[task] for task in contrast_to_test[i]]
+        combined_data = np.concatenate(combined_data_ls, axis=2)
+        combined_data_selected = combined_data[:, :, shss_idx_concat]
+        print(f'{contrast} : Repeated mesaure isc having shape : ', combined_data_selected.shape)
+       # print('group id unique : ', np.unique(group_ids_selected, return_counts=True))  
+      
+        isc_grouped_selected = isc(combined_data_selected, pairwise=do_pairwise, summary_statistic=None)
+        group_ids = np.array([0] * n_sub + [1] * n_sub)
+        isc_permutation_cond_contrast[contrast] = utils.group_permutation(isc_grouped_selected, group_ids_selected, n_perm, do_pairwise, side = 'two-sided', summary_statistic='median')
+
+        save_path = os.path.join(contrast_perm_shss, f"isc_results_{keep_n}sub_{contrast}_{n_perm}perm_pairWise{do_pairwise}.pkl")
+        utils.save_data(save_path, isc_permutation_cond_contrast[contrast])
+        result_paths["condition_contrast_results"][contrast] = save_path
+        
 
 # %%
 # ------------
@@ -579,12 +621,13 @@ print('============================')
 print('ISC-RSA for each condition')
 all_conditions = ['Hyper', 'Ana', 'NHyper', 'NAna', 'all_sugg', 'modulation', 'neutral']
 for sim_model in ['euclidean', 'annak']:
+    result_paths['rsa_isc_results'][sim_model] = {}
 
     rsa_save_dir = os.path.join(results_dir, f'rsa_isc_results_{sim_model}')
     os.makedirs(rsa_save_dir, exist_ok=True)
 
     for cond in all_conditions:
-
+        result_paths['rsa_isc_results'][sim_model][cond] = {}
         save_cond_rsa = os.path.join(rsa_save_dir, f'rsa-isc_{cond}') # make condition folder
         os.makedirs(save_cond_rsa, exist_ok=True)
 
@@ -595,8 +638,9 @@ for sim_model in ['euclidean', 'annak']:
         for behav_y in y_interest: # repeated for each Yi
             y = np.array(X_pheno[behav_y])
             sim_behav = utils.compute_behav_similarity(y, metric = sim_model)
+            result_paths['rsa_isc_results'][sim_model][cond][behav_y] = {}
 
-            for col_j in range(isc_pairwise.shape[0]):
+            for col_j in range(isc_pairwise.shape[1]):
                 if atlas_name == 'voxelWise':
                     roi_name = f'voxel_{col_j}'
                 else:
@@ -609,13 +653,13 @@ for sim_model in ['euclidean', 'annak']:
             distribution_rsa_perm['similarity_matrix'] = sim_behav
             #save
             df_rsa = pd.DataFrame.from_dict(values_rsa_perm, orient='index')
-            csv_path = os.path.join(save_cond_rsa, f'{behav_y}_rsa_isc_{sim_model}simil_{n_perm}perm_pvalues.csv')
+            csv_path = os.path.join(save_cond_rsa, f'{behav_y}_rsa_isc_{sim_model}simil_{n_perm_rsa}perm_pvalues.csv')
             df_rsa.to_csv(csv_path)
-            dist_path = os.path.join(save_cond_rsa, f'{behav_y}_rsa_isc_{n_perm}perm_distribution.pkl')
+            dist_path = os.path.join(save_cond_rsa, f'{behav_y}_rsa_isc_{n_perm_rsa}perm_distribution.pkl')
             utils.save_data(dist_path, distribution_rsa_perm)
             result_paths['rsa_isc_results'][sim_model][cond][behav_y] = {'csv': csv_path, 'distribution': dist_path}
-
         print(f'Done RSA-ISC ({sim_model} simil. model) for condition:', cond)
+
 # # %%
 # sim_model= 'annak'
 # rsa_save_dir = os.path.join(results_dir, f'rsa_isc_results_{sim_model}simil')
@@ -653,14 +697,14 @@ for sim_model in ['euclidean', 'annak']:
 
 # %%
 
-result_paths = {
-    "isc_results": {},
-    "isc_combined_results": {},
-    "condition_contrast_results": {},
-    "group_permutation_results": {},
-    "rsa_isc_results": {},
-    "setup_parameters": save_setup
-}
+# result_paths = {
+#     "isc_results": {},
+#     "isc_combined_results": {},
+#     "condition_contrast_results": {},
+#     "group_permutation_results": {},
+#     "rsa_isc_results": {},
+#     "setup_parameters": save_setup
+# }
 
 # # Save ISC results per condition
 # for cond, isc_dict in isc_results.items():

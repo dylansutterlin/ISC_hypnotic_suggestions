@@ -446,3 +446,113 @@ def fdr(p, q=0.05):
     below = np.where(s <= null)[0]
     return s[max(below)] if len(below) else -1
 
+def bonferroni(p, alpha=0.05):
+    """Determine Bonferonni corrected p-value threshold.
+
+    Args:
+        p: (np.array) vector of p-values
+        alpha: (float) desired alpha level
+
+    Returns:
+        bonf_p: (float) p-value threshold based on Bonferonni correction
+
+    """
+
+    if not isinstance(p, np.ndarray):
+        raise ValueError("Make sure vector of p-values is a numpy array")
+    if any(p < 0) or any(p > 1):
+        raise ValueError("array contains p-values that are outside the range 0-1")
+
+    return alpha / p.shape[0]
+
+# from nltools
+def expand_mask(mask, custom_mask=None):
+    """expand a mask with multiple integers into separate binary masks
+
+    Args:
+        mask: nibabel or Brain_Data instance
+        custom_mask: nibabel instance or string to file path; optional
+
+    Returns:
+        out: Brain_Data instance of multiple binary masks
+
+    """
+
+    from nltools.data import Brain_Data
+
+    if isinstance(mask, nib.Nifti1Image):
+        mask = Brain_Data(mask, mask=custom_mask)
+    if not isinstance(mask, Brain_Data):
+        raise ValueError("Make sure mask is a nibabel or Brain_Data instance.")
+    mask.data = np.round(mask.data).astype(int)
+    tmp = []
+    for i in np.nonzero(np.unique(mask.data))[0]:
+        tmp.append((mask.data == i) * 1)
+    out = mask.empty()
+    out.data = np.array(tmp)
+    return out
+
+# from nltools
+def roi_to_brain(data, mask_x):
+    """This function will create convert an expanded binary mask of ROIs
+    (see expand_mask) based on a vector of of values. The dataframe of values
+    must correspond to ROI numbers.
+
+    This is useful for populating a parcellation scheme by a vector of Values
+
+    Args:
+        data: Pandas series, dataframe, list, np.array of ROI by observation
+        mask_x: an expanded binary mask
+
+    Returns:
+        out: (Brain_Data) Brain_Data instance where each ROI is now populated
+             with a value
+    """
+    from nltools.data import Brain_Data
+
+    if not isinstance(data, (pd.Series, pd.DataFrame)):
+        if isinstance(data, list):
+            data = pd.Series(data)
+        elif isinstance(data, np.ndarray):
+            if len(data.shape) == 1:
+                data = pd.Series(data)
+            elif len(data.shape) == 2:
+                data = pd.DataFrame(data)
+                if data.shape[0] != len(mask_x):
+                    if data.shape[1] == len(mask_x):
+                        data = data.T
+                    else:
+                        raise ValueError(
+                            "Data must have the same number of rows as rois in mask"
+                        )
+            else:
+                raise NotImplementedError
+
+        else:
+            raise ValueError("Data must be a pandas series or data frame.")
+
+    if len(mask_x) != data.shape[0]:
+        raise ValueError("Data must have the same number of rows as mask has ROIs.")
+
+    if isinstance(data, pd.Series):
+        out = mask_x[0].copy()
+        out.data = np.zeros(out.data.shape)
+        for roi in range(len(mask_x)):
+            out.data[np.where(mask_x.data[roi, :])] = data[roi]
+        return out
+    else:
+        out = mask_x.copy()
+        out.data = np.ones((data.shape[1], out.data.shape[1]))
+        for roi in range(len(mask_x)):
+            roi_data = np.reshape(data.iloc[roi, :].values, (-1, 1))
+            out.data[:, mask_x[roi].data == 1] = np.repeat(
+                roi_data.T, np.sum(mask_x[roi].data == 1), axis=0
+            ).T
+        return out
+
+def r_to_z(r_values):
+
+    # Ensure values are within the valid range (-1, 1)
+    r_values = np.clip(r_values, -0.9999, 0.9999)
+    z_values = np.arctanh(r_values)
+    return z_values
