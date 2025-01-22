@@ -4,91 +4,18 @@ from nilearn.plotting import plot_stat_map
 import os
 import seaborn as sns
 from nilearn import plotting
-from nilearn.plotting import view_img
-
-# %%
-def threshold_and_save_isc_maps(isc_img, p_img, masker, results_dir, cond, atlas_name, n_sub, thresholds=("unc", 0.001), fdr_correct=False):
-    """
-    Threshold and save ISC brain maps based on p-values.
-    
-    Parameters:
-    - isc_img: Nifti image of ISC values.
-    - p_img: Nifti image of p-values.
-    - masker: The masker object for inverse transform.
-    - results_dir: Directory to save results.
-    - cond: The condition name.
-    - atlas_name: Name of the atlas used.
-    - n_sub: Number of subjects.
-    - thresholds: Tuple defining ('unc', value) or None for unthresholded maps.
-    - fdr_correct: Boolean to indicate if FDR correction is applied.
-    """
-    if not os.path.exists(results_dir):
-        os.makedirs(results_dir)
-    
-    # Prepare file names
-    base_filename = f"isc_thresholded_{cond}_{atlas_name}_{n_sub}sub"
-    fdr_suffix = "_fdr" if fdr_correct else ""
-    
-    for threshold_type, value in thresholds:
-        # Apply uncorrected or FDR thresholds
-        if threshold_type == "unc":
-            thresholded_p = math_img(f"img < {value}", img=p_img)
-        else:
-            raise ValueError("Unsupported threshold type. Use 'unc'.")
-        
-        # Apply threshold to ISC image
-        isc_thresholded = math_img("isc * (p < thresh)", isc=isc_img, p=p_img, thresh=value)
-        
-        # Save thresholded ISC map
-        isc_thresholded_filename = os.path.join(
-            results_dir, f"{base_filename}_thresh_{threshold_type}{value}{fdr_suffix}.nii.gz"
-        )
-        isc_thresholded.to_filename(isc_thresholded_filename)
-        print(f"Saved thresholded ISC map at: {isc_thresholded_filename}")
-        
-        # Plot and save visualization
-        plot_filename = os.path.join(
-            results_dir, f"{base_filename}_thresh_{threshold_type}{value}{fdr_suffix}.png"
-        )
-        plot_stat_map(
-            isc_thresholded,
-            title=f"ISC Map ({cond}) Threshold {threshold_type}: {value}",
-            display_mode="z",
-            cut_coords=10,
-            colorbar=True,
-            output_file=plot_filename,
-        )
-        print(f"Saved thresholded ISC plot at: {plot_filename}")
-
-# Example Usage
-# Load ISC and p-value maps (assuming you have already calculated and saved them)
-for cond, isc_dict in isc_results.items():
-    if cond != "modulation":  # Modify as per your requirement
-        continue
-
-    # Paths
-    isc_path = os.path.join(results_dir, cond, f"isc_val_{cond}_boot{n_boot}_pariwise{do_pairwise}.nii.gz")
-    pval_path = os.path.join(results_dir, cond, f"p_values_{cond}_boot{n_boot}_pairwise{do_pairwise}.nii.gz")
-    isc_img = nib.load(isc_path)
-    p_img = nib.load(pval_path)
-    
-    # Call the function for thresholds
-    thresholds = [("unc", 0.001)]  # Uncorrected threshold
-    threshold_and_save_isc_maps(isc_img, p_img, masker, results_dir, cond, atlas_name, n_sub, thresholds, fdr_correct=False)
-
-
-# %% 
+from nilearn.plotting import view_img 
 import utils
 import time
 from importlib import reload
 import nibabel as nib
 import numpy as np
-import os
 import pandas as pd
 import json
 from nilearn.image import concat_imgs
 from brainiak.isc import isc, bootstrap_isc, permutation_isc, compute_summary_statistic, phaseshift_isc
 from nilearn.maskers import MultiNiftiMapsMasker, MultiNiftiMasker
+from nilearn.datasets import fetch_atlas_schaefer_2018
 from sklearn.utils import Bunch
 import visu_utils
 from nilearn.plotting import view_img_on_surf
@@ -314,8 +241,9 @@ reload(visu_utils)
 n_scans = [94, 94, 125]
 views = {}
 sig_rois = {}
+interactive_views = []
 for shss_grp, n_sub in zip(['high_shss', 'low_shss'], [11, 12]):
-
+    print(f"Doing {shss_grp} with {n_sub} subjects")
     cont = 'Hyper-Ana'  
     # masker =utils.load_pickle(os.path.join(results_dir, cond, f'maskers_{atlas_name}_{cond}_{n_sub}sub.pkl'))
     # file = f"isc_results_{contrast}_{n_scans}TRs_{setup['n_perm']}perm_pairWiseTrue.pkl"
@@ -344,23 +272,24 @@ for shss_grp, n_sub in zip(['high_shss', 'low_shss'], [11, 12]):
     )
     views[shss_grp] = view_img_on_surf(diff_img, threshold=diff_thresh, surf_mesh='fsaverage')
     sig_rois[shss_grp] = sig_labels
-#%%
-# Plot Diff in high to display parietal
-coords = sig_rois['high_shss']['Coordinates'][0]
-diff_thresh = float(sig_rois['high_shss']['Difference'])
-plot_stat_map(
-    diff_img,
-    threshold=None,
-    title="Diff SHSS High ",
-    display_mode="z",
-    cut_coords=coords,
-    colorbar=True
-    )
-interactive_view = view_img(
-        isc_img,
-        threshold=max_isc_thresh,
-        title=title
-    )
+
+    # Plot Diff in high to display parietal
+    coords = sig_rois['high_shss']['Coordinates'][0]
+    diff_thresh = float(sig_rois['high_shss']['Difference'])
+    plot_stat_map(
+        diff_img,
+        threshold=None,
+        title="Diff SHSS High ",
+        display_mode="z",
+        cut_coords=coords,
+        colorbar=True
+        )
+    interactive_view = view_img(
+            diff_img,
+            threshold=0,
+            title='d'
+        )
+    interactive_views.append(interactive_view)
 
 #%%
 #=======================
@@ -372,7 +301,7 @@ interactive_view = view_img(
 # grouped isc with behavioral
 result_key = 'group_permutation_results'
 conditions = ['Hyper', 'Ana', 'NHyper', 'NAna']
-conditions = ['Hyper', 'Ana', 'NHyper', 'NAna', 'all_sugg', 'modulation', 'neutral']
+conditions = [ 'all_sugg', 'neutral', 'modulation', 'Hyper', 'Ana']
 
 sig_rois_cond = {}
 views = {}
@@ -391,7 +320,7 @@ for cond in conditions:
         p_values = isc_group[y]['p_value']               # P-values for the ISC contrasts
         distribution = isc_group[y]['distribution'] 
         fdr_p = utils.fdr(p_values, q=0.05)
-        unc_p = 0.0005 #0.05
+        unc_p = 0.01 #0.05
 
         reload(visu_utils)
         diff_img, diff_thresh, sig_labels = visu_utils.project_isc_to_brain_perm(
@@ -409,43 +338,83 @@ for cond in conditions:
         #views[cond][y] = view_img_on_surf(diff_img, threshold=diff_thresh, surf_mesh='fsaverage')
 # %%
 
+# %%
+
 diff_img = masker.inverse_transform(observed_diff)
 #p_img = masker.inverse_transform(p_values)
 #%%
 view = plotting.view_img_on_surf(diff_img, threshold='95%', surf_mesh='fsaverage')
 
 # %%
+import matplotlib.pyplot as plt
+from sklearn.manifold import TSNE
+from scipy.stats import ttest_1samp
+from scipy.stats import ttest_rel
+
 # ===========================
 # ISC-RSA
 behav_df = pd.read_csv(f'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/behavioral_data_cleaned.csv')
-y
+X_pheno = behav_df
 result_key = 'rsa_isc_results'
 conditions = ['Hyper', 'Ana', 'NHyper', 'NAna']
 #conditions = ['Hyper', 'Ana', 'NHyper', 'NAna', 'all_sugg', 'modulation', 'neutral']
 behav_ls = ['SHSS_score', 'total_chge_pain_hypAna', 'Abs_diff_automaticity']
 models =['euclidean', 'annak']
-cond = conditions[0]
-y_name = behav_ls[0]
-rsa_dict = {}
-for cond in conditions:
-    rsa_dict[cond] = {}
-    for y_name in behav_ls:
-        isc_bootstrap = utils.load_pickle(f'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/ISC/model5_jeni_lvlpreproc-23sub_schafer100_2mm/{cond}/isc_results_{cond}_5000boot_pairWiseTrue.pkl')
+
+rsa_dict_2ttest = {}
+
+# compare NN and AnnaK models using 2sample t tests
+# tests differences ISC-RSA correlation between two models for each var.
+
+for y_name in behav_ls:
+    print(f'====Processing {y_name} across conditions======')
+    rsa_dict_2ttest[y_name] = {}
+
+    for cond in conditions:
+        isc_bootstrap = utils.load_pickle(
+            f'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/ISC/model5_jeni_lvlpreproc-23sub_schafer100_2mm/{cond}/isc_results_{cond}_5000boot_pairWiseTrue.pkl'
+        )
         isc_rois = pd.DataFrame(isc_bootstrap['isc'], columns=labels)
+        rsa_dict_2ttest[y_name][cond] = {}
 
-        #for simil_model in models:
-        simil_model = models[0]
+        for simil_model in models:
+            # Load RSA data
+            rsa_df = pd.read_csv(
+                f'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/ISC/model5_jeni_lvlpreproc-23sub_schafer100_2mm/rsa_isc_results_{simil_model}/rsa-isc_{cond}/{y_name}_rsa_isc_{simil_model}simil_10000perm_pvalues.csv'
+            )
+            p_values = np.array(rsa_df['p_value'])
+            fdr_p = utils.fdr(p_values, q=0.05)
 
-        y  = np.array(X_pheno[behav_y])
-        sim_behav = utils.compute_behav_similarity(y, metric = simil_model)
-        #masker =utils.load_pickle(os.path.join(results_dir, conditions[0], f'maskers_{atlas_name}_{conditions[0]}_{n_sub}sub.pkl'))
-        rsa_df = pd.read_csv(f'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/ISC/model5_jeni_lvlpreproc-23sub_schafer100_2mm/rsa_isc_results_{simil_model}/rsa-isc_{cond}/{y_name}_rsa_isc_{simil_model}simil_10000perm_pvalues.csv')
-        correl = rsa_df['correlation']
-        p_values = np.array(rsa_df['p_value'])
-        fdr_p = utils.fdr(p_values, q=0.05)
-        rsa_dict[cond][y_name] = {'correlation': correl, 'p_values': p_values, 'fdr_p': fdr_p}
-        print(pd.DataFrame(rsa_dict[cond][y_name]))
-        
+            rsa_dict_2ttest[y_name][cond][simil_model] = {
+                'correlation': rsa_df['correlation'],
+                'p_values': p_values,
+                'fdr_p': fdr_p
+            }
+
+        # Perform paired t-test between the two models
+        correl1 = rsa_dict_2ttest[y_name][cond][models[0]]['correlation']
+        correl2 = rsa_dict_2ttest[y_name][cond][models[1]]['correlation']
+
+        t_stat, p_value = ttest_rel(correl1, correl2)
+
+        # Store results
+        t_dict = {'t': t_stat, 'p': p_value, 'df': len(correl1) - 1}
+        rsa_dict_2ttest[y_name][cond]['t_test'] = t_dict
+
+        # Print results
+        if t_stat > 0 and p_value < 0.05/12:
+            print(f'{models[0]} is better than {models[1]} in {cond}')
+            print(f"t({t_dict['df']}) = {t_dict['t']:.2f}, p = {t_dict['p']:.4f}")
+        elif t_stat < 0 and p_value < 0.05/12:
+            print(f'{models[1]} is better than {models[0]} in {cond}')
+            print(f"t({t_dict['df']}) = {t_dict['t']:.2f}, p = {t_dict['p']:.4f}")
+        else:
+            print(f'No significant difference between {models[0]} and {models[1]} in {cond}')
+            print(f"t({t_dict['df']}) = {t_dict['t']:.2f}, p = {t_dict['p']:.4f}")
+
+# Take home is that annak is better in Hyper related conditions while NN in Ana
+
+
 #%%
 heatmaps = {}
 for i, simil_model in enumerate(models):
@@ -503,10 +472,38 @@ visu_utils.plot_similarity_and_histogram(
 )
 
 # %%
-ana = np.load('/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/ISC/model3_jeni_preproc-23sub/Ana/transformed_data_Difumo256_Ana_23sub.npz')['arr_0']
 
-# %%
-import visu_utils
-reload(visu_utils)
+reload(utils)
+# X_pheno = pd.read_csv('/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/ISC/model5_jeni_lvlpreproc-23sub_schafer100_2mm/behav_data_group_labels.csv')
+# print('============================')
+# print('ISC-RSA for each condition')
+# all_conditions = ['Hyper', 'Ana', 'NHyper', 'NAna', 'all_sugg', 'modulation', 'neutral']
+# y_interest = ['SHSS_score', 'total_chge_pain_hypAna', 'Abs_diff_automaticity']  
 
-visu_utils.heatmap_pairwise_isc_combined(pd.DataFrame(isc_rois), setup['subjects'])
+# for sim_model in ['euclidean', 'annak']:
+
+#     for cond in all_conditions:
+#         isc_bootstrap = utils.load_pickle(f'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/ISC/model5_jeni_lvlpreproc-23sub_schafer100_2mm/{cond}/isc_results_{cond}_5000boot_pairWiseTrue.pkl')
+#         isc_pairwise = isc_bootstrap['isc']
+#         values_rsa_perm = {}
+#         distribution_rsa_perm = {}
+
+#         for behav_y in y_interest: # repeated for each Yi
+#             y = np.array(X_pheno[behav_y])
+#             y = (y - np.mean(y)) / np.std(y)
+#             sim_behav = utils.compute_behav_similarity(y, metric = sim_model)
+            
+#             for col_j in range(isc_pairwise.shape[1]):
+#                 if atlas_name == 'voxelWise':
+#                     roi_name = f'voxel_{col_j}'
+#                 else:
+#                     roi_name = labels[col_j]
+
+#                 isc_roi_vec = isc_pairwise[:, col_j]
+#                 rsa_results = utils.matrix_permutation(sim_behav, isc_roi_vec, n_permute=n_perm_rsa, metric="spearman", how="upper", tail=1, return_perms = True)
+#                 values_rsa_perm[roi_name] = {'correlation': rsa_results['correlation'], 'p_value': rsa_results['p']}
+#                 distribution_rsa_perm[roi_name] = rsa_results['perm_dist']
+#             distribution_rsa_perm['similarity_matrix'] = sim_behav
+        
+           
+#         print(f'Done RSA-ISC ({sim_model} simil. model) for condition:', cond)
