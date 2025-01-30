@@ -311,7 +311,6 @@ def generate_individual_labelMasker_reports_heatmap(subjects, func_list, mask_ni
         ax.set_ylabel('ROI Index', fontsize=12)
         plt.tight_layout()
 
-        # Save the heatmap
         heatmap_path = os.path.join(report_dir, f'ROI_heatmap_{sub_id}_{condition_name}.png')
         plt.savefig(heatmap_path, dpi=300)
         plt.close()
@@ -325,7 +324,6 @@ def generate_individual_labelMasker_reports_heatmap(subjects, func_list, mask_ni
 
 import pandas as pd
 import matplotlib.pyplot as plt
-
 import matplotlib.patches as mpatches
 
 def count_plot_TRs_2conditions(

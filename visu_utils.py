@@ -480,3 +480,108 @@ def vector_to_symmetric_matrix(vec, size):
     mat = mat + mat.T
     
     return mat
+
+#=====================
+# Atlas related
+
+def yeo_networks_from_schaeffer(label_list):
+    """
+    Classifies the Yeo 7 networks based on the label list.
+
+    Parameters
+    ----------
+    label_list : list
+        List of labels from the atlas, where each label contains the network name.
+
+    Returns
+    -------
+    network_mapping : dict
+        A dictionary where the keys are network names (e.g., 'Vis', 'SomMot') 
+        and the values are lists of indices corresponding to each network.
+    labels_by_index : list
+        A list of network names (e.g., 'Vis') corresponding to each ROI.
+    """
+    network_mapping = {}
+    labels_by_index = []
+
+    for idx, label in enumerate(label_list):
+        # Extract the network name from the label (e.g., 'Vis' from '7Networks_LH_Vis_9')
+        network = label.decode().split('_')[2]
+        labels_by_index.append(network)
+
+        if network not in network_mapping:
+            network_mapping[network] = []
+        network_mapping[network].append(idx)
+
+    return network_mapping, labels_by_index
+
+
+import matplotlib.pyplot as plt
+import seaborn as sns
+import matplotlib.cm as cm
+import matplotlib.colors as mcolors
+
+
+def plot_scatter_legend(correl1, correl2, var_name = ['var1', 'var2'], grp_id=None, legend=True, title=None, save_path=None):
+    """
+    Plots a scatter plot of two ISC-RSA correlation models, optionally grouped by categories.
+
+    Parameters
+    ----------
+    correl1 : np.ndarray or list
+        Correlation values for the first model (e.g., Euclidean).
+    correl2 : np.ndarray or list
+        Correlation values for the second model (e.g., AnnaK).
+    grp_id : list, optional
+        Group IDs for each point (e.g., Yeo network names). Default is None.
+    legend : bool, optional
+        Whether to include a legend in the plot. Default is True.
+    title : str, optional
+        Title for the plot. Default is None.
+    save_path : str, optional
+        File path to save the plot. Default is None.
+
+    Returns
+    -------
+    None
+    """
+    correl1 = np.array(correl1)
+    correl2 = np.array(correl2)
+    grp_id = np.array(grp_id) if grp_id is not None else None
+
+   
+    plt.figure(figsize=(6, 4))
+
+    if grp_id is not None:
+  
+        unique_groups = np.unique(grp_id)
+        num_grps = len(unique_groups)
+        colors = cm.get_cmap('tab20', num_grps).colors
+        color_map = {group: colors[i] for i, group in enumerate(unique_groups)}
+
+        # Plot each group with a unique color
+        for group in unique_groups:
+            mask = grp_id == group
+            plt.scatter(correl1[mask], correl2[mask], label=group, color=color_map[group], alpha=0.7, edgecolor='k')
+    else:
+        plt.scatter(correl1, correl2, color='blue', alpha=0.7, edgecolor='k')
+
+    # Add diagonal line
+    max_val = max(np.max(correl1), np.max(correl2))
+    min_val = min(np.min(correl1), np.min(correl2))
+    plt.plot([min_val, max_val], [min_val, max_val], linestyle='--', color='black', linewidth=1)
+
+    # Add labels and title
+    plt.xlabel(f"{var_name[0]}", fontsize=14)
+    plt.ylabel(f'{var_name[1]}', fontsize=14)
+    plt.title(title if title else "scatter plot", fontsize=16)
+
+    if legend and grp_id is not None:
+        plt.legend(title="Yeo Networks", loc='best', fontsize=10, title_fontsize=12)
+
+    if save_path:
+        plt.savefig(save_path, bbox_inches='tight', dpi=300)
+        print(f"Plot saved to {save_path}")
+    else:
+        plt.show()
+

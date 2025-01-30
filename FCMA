@@ -1,0 +1,37 @@
+# %%
+from brainiak.fcma.preprocessing import prepare_fcma_data,RandomType
+#from brainiak.fcma.classifier import Classifier
+from brainiak.fcma.util import compute_correlation
+from brainiak import io
+from sklearn.svm import SVC
+from sklearn.model_selection import KFold
+from mpi4py import MPI
+from nxviz.plots import CircosPlot
+from itertools import product
+from nilearn import image, plotting, datasets
+from importlib import reload
+
+import utils
+reload(utils)
+
+setup = utils.initialize_setup()
+atlas_name = setup.atlas_name
+nsub = setup.nsub
+# %%
+# Loading data
+print(f'Loading existing data and fitted maskers')
+transformed_data_per_cond = {}
+fitted_maskers = {}
+transformed_sphere_per_roi = {}
+
+for cond in setup.conditions:
+    load_path = os.path.join(setup.results_dir, cond)
+    transformed_path =  os.path.join(load_path, f'transformed_data_{atlas_name}_{cond}_{nsub}sub.npz')
+    transformed_data_per_cond[cond] = np.load(transformed_path)['arr_0'] #utils.load_pickle(os.path.join(load_path, transformed_path))
+    fitted_mask_file = f'maskers_{atlas_name}_{cond}_{nsub}sub.pkl'
+    fitted_maskers[cond] = utils.load_pickle(os.path.join(load_path, fitted_mask_file))
+
+    #load_roi = os.path.join(load_path, roi_folder)
+    #transformed_sphere_per_roi[cond] =utils.load_pickle(os.path.join(load_roi, f"{len(roi_coords)}ROIs_timeseries.pkl")) 
+
+print(f'Loading existing data and fitted maskers from : {load_path}')

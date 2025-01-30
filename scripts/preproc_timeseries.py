@@ -37,6 +37,8 @@ from nilearn.glm.first_level import make_first_level_design_matrix
 from nilearn.plotting import plot_design_matrix
 import importlib
 
+
+# %%
 parent_dir = os.path.abspath(os.path.join(os.path.dirname("func.py"), ".."))
 sys.path.append(parent_dir)
 import func
