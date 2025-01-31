@@ -20,8 +20,21 @@ import os
 import matplotlib.pyplot as plt
 import seaborn as sns
 from nilearn.maskers import NiftiLabelsMasker
+import pickle as pkl
 
+def save_data(save_path, data):
+    with open(save_path, 'wb') as f:
+        pkl.dump(data, f)
 
+def load_pickle(file_path):
+    with open(file_path, 'rb') as f:
+        data = pkl.load(f)
+    return data
+
+def load_json(file_path):
+    with open(file_path, 'r') as f:
+        data = json.load(f)
+    return data
 
 def load_process_y(xlsx_path, subjects):
     '''Load behavioral variables from xlsx file and process them for further analysis
@@ -80,7 +93,7 @@ def load_process_y(xlsx_path, subjects):
     return Y
 
 
-def extract_timeseries_and_generate_individual_reports(subjects, func_list, atlas_masker_to_fit, masker_name, save_path, confounds = None,confounf_files= None, condition_name="Analgesia", do_heatmap = True):
+def dextract_timeseries_and_generate_individual_reports(subjects, func_list, atlas_masker_to_fit, masker_name, save_path, confounds = None,confounf_files= None, condition_name="Analgesia", do_heatmap = True):
     """
     Fit each subject 4D image and saves individual reports and ROI heatmaps for each subject.
     Saves masker params in the 
@@ -502,7 +515,7 @@ def generate_multinifti_report(func_list, mask_nifti, atlas_name, save_dir, cond
     return fitted_mask
 #======First LEvel GLM function==================
 
-def create_tr_masks_for_regressors(combined_dm, regressor_names=["ANA", "N_ANA", "HYPER", "N_HYPER"], verbose=True):
+def create_tr_masks_for_suggestion(combined_dm, regressor_names=["ANA", "N_ANA", "HYPER", "N_HYPER"], verbose=True):
     """
     Create boolean masks for each condition from the combined design matrix columns,
     ensuring no overlap with other conditions.
@@ -531,11 +544,8 @@ def create_tr_masks_for_regressors(combined_dm, regressor_names=["ANA", "N_ANA",
             for col in combined_dm.columns 
             if col.startswith(other_condition) and 'instrbk' in col
         ]
-        #print(f"Excluding columns: {exclude_columns}")
-
-       
+    
         target_columns = set(include_columns) - set(exclude_columns)
-
         mask = combined_dm[list(target_columns)].sum(axis=1).to_numpy() > 0
 
         # Get indices where the condition is true
@@ -551,7 +561,7 @@ def create_tr_masks_for_regressors(combined_dm, regressor_names=["ANA", "N_ANA",
 
 
 
-def extract_regressor_timeseries(masked_2d_timeseries,indices_dct):
+def extract_regressor_timeseries(masked_2d_timeseries,indices_dct, conditions):
     """
     Extracts the timeseries for each condition based on specific regressors from design matrix indices.
     takes a dict with all the indices/rows to extract in the timeseries.
@@ -569,12 +579,9 @@ def extract_regressor_timeseries(masked_2d_timeseries,indices_dct):
     """
     
     # Extract timeseries for each condition
-    condition_timeseries = {
-        "ANA": masked_2d_timeseries[indices_dct["ANA"], :],
-        "N_ANA": masked_2d_timeseries[indices_dct["N_ANA"], :],
-        "HYPER": masked_2d_timeseries[indices_dct["HYPER"], :],
-        "N_HYPER": masked_2d_timeseries[indices_dct["N_HYPER"], :]
-    }
+    condition_timeseries = {}
+    for cond in conditions:
+        condition_timeseries[cond] = masked_2d_timeseries[indices_dct[cond], :]
 
     return condition_timeseries
 
