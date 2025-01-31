@@ -36,34 +36,20 @@ from nilearn.plotting import plot_stat_map, view_img
 from nilearn.glm.first_level import make_first_level_design_matrix
 from nilearn.plotting import plot_design_matrix
 import importlib
-
-
+import preproc_utils as utils
 # %%
-parent_dir = os.path.abspath(os.path.join(os.path.dirname("func.py"), ".."))
-sys.path.append(parent_dir)
-import func
-print(f"Python version: {sys.version}")
+# parent_dir = os.path.abspath(os.path.join(os.path.dirname("func.py"), ".."))
+# sys.path.append(parent_dir)
+# import func
+# print(f"Python version: {sys.version}")
 # %% [markdown]
 # #### Load data
 
-
 # %%
-
-
 data_dir = '/data/rainville/Hypnosis_ISC/4D_data/full_run'
 ana_run = glob.glob(os.path.join(data_dir, 'sub*', '*analgesia*.nii.gz'))
 subjects = [os.path.basename(os.path.dirname(path)) for path in ana_run]
-nsub = len(subjects)
-# nsub = 2
-
-# hyper_run = glob.glob(os.path.join(data_dir, 'sub*', '*hyperalgesia*.nii.gz'))[0:nsub]
-# behav_path = r"/data/rainville/dSutterlin/projects/resting_hypnosis/resting_state_hypnosis/atlases/Hypnosis_variables_20190114_pr_jc.xlsx"
-
-# APM_subjects = ['APM' + sub[4:] for sub in subjects][0:nsub] # make APMXX format instead of subXX
-
-#project_dir = '/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions'
-# results_dir = os.path.join(project_dir, 'results/imaging/test_preproc') # !!!!! dataset_preproc')
-
+nsub = 4 #len(subjects)
 
 setup = Bunch(
     data_dir="/data/rainville/Hypnosis_ISC/4D_data/full_run",
@@ -102,17 +88,17 @@ masker_params_dict = {
     "standardize": 'zscore_sample',
     "detrend": True,
     "low_pass": None,
-    "high_pass": 0.00234,  # 1/428 sec.
+    "high_pass": None,  # 1/428 sec.
     "t_r": 3,
-    "smoothing_fwhm": 6,
+    "smoothing_fwhm": None,
     "standardize_confounds": True,
     "verbose": 5,
     "high_variance_confounds": True,
     "mask_strategy": "whole-brain-template",  # ignore for atlas maskers
 }
 
-# Create save directory
-preproc_model_name = "{}subjects_{}_detrend_FWHM6_low-pass428_{}".format(
+# initialize preproc model and save dirs
+preproc_model_name = "model1_{}subjects_{}_detrend_{}".format(
     len(setup.subjects),masker_params_dict['standardize'], datetime.today().strftime("%d-%m-%y")
 )
 save_dir = os.path.join(setup.results_dir, preproc_model_name)
@@ -122,24 +108,15 @@ if os.path.exists(save_dir):
 else:
     os.makedirs(save_dir, exist_ok=True)
 
-
-print(f"Directory {save_dir} created.")
-
 setup.save_dir = save_dir
-
-# subfolder_dict = {'voxel' : 'voxel_wise',
-#                     'atlas' : atlas_name
-#                     }
 os.makedirs(os.path.join(save_dir, "voxel_wise"), exist_ok=True)
-
-# save the masker parameters
+# save masker parameters
 masker_params_path = os.path.join(save_dir, "preproc_params.json")
 with open(masker_params_path, "w") as f:
     json.dump(masker_params_dict, f, indent=4)
 
+print(f"Directory {save_dir} created.")
 print(f"Masker parameters saved to {masker_params_path}")
-
-
 
 # %% [markdown]
 # # GLM and data structure
@@ -160,28 +137,27 @@ setup.conditions = conditions
 setup.events_dir = events_dir
 setup.confound_dir = confound_dir
 
-
 events_ana = [
-    func.get_timestamps(
+    utils.get_timestamps(
         data_dir, sub, events_dir, conditions[0], return_path=False
     ).sort_values(by="onset")
     for sub in APM_subjects
 ]
 # events_ana_dct = {
-#     sub: func.get_timestamps(
+#     sub: utils.get_timestamps(
 #         data_dir, sub, events_dir, conditions[0], return_path=False
 #     ).sort_values(by="onset")
 #     for sub in APM_subjects
 # }
 # prefered dict but less easy to index
 events_hyper = [
-    func.get_timestamps(
+    utils.get_timestamps(
         data_dir, sub, events_dir, conditions[1], return_path=False
     ).sort_values(by="onset")
     for sub in APM_subjects
 ]
 # events_hyper_dct = {
-#     sub: func.get_timestamps(
+#     sub: utils.get_timestamps(
 #         data_dir, sub, events_dir, conditions[1], return_path=False
 #     ).sort_values(by="onset")
 #     for sub in APM_subjects
@@ -245,10 +221,8 @@ setup.nscans["Hyper"] = {
     sub: nib.load(img).shape[-1] for sub, img in zip(subjects, setup.hyper_run)
 }
 
-
 # Split movement regressor file in two according to scan number of each
 # output loaded np arrays fir each run
-
 ana_confounds = []
 hyper_confounds = []
 for i, sub in enumerate(setup.subjects):
@@ -277,16 +251,15 @@ setup.confounds_Ana = ana_confounds
 setup.confounds_Hyper = hyper_confounds
 
 # %% [markdown]
-# #### Process voxel-wise func images/timeseries
+# #### Process voxel-wise utils images/timeseries
 
 # %%
-
 # create folders for voxel wise model : e.g. /model/voxel_wise
 voxel_masker.obj = NiftiMasker(**masker_params_dict)
 voxel_masker.save = os.path.join(setup.save_dir, voxel_masker.name)
 
 ana_masked_timeseries, fitted_masks_ana = (
-    func.extract_timeseries_and_generate_individual_reports(
+    utils.extract_timeseries_and_generate_individual_reports(
         setup.subjects,
         setup.ana_run,
         voxel_masker.obj,
@@ -300,7 +273,7 @@ ana_masked_timeseries, fitted_masks_ana = (
 )
 
 hyper_masked_timeseries, fitted_masks_hyper = (
-    func.extract_timeseries_and_generate_individual_reports(
+    utils.extract_timeseries_and_generate_individual_reports(
         setup.subjects,
         setup.hyper_run,
         voxel_masker.obj,
@@ -358,7 +331,7 @@ print(len(all_run_2d_timeseries), all_run_2d_timeseries[0].shape)
 # ### Check TRs per condition
 
 # %% [markdown]
-# #### Function to count TRs for suggestion conditions, for neutral and modulation suggestion. Added to func.py file
+# #### utilstion to count TRs for suggestion conditions, for neutral and modulation suggestion. Added to utils.py file
 
 # %% [markdown]
 # #### Number of TRs (total condition duration / TR) TR=3 in this dataset
@@ -367,10 +340,8 @@ print(len(all_run_2d_timeseries), all_run_2d_timeseries[0].shape)
 len(events_hyper), setup.save_dir
 
 
-
-
 # hyper condition
-TRs_df, fig_hyper = func.count_plot_TRs_2conditions(
+TRs_df, fig_hyper = utils.count_plot_TRs_2conditions(
     setup.subjects,
     events_hyper,
     TR=3,
@@ -387,7 +358,8 @@ TRs_df, fig_hyper = func.count_plot_TRs_2conditions(
 plt.close(fig_hyper)
 
 # Ana condition
-TRs_df, fig_ana = func.count_plot_TRs_2conditions(
+TRs_df, fig_ana = utils.count_plot_TRs_2conditions(
+    setup.subjects,
     events_ana,
     TR=3,
     neutral_pattern="N_ANA.*instrbk",
@@ -440,6 +412,8 @@ for i, sub in enumerate(setup.subjects):
     # Assert that nscans match for both runs
     # warnings == ts_hyper.shape[0], f"Mismatch in nscans for subject {sub}"
 
+    if masker_params_dict["high_pass"] is None:
+        masker_params_dict["high_pass"] = 0.01 #default nilearn
     # Create design matrices for each run
     dm_ana = make_first_level_design_matrix(
         frame_time_ana,
@@ -458,6 +432,10 @@ for i, sub in enumerate(setup.subjects):
         high_pass=masker_params_dict["high_pass"],
         add_regs=setup.confounds_Hyper[i],
     )
+
+    #rename movement reg 
+    dm_ana.columns = [f"Ana_{col}" if col.startswith("nuis") else col for col in dm_ana.columns]
+    dm_hyper.columns = [f"Hyper_{col}" if col.startswith("nuis") else col for col in dm_hyper.columns]
 
     # Combine design matrices
     zero_padding_ana = pd.DataFrame(0, index=dm_ana.index, columns=dm_hyper.columns)
@@ -516,20 +494,37 @@ setup.design_mat_2runs_files = design_matrices_2runs_files
 # Combine the timeseries for both runs
 
 # %%
-import func
-importlib.reload(func)
+regressor_names={'suggestion' : ["ANA", "N_ANA", "HYPER", "N_HYPER"], 
+                    'shock' : ["ANA*shock", "N_ANA*shock", "HYPER*shock", "N_HYPER*shock"]}
+
+regressor_names={'suggestion' : ["ANA", "N_ANA", "HYPER", "N_HYPER"], 
+                    'shock' : ["ANA*shock", "N_ANA*shock", "HYPER*shock", "N_HYPER*shock"]}
 
 # Extract TRs indices for regressors of all subjects (dict for each sub)
 sugg_indices_all_reg = []
-
+# nuis_regs = []
+full_confounds = [np.vstack([ana, hyper]) for ana, hyper in zip(setup.confounds_Ana, setup.confounds_Hyper)]
+indices_all_cond = {}
 for sub in setup.subjects:
-    print(f"==Extracting TRs indices for regressors of {sub}==")
-
+    print(f"==Extracting TRs indices for regr essors of {sub}==")
     dm_combined = design_matrices_2runs[sub]
-    cond_indices = func.create_tr_masks_for_regressors(
-        dm_combined, regressor_names=["ANA", "N_ANA", "HYPER", "N_HYPER"]
-    )
-    sugg_indices_all_reg.append(cond_indices)
+
+    for trial_type in regressor_names.keys():
+        if trial_type == 'suggestion':
+            cond_indices = utils.create_tr_masks_for_suggestion(
+                dm_combined, regressor_names=regressor_names['suggestion']
+            )
+            sugg_indices_all_reg.append(cond_indices)
+        # nuis_regs.append(np.array(dm_combined.filter(like="reg")))
+        elif trial_type == 'shock':
+            cond_indices = utils.create_tr_masks_for_shock(
+            dm_combined, regressor_names=regressor_names['shock']
+            )
+
+    # concatenate teo trial type in a dict ?
+    - create utils.create_tr_masks_for_shock to extract shocks 
+    - save files in same dir.
+    ========================================
 
 
 # Extract the timeseries for each condition
@@ -537,16 +532,59 @@ print("====Extracting volumes per regressor for all subjects====")
 
 extracted_timeseries_per_cond = []
 cond_names = ["ANA", "N_ANA", "HYPER", "N_HYPER"]
+nuis_reg_per_cond= []
 
 for i, sub in enumerate(setup.subjects):
 
     print(f"Extracted timeseries for subject {sub}: {cond_names}")
-    dct_timeseries = func.extract_regressor_timeseries(
-        all_run_2d_timeseries[i], sugg_indices_all_reg[i]
-    )
-    extracted_timeseries_per_cond.append(dct_timeseries)
+    dct_timeseries = utils.extract_regressor_timeseries(
+                                                            all_run_2d_timeseries[i],
+                                                            sugg_indices_all_reg[i],
+                                                            cond_names
+                                                        )
+    
+    dct_nuis_reg = utils.extract_regressor_timeseries(
+                                                        full_confounds[i],
+                                                        sugg_indices_all_reg[i],
+                                                        cond_names
+                                                     )
 
+    extracted_timeseries_per_cond.append(dct_timeseries)
+    nuis_reg_per_cond.append(dct_nuis_reg)
 print(f"Extracted timeseries for all subjects: {cond_names}")
+
+#%%
+from nilearn.image import index_img, concat_imgs
+extracted_volumes_per_cond = []
+nuis_reg_per_cond = []
+cond_names = ["ANA", "N_ANA", "HYPER", "N_HYPER"]
+
+
+for i, sub in enumerate(setup.subjects):
+    print(f"Processing subject {sub}: Extracting NIfTI volumes for {cond_names}")
+
+    # Load 4D functional images and concatenate
+    ana_img = nib.load(setup.ana_run[i])  # Analgesia run
+    hyper_img = nib.load(setup.hyper_run[i])  # Hyperalgesia run
+    full_4d_img = concat_imgs([ana_img, hyper_img])  # Concatenate both runs
+
+    # Dictionary to store sliced images per condition
+    sliced_imgs_per_cond = {}
+    sliced_confounds_per_cond = {}
+
+    for cond in cond_names:
+        # Extract the correct TR indices from combined design matrix
+        sliced_imgs_per_cond[cond] = index_img(full_4d_img, sugg_indices_all_reg[i][cond])
+
+        # Extract movement regressors (nuisance) based on condition indices
+        sliced_confounds_per_cond[cond] = full_confounds[i][sugg_indices_all_reg[i][cond]]
+
+    # Store extracted images and confounds
+    extracted_volumes_per_cond.append(sliced_imgs_per_cond)
+    nuis_reg_per_cond.append(sliced_confounds_per_cond) # out  [dict where keys are cond : np.array, ...]
+
+
+print(f"Extracted NIfTI volumes and nuisance regressors for all subjects: {cond_names}")
 
 
 # %% [markdown]
@@ -558,46 +596,44 @@ print(f"Extracted timeseries for all subjects: {cond_names}")
 voxel_masker.keys()
 
 # %%
+trial_types = ['suggestion', 'shock']
+trial_type = trial_types[0]
 
 # Save the 4D NIfTI files for each condition
-save_dir_4D = os.path.join(setup.save_dir, f"suggestion_blocks_concat_4D_{nsub}sub")
+save_dir_4D = os.path.join(setup.save_dir, f"extracted_4D_per_cond_{nsub}sub")
 os.makedirs(save_dir_4D, exist_ok=True)
 
 func_imgs_paths = {}
 
 # reconstruct the 4D nifti files for each subject
 for i, sub in enumerate(setup.subjects):
-    print(f"[{sub}] : Inverse transforming timeseries for cond {list(cond_names)}")
+    print(f"[{sub}] : Saving 4D timeseries for cond {list(cond_names)}")
     cond_names = extracted_timeseries_per_cond[i].keys()
+    sub_data = extracted_volumes_per_cond[i]
+    sub_nuis = nuis_reg_per_cond[i]
+    subject_folder = os.path.join(save_dir_4D, sub)
+    os.makedirs(subject_folder, exist_ok=True) 
 
     func_cond_paths = []
     sub_imgs_shape = []
 
     for ncond, cond in enumerate(cond_names):
+        nifti_imgs = sub_data[cond]
+        nscans = nifti_imgs.shape[-1]
+        nifti_save_path = os.path.join(subject_folder, f"{cond}_{trial_type}_{nscans}-vol.nii.gz")
+        nifti_imgs.to_filename(nifti_save_path)
+        
+        func_cond_paths.append(nifti_save_path)
 
-        if "ANA" in cond:
-            masker = voxel_masker.fitted_mask_Ana[i]
-        elif "HYPER" in cond:
-            masker = voxel_masker.fitted_mask_Hyper[i]
+    # Save nuisance regressors
+    sub_nuis_reg = sub_nuis[cond]
+    # n_reg = sub_nuis_reg.shape[0]
+    nuis_reg_save_path = os.path.join(subject_folder, f"mvmnt_reg_dct_{len(cond_names)}conds.pkl")
+    utils.save_data(nuis_reg_save_path, nuis_reg_per_cond[i])
 
-        timeseries = extracted_timeseries_per_cond[i][cond]
-        nifti_images = masker.inverse_transform(timeseries)
+    func_imgs_paths[sub] = func_cond_paths  # Store functional image paths per subject
+   
 
-        sub_imgs_shape.append(nifti_images.shape[-1])
-
-        # Save as NIfTI file
-        cond_folder = os.path.join(save_dir_4D, cond)
-        os.makedirs(cond_folder, exist_ok=True)
-
-        img_save_path = os.path.join(
-            cond_folder, f"{sub}_{nifti_images.shape[-1]}-vol_{cond}.nii.gz"
-        )
-        nifti_images.to_filename(img_save_path)
-        func_cond_paths.append(img_save_path)
-
-    func_imgs_paths[sub] = func_cond_paths  # save func path in sub's dict
-
-    print(f"    {sub} saved {ncond} nifti  with {sub_imgs_shape} volumes")
 
 
 # %% [markdown]
@@ -731,7 +767,7 @@ fitted_ROImasks = []
 for condition, img_paths in condition_concat_imgs.items():
     print(f"\nComputing mean image for condition: {condition}")
 
-    ROI_timeseries, fitted_ROImasks = func.extract_timeseries_and_generate_individual_reports(
+    ROI_timeseries, fitted_ROImasks = utils.extract_timeseries_and_generate_individual_reports(
         setup.subjects,
         img_paths,
         atlas['MultiMasker'],
@@ -777,10 +813,10 @@ importlib.reload(func)
 # Create directory for reports
 
 
-func.generate_multinifti_report(
+utils.generate_multinifti_report(
     setup.ana_run, atlas["img"], atlas["name"], report_dir, condition_name="Analgesia"
 )
-func.generate_multinifti_report(
+utils.generate_multinifti_report(
     setup.hyper_run, atlas["img"], atlas["name"], report_dir, condition_name="Hyperalgesia"
 )
 
@@ -800,7 +836,7 @@ masker_params = label_masker.get_params()
 parcel_name = "k50-2mm-parcel"
 
 ana_masked_timeseries, fitted_mask_ana = (
-    func.extract_timeseries_and_generate_individual_reports(
+    utils.extract_timeseries_and_generate_individual_reports(
         setup.subjects,
         ana_run,
         label_masker,
@@ -811,7 +847,7 @@ ana_masked_timeseries, fitted_mask_ana = (
 )
 
 hyper_masked_timeseries, fitted_mask_hyper = (
-    func.extract_timeseries_and_generate_individual_reports(
+    utils.extract_timeseries_and_generate_individual_reports(
         setup.subjects,
         hyper_run,
         label_masker,
@@ -897,7 +933,7 @@ save_to = os.path.join(
 os.makedirs(save_to, exist_ok=True)
 
 save_name = "mean_timecourses-ROIs_allSubj.png"
-func.plot_timecourses_from_ls(
+utils.plot_timecourses_from_ls(
     all_sugg_timeseries_per_sub, roi_names, save_to=False, n_rows=16, n_cols=3
 )
 
@@ -905,7 +941,7 @@ func.plot_timecourses_from_ls(
 masker_params_path = os.path.join(
     quality_check_save, f"{parcel_name}_masker_paramId-{param_id}.txt"
 )
-func.write_masker_params(masker_params, masker_params_path)
+utils.write_masker_params(masker_params, masker_params_path)
 
 
 # %% [markdown]

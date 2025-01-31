@@ -10,6 +10,112 @@ from brainiak.isc import phaseshift_isc, compute_summary_statistic, isc, bootstr
 from scipy.stats import rankdata, spearmanr
 from sklearn.metrics import pairwise_distances
 
+def initialize_setup():
+    project_dir = "/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions"
+    # base_path = "/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/data/test_data_sugg_3sub"
+    preproc_model_data = '23subjects_zscore_sample_detrend_FWHM6_low-pass428_10-12-24/suggestion_blocks_concat_4D_23sub'
+    base_path = os.path.join(project_dir, 'results/imaging/preproc_data', preproc_model_data)
+
+    #jeni prepoc
+    base_path =  r'/data/rainville/Hypnosis_ISC/4D_data/segmented/concat_bks'
+    behav_path = os.path.join(project_dir, 'results/behavioral/behavioral_data_cleaned.csv')
+    exclude_sub = [] #['sub-02']
+    keep_n_subjects = 3
+
+    import sys
+    sys.path.append(os.path.join(project_dir, 'QC_py310'))
+    import func
+
+    # base_path = '/home/dsutterlin/projects/test_data/suggestion_block_concat_4D_3subj'
+    # project_dir = '/home/dsutterlin/projects/ISC_hypnotic_suggestions'
+    # behav_path = os.path.join('/home/dsutterlin/projects/ISC_hypnotic_suggestions/results/behavioral', 'behavioral_data_cleaned.csv')
+
+    isc_data_df = utils.load_isc_data(base_path, folder_is='subject') # !! change params if change base_dir
+    isc_data_df = isc_data_df.sort_values(by='subject')
+
+    ana_lvl = '/data/rainville/Hypnosis_ISC/4D_data/segmented_Ana_Instr_leveled/concat_Ana_Instr_leveled'
+    ana_df = utils.load_isc_data(ana_lvl, folder_is='subject')
+    ana_df['task'] = 'Ana'
+    ana_df = ana_df.sort_values(by='subject')
+
+    ana_file_map = ana_df.set_index('subject')['file_path']  # Map of subject to Ana file paths
+    isc_data_df.loc[isc_data_df['task'] == 'Ana', 'file_path'] = isc_data_df.loc[
+        isc_data_df['task'] == 'Ana', 'subject'
+    ].map(ana_file_map)
+
+
+    # exclude subjects
+    isc_data_df = isc_data_df[~isc_data_df['subject'].isin(exclude_sub)]
+    #isc_data_df = isc_data_df.sort_values(by='subject')
+    subjects = isc_data_df['subject'].unique()
+    n_sub = len(subjects)
+
+    sub_check = {}
+    # Select a subset of subjects
+    if keep_n_subjects is not None:
+        isc_data_df = isc_data_df[isc_data_df['subject'].isin(isc_data_df['subject'].unique()[:keep_n_subjects])]
+        subjects = isc_data_df['subject'].unique()
+        n_sub = len(subjects)
+
+
+
+    #model_name = f'model3_jeni_preproc-23sub'
+    conditions = ['Hyper', 'Ana', 'NHyper', 'NAna'] #['all_sugg', 'modulation', 'neutral']
+    transform_imgs = True #False
+    do_isc_analyses = False     
+    nsub = len(subjects)
+    n_sub = len(subjects)
+    n_boot = 5000
+    do_pairwise = False
+    n_perm = 5000
+    n_perm_rsa = 10000 #change to 10 000!
+    # hyperparams
+    atlas_name = 'voxelWise' #'schafer100_2mm' #'voxelWise' #Difumo256' # !!!!!!! 'Difumo256'
+    atlas_bunch = Bunch(name=atlas_name)
+    model_name = f'model7_noise_QC-{str(n_sub)}sub_{atlas_name}_pairwise{do_pairwise}'
+
+    results_dir = os.path.join(project_dir, f'results/imaging/ISC/{model_name}')
+    mkdirs_if_not_exist(results_dir, transform_imgs)
+
+    setup = Bunch()
+    setup.project_dir = project_dir
+    setup.load_data_from = base_path
+    setup.behav_path = behav_path
+    setup.conditions = conditions
+    setup.exclude_sub = exclude_sub
+    setup.n_sub = n_sub
+    setup.model_name = model_name
+    setup.results_dir = results_dir
+    setup.subjects = list(subjects)
+    setup.n_boot = n_boot
+    setup.do_pairwise = do_pairwise
+    setup.n_perm = n_perm
+    setup.atlas_name = atlas_name
+
+
+    return setup
+
+
+def mkdirs_if_not_exist(results_dir, bool_condition):
+    if not os.path.exists(results_dir):
+        os.makedirs(results_dir)
+    elif bool_condition == False:
+        print(f"Results directory {results_dir} already exists and will be used to save (new) isc results!!")
+    else:
+        print(f"Results directory {results_dir} already exists and will be overwritten!!")
+        print("Press 'y' to overwrite or 'n' to exit")
+        while True:
+            user_input = input("Enter your choice: ").lower()
+            if user_input == 'y':
+                break
+            elif user_input == 'n':
+                print("Exiting...")
+                exit()
+            else:
+                print("Invalid input. Please enter 'y' or 'n'.")
+
+
+
 def load_isc_data(base_path, folder_is='task'):
     """
     Load ISC data from the specified folder structure.
@@ -556,3 +662,4 @@ def r_to_z(r_values):
     r_values = np.clip(r_values, -0.9999, 0.9999)
     z_values = np.arctanh(r_values)
     return z_values
+
