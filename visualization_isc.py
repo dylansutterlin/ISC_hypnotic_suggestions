@@ -365,7 +365,7 @@ rsa_dict_2ttest = {}
 
 # compare NN and AnnaK models using 2sample t tests
 # tests differences ISC-RSA correlation between two models for each var.
-
+n_test_p = []
 for y_name in behav_ls:
     print(f'====Processing {y_name} across conditions======')
     rsa_dict_2ttest[y_name] = {}
@@ -396,13 +396,16 @@ for y_name in behav_ls:
         correl2 = rsa_dict_2ttest[y_name][cond][models[1]]['correlation']
 
         t_stat, p_value = ttest_rel(correl1, correl2)
-
+        n_test_p.append(p_value) # for fdr correction across Ttest
         # Store results
         t_dict = {'t': t_stat, 'p': p_value, 'df': len(correl1) - 1}
         rsa_dict_2ttest[y_name][cond]['t_test'] = t_dict
 
+        labels_map, yeo7_net = visu_utils.yeo_networks_from_schaeffer(labels)
+        visu_utils.plot_scatter_legend(correl1, correl2, grp_id=yeo7_net,var_name = models, title = f'{y_name} {cond} RSA-ISC per ROI', save_path=None)
+        
         # Print results
-        if t_stat > 0 and p_value < 0.05/12:
+        if t_stat > 0 and p_value <= fdr_test_p:
             print(f'{models[0]} is better than {models[1]} in {cond}')
             print(f"t({t_dict['df']}) = {t_dict['t']:.2f}, p = {t_dict['p']:.4f}")
         elif t_stat < 0 and p_value < 0.05/12:
@@ -414,6 +417,9 @@ for y_name in behav_ls:
 
 # Take home is that annak is better in Hyper related conditions while NN in Ana
 
+#%%
+reload(visu_utils)
+fdr_test_p = utils.fdr(np.array(n_test_p), q=0.05)
 
 #%%
 heatmaps = {}
@@ -473,37 +479,83 @@ visu_utils.plot_similarity_and_histogram(
 
 # %%
 
-reload(utils)
-# X_pheno = pd.read_csv('/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/ISC/model5_jeni_lvlpreproc-23sub_schafer100_2mm/behav_data_group_labels.csv')
-# print('============================')
-# print('ISC-RSA for each condition')
-# all_conditions = ['Hyper', 'Ana', 'NHyper', 'NAna', 'all_sugg', 'modulation', 'neutral']
-# y_interest = ['SHSS_score', 'total_chge_pain_hypAna', 'Abs_diff_automaticity']  
+# ===========================
+# supplementary ISC-RSA with other behavioral
+X_pheno = pd.read_csv(f'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/behavioral_data_cleaned.csv')
+behav_ls = ['mean_VAS_Hyper', 'mean_VAS_Ana', 'mean_VAS_NHyper', 'mean_VAS_Nana']
+conditions = ['Hyper', 'Ana', 'NHyper', 'NAna']
+models =['euclidean', 'annak']
+atlas_labels = labels
+rsa_dict_2ttest = {}
+n_perm_rsa = 10000
+save_cond_rsa = '/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/ISC/model5_jeni_lvlpreproc-23sub_schafer100_2mm/rsa_isc_results_euclidean/supp_analyses'
 
-# for sim_model in ['euclidean', 'annak']:
+# compare NN and AnnaK models using 2sample t tests
+# tests differences ISC-RSA correlation between two models for each var.
+n_test_p = []
+for y_name, cond in zip(behav_ls, conditions):
+    print(f'====Processing {y_name} across conditions======')
+    key_name = f'{y_name}-{cond}'
+    rsa_dict_2ttest[key_name] = {}
+    isc_bootstrap = utils.load_pickle(
+        f'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/ISC/model5_jeni_lvlpreproc-23sub_schafer100_2mm/{cond}/isc_results_{cond}_5000boot_pairWiseTrue.pkl'
+    )
+    isc_pairwise = isc_bootstrap['isc']
+    isc_rois = pd.DataFrame(isc_bootstrap['isc'], columns=labels)
+    
+    values_rsa_perm = {}
+    # Load RSA data
+    y = np.array(X_pheno[y_name])
+    y = (y - np.mean(y)) / np.std(y)
+    for simil_model in models:
+        sim_behav = utils.compute_behav_similarity(y, metric = simil_model)
+        df_subjectwise_rsa = pd.DataFrame(index=range(isc_pairwise.shape[0]), columns=atlas_labels)
 
-#     for cond in all_conditions:
-#         isc_bootstrap = utils.load_pickle(f'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/ISC/model5_jeni_lvlpreproc-23sub_schafer100_2mm/{cond}/isc_results_{cond}_5000boot_pairWiseTrue.pkl')
-#         isc_pairwise = isc_bootstrap['isc']
-#         values_rsa_perm = {}
-#         distribution_rsa_perm = {}
+        for col_j in range(isc_pairwise.shape[1]): # j ROIs
+            if atlas_name == 'voxelWise':
+                roi_name = f'voxel_{col_j}'
+            else:
+                roi_name = atlas_labels[col_j]
 
-#         for behav_y in y_interest: # repeated for each Yi
-#             y = np.array(X_pheno[behav_y])
-#             y = (y - np.mean(y)) / np.std(y)
-#             sim_behav = utils.compute_behav_similarity(y, metric = sim_model)
-            
-#             for col_j in range(isc_pairwise.shape[1]):
-#                 if atlas_name == 'voxelWise':
-#                     roi_name = f'voxel_{col_j}'
-#                 else:
-#                     roi_name = labels[col_j]
+            isc_roi_vec = isc_pairwise[:, col_j]
+            rsa_results = utils.matrix_permutation(sim_behav, isc_roi_vec, n_permute=n_perm_rsa, metric="spearman", how="upper", tail=1, return_perms = True)
+            values_rsa_perm[roi_name] = {'correlation': rsa_results['correlation'], 'p_value': rsa_results['p']}
+            #distribution_rsa_perm[roi_name] = rsa_results['perm_dist']
 
-#                 isc_roi_vec = isc_pairwise[:, col_j]
-#                 rsa_results = utils.matrix_permutation(sim_behav, isc_roi_vec, n_permute=n_perm_rsa, metric="spearman", how="upper", tail=1, return_perms = True)
-#                 values_rsa_perm[roi_name] = {'correlation': rsa_results['correlation'], 'p_value': rsa_results['p']}
-#                 distribution_rsa_perm[roi_name] = rsa_results['perm_dist']
-#             distribution_rsa_perm['similarity_matrix'] = sim_behav
+        rsa_df = pd.DataFrame.from_dict(values_rsa_perm, orient='index')
+        csv_path = os.path.join(save_cond_rsa, f'isc_rsa_{n_perm_rsa}perm_{y_name}_{simil_model}simil_pvalues.csv')
+        rsa_df.to_csv(csv_path)
         
-           
-#         print(f'Done RSA-ISC ({sim_model} simil. model) for condition:', cond)
+        p_values = np.array(rsa_df['p_value'])
+        fdr_p = utils.fdr(p_values, q=0.05)
+
+        rsa_dict_2ttest[key_name][simil_model] = {
+            'correlation': rsa_df['correlation'],
+            'p_values': p_values,
+            'fdr_p': fdr_p
+        }
+
+    # Perform paired t-test between the two models
+    correl1 = rsa_dict_2ttest[key_name][models[0]]['correlation']
+    correl2 = rsa_dict_2ttest[key_name][models[1]]['correlation']
+
+    t_stat, p_value = ttest_rel(correl1, correl2)
+    n_test_p.append(p_value) # for fdr correction across Ttest
+    # Store results
+    t_dict = {'t': t_stat, 'p': p_value, 'df': len(correl1) - 1}
+    rsa_dict_2ttest[key_name]['t_test'] = t_dict
+
+    labels_map, yeo7_net = visu_utils.yeo_networks_from_schaeffer(labels)
+    visu_utils.plot_scatter_legend(correl1, correl2, grp_id=yeo7_net,var_name = models, title = f'{y_name} {cond} RSA-ISC per ROI', save_path=None)
+    
+    if t_stat > 0 and p_value <= 0.01:
+        print(f'{models[0]} is better than {models[1]} in {cond}')
+        print(f"t({t_dict['df']}) = {t_dict['t']:.2f}, p = {t_dict['p']:.4f}")
+    elif t_stat < 0 and p_value < 0.01:
+        print(f'{models[1]} is better than {models[0]} in {cond}')
+        print(f"t({t_dict['df']}) = {t_dict['t']:.2f}, p = {t_dict['p']:.4f}")
+    else:
+        print(f'No significant difference between {models[0]} and {models[1]} in {cond}')
+        print(f"t({t_dict['df']}) = {t_dict['t']:.2f}, p = {t_dict['p']:.4f}")
+
+# %%

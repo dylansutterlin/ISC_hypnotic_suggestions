@@ -93,7 +93,7 @@ def load_process_y(xlsx_path, subjects):
     return Y
 
 
-def dextract_timeseries_and_generate_individual_reports(subjects, func_list, atlas_masker_to_fit, masker_name, save_path, confounds = None,confounf_files= None, condition_name="Analgesia", do_heatmap = True):
+def extract_timeseries_and_generate_individual_reports(subjects, func_list, atlas_masker_to_fit, masker_name, save_path, confounds = None,confounf_files= None, condition_name="Analgesia", do_heatmap = True):
     """
     Fit each subject 4D image and saves individual reports and ROI heatmaps for each subject.
     Saves masker params in the 
@@ -513,9 +513,12 @@ def generate_multinifti_report(func_list, mask_nifti, atlas_name, save_dir, cond
     print(f"Report saved at: {report_path}")
 
     return fitted_mask
+
+
 #======First LEvel GLM function==================
 
-def create_tr_masks_for_suggestion(combined_dm, regressor_names=["ANA", "N_ANA", "HYPER", "N_HYPER"], verbose=True):
+
+def create_tr_masks_for_suggestion(combined_dm, regressor,all_conds = ['ANA', 'N_ANA', 'HYPER', 'N_HYPER'], verbose=True):
     """
     Create boolean masks for each condition from the combined design matrix columns,
     ensuring no overlap with other conditions.
@@ -529,35 +532,79 @@ def create_tr_masks_for_suggestion(combined_dm, regressor_names=["ANA", "N_ANA",
     Returns:
         dict: A dictionary with condition names as keys and masks (list of indices) as values.
     """
-    condition_indices = {}
+ 
+    condition = regressor[:-5] # extract the cond by removing '_sugg'
+    print(f'extracting {condition} from {regressor}')
 
-    for condition in regressor_names:
-        # Include only columns that start with the condition and contain '*instrbk*'
-        include_columns = [
-            col for col in combined_dm.columns 
-            if col.startswith(condition) and 'instrbk' in col
-        ]
-    
-        # Exclude overlapping columns from other conditions
-        exclude_columns = [
-            col for other_condition in regressor_names if other_condition != condition
-            for col in combined_dm.columns 
-            if col.startswith(other_condition) and 'instrbk' in col
-        ]
-    
-        target_columns = set(include_columns) - set(exclude_columns)
-        mask = combined_dm[list(target_columns)].sum(axis=1).to_numpy() > 0
+    # Include only columns that start with the condition and contain '*instrbk*'
+    include_columns = [
+        col for col in combined_dm.columns 
+        if col.startswith(condition) and 'instrbk' in col
+    ]
+    # print('include_columns', include_columns)
+    # Exclude overlapping columns from other conditions
+    exclude_columns = [
+        col for other_condition in all_conds if other_condition != condition
+        for col in combined_dm.columns 
+        if col.startswith(other_condition) and 'instrbk' in col
+    ]
+    # print('exclude_columns', exclude_columns)
+    target_columns = include_columns
+    regressor_signal = combined_dm[target_columns].sum(axis=1).to_numpy()
+    active_mask = regressor_signal != 0  # Selects positive and negative values
+    labeled_array, num_features = label(active_mask)
+    clean_indices = np.where((labeled_array > 0) & (regressor_signal != 0))[0] # account for 0 in HRF block
+    # indices = np.where(labeled_array > 0)[0]
 
-        # Get indices where the condition is true
-        indices = np.where(mask)[0]
-        condition_indices[condition] = indices
-        
-        if verbose:
-            print(f'Including regressors : {set(include_columns)}')
-    if verbose:
-        print(f"Conditions '{condition_indices.keys()}' have  {[len(condition_indices[key]) for key in condition_indices.keys()]} TRs.")
-        
-    return condition_indices
+    print('n regressor kept : ', len(target_columns))
+
+    return clean_indices, target_columns
+
+from scipy.ndimage import label
+def create_tr_masks_for_shock(combined_dm, regressor, all_conds = ['ANA', 'N_ANA', 'HYPER', 'N_HYPER'], verbose=True):
+    """
+    Create boolean masks for each condition from the combined design matrix columns,
+    ensuring no overlap with other conditions.
+
+    Parameters:
+        combined_dm : pandas.DataFrame
+            The combined design matrix containing conditions as columns.
+        regressor_names : list
+            List of condition names or patterns to extract from the design matrix.
+
+    Returns:
+        dict: A dictionary with condition names as keys and masks (list of indices) as values.
+    """
+    condition = regressor[:-6] # e.g. ANA, extract the cond by removing '_shock       
+
+    # Include only columns that start with the condition and contain '*instrbk*'
+    include_columns = [
+        col for col in combined_dm.columns 
+        if col.startswith(condition) and 'shock' in col
+    ]
+  
+    # Exclude overlapping columns from other conditions
+    # exclude_columns = [
+    #     col for other_condition in all_conds if other_condition != condition
+    #     for col in combined_dm.columns 
+    #     if col.startswith(other_condition) and 'shock' in col
+    # ]
+    # print('exclude_columns', exclude_columns)
+    # target_columns = set(include_columns) - set(exclude_columns)
+    # target_columns = include_columns
+    # mask = combined_dm[list(target_columns)].sum(axis=1).to_numpy() > 0
+    # # Get indices where the condition is true
+    # indices = np.where(mask)[0]
+    target_columns = include_columns
+    regressor_signal = combined_dm[target_columns].sum(axis=1).to_numpy()
+    active_mask = regressor_signal != 0  # Selects positive and negative values
+    labeled_array, num_features = label(active_mask)
+    clean_indices = np.where((labeled_array > 0) & (regressor_signal != 0))[0]
+    # indices = np.where(labeled_array > 0)[0]
+
+    print('n regressor kept : ', len(target_columns))
+
+    return clean_indices, target_columns
 
 
 
