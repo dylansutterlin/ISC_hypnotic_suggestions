@@ -19,44 +19,54 @@ reload(utils)
 # %% Load the data
 
 project_dir = "/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions"
+
 # base_path = "/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/data/test_data_sugg_3sub"
-preproc_model_data = '23subjects_zscore_sample_detrend_FWHM6_low-pass428_10-12-24/suggestion_blocks_concat_4D_23sub'
+preproc_model_data = 'model1_23subjects_zscore_sample_detrend_02-02-25/extracted_4D_per_cond_23sub'
 base_path = os.path.join(project_dir, 'results/imaging/preproc_data', preproc_model_data)
 
 #jeni prepoc
-base_path =  r'/data/rainville/Hypnosis_ISC/4D_data/segmented/concat_bks'
+# base_path =  r'/data/rainville/Hypnosis_ISC/4D_data/segmented/concat_bks'
 behav_path = os.path.join(project_dir, 'results/behavioral/behavioral_data_cleaned.csv')
 exclude_sub = [] #['sub-02']
-keep_n_subjects = None
-
-import sys
-sys.path.append(os.path.join(project_dir, 'QC_py310'))
-import func
+keep_n_subjects = 2
+model_is = 'sugg'
+# import sys
+# sys.path.append(os.path.join(project_dir, 'QC_py310'))
+# import func
 
 # %% 
 # base_path = '/home/dsutterlin/projects/test_data/suggestion_block_concat_4D_3subj'
 # project_dir = '/home/dsutterlin/projects/ISC_hypnotic_suggestions'
 # behav_path = os.path.join('/home/dsutterlin/projects/ISC_hypnotic_suggestions/results/behavioral', 'behavioral_data_cleaned.csv')
 
-isc_data_df = utils.load_isc_data(base_path, folder_is='subject') # !! change params if change base_dir
+isc_data_df = utils.load_isc_data(base_path, folder_is='subject', model = model_is) # !! change params if change base_dir
 isc_data_df = isc_data_df.sort_values(by='subject')
 
-ana_lvl = '/data/rainville/Hypnosis_ISC/4D_data/segmented_Ana_Instr_leveled/concat_Ana_Instr_leveled'
-ana_df = utils.load_isc_data(ana_lvl, folder_is='subject')
-ana_df['task'] = 'Ana'
-ana_df = ana_df.sort_values(by='subject')
 
-ana_file_map = ana_df.set_index('subject')['file_path']  # Map of subject to Ana file paths
-isc_data_df.loc[isc_data_df['task'] == 'Ana', 'file_path'] = isc_data_df.loc[
-    isc_data_df['task'] == 'Ana', 'subject'
-].map(ana_file_map)
+# ana_lvl = '/data/rainville/Hypnosis_ISC/4D_data/segmented_Ana_Instr_leveled/concat_Ana_Instr_leveled'
+# ana_df = utils.load_isc_data(ana_lvl, folder_is='subject')
+# ana_df['task'] = 'Ana'
+# ana_df = ana_df.sort_values(by='subject')
 
+# ana_file_map = ana_df.set_index('subject')['file_path']  # Map of subject to Ana file paths
+# isc_data_df.loc[isc_data_df['task'] == 'Ana', 'file_path'] = isc_data_df.loc[
+#     isc_data_df['task'] == 'Ana', 'subject'
+# ].map(ana_file_map)
+8
 
 # exclude subjects
 isc_data_df = isc_data_df[~isc_data_df['subject'].isin(exclude_sub)]
-#isc_data_df = isc_data_df.sort_values(by='subject')
+isc_data_df = isc_data_df.sort_values(by='subject')
 subjects = isc_data_df['subject'].unique()
 n_sub = len(subjects)
+
+# confounds !! unsorted!
+conf=True
+if conf:
+    dct_conf_unsorted = utils.load_confounds(base_path)
+    confounds_ls = utils.filter_and_rename_confounds(dct_conf_unsorted, subjects, model_is)
+else: confounds_ls = None
+
 
 sub_check = {}
 # Select a subset of subjects
@@ -65,11 +75,10 @@ if keep_n_subjects is not None:
     subjects = isc_data_df['subject'].unique()
     n_sub = len(subjects)
 
-
-
 #model_name = f'model3_jeni_preproc-23sub'
 conditions = ['Hyper', 'Ana', 'NHyper', 'NAna'] #['all_sugg', 'modulation', 'neutral']
-transform_imgs = False #False
+conditions = ['HYPER', 'ANA', 'NHYPER', 'NANA'] 
+transform_imgs = True #False
 do_isc_analyses = False     
 nsub = len(subjects)
 n_sub = len(subjects)
@@ -78,10 +87,10 @@ do_pairwise = True
 n_perm = 5000
 n_perm_rsa = 10000 #change to 10 000!
 # hyperparams
-atlas_name = 'voxelWise' #schafer100_2mm' #'voxelWise' #Difumo256' # !!!!!!! 'Difumo256'
+atlas_name = 'schafer100_2mm' #'voxelWise' #Difumo256' # !!!!!!! 'Difumo256'
 atlas_bunch = Bunch(name=atlas_name)
 # model_name = f'model5_jeni_lvlpreproc-{str(n_sub)}sub_{atlas_name}' #_pairwise{do_pairwise}'
-model_name = f'model7_jeni_lvlpreproc-{str(n_sub)}sub_{atlas_name}' #_pairwise{do_pairwise}'
+model_name = f'model1_0202preproc-{str(n_sub)}sub_{atlas_name}' #_pairwise{do_pairwise}'
 
 results_dir = os.path.join(project_dir, f'results/imaging/ISC/{model_name}')
 if not os.path.exists(results_dir):
@@ -156,14 +165,14 @@ for cond in conditions:
     save_csv.to_csv(os.path.join(cond_folder, f'setup_func_path_{cond}.csv'))
     utils.save_data(os.path.join(cond_folder, f'setup_func_path_{cond}.pkl'), subject_file_dict[cond])
 
+
 # %%
-noise_check = True
+noise_check = False
 voxel_masker = Bunch(name="voxel_wise")
 data_shape = nib.load(subject_file_dict[conditions[0]][subjects[0]]).shape[0:3] #3D
 data_affine = nib.load(subject_file_dict[conditions[0]][subjects[0]]).affine
 mask = '/data/rainville/Hypnosis_ISC/masks/brainmask_91-109-91.nii'
 voxel_masker.obj = NiftiMasker(mask_img=mask, target_shape = data_shape, target_affine = data_affine, mask_strategy='whole-brain-template', verbose=5)
-
 
 # load difumo atlas
 #atlas_name = 'voxelWise' #Difumo256' # !!!!!!! 'Difumo256'
@@ -224,7 +233,7 @@ if transform_imgs == True:
     elif atlas_name == 'Difumo256':
         masker = MultiNiftiMapsMasker(maps_img=atlas, standardize=False, memory='nilearn_cache', verbose=5, n_jobs= 1)
     elif atlas_name == 'schafer100_2mm':
-        masker = NiftiLabelsMasker(labels_img=atlas, labels = atlas_labels, standardize=False, memory='nilearn_cache', verbose=5, n_jobs= 1)
+        masker = NiftiLabelsMasker(labels_img=atlas, labels = atlas_labels, mask_img=mask,resampling_target="labels", standardize=True,high_variance_confounds=True, memory='nilearn_cache', verbose=5, n_jobs= 1)
 
     #masker = MultiNiftiMapsMasker(maps_img=atlas, standardize=False, memory='nilearn_cache', verbose=5, n_jobs= 1)
     #masker = NiftiMasker(verbose=5)
@@ -239,7 +248,17 @@ if transform_imgs == True:
 
 	    #print(f'fitting images for condition : {cond} with shape {concatenated_subjects[subjects[0]][0].shape}')
         if atlas_name =='voxelWise' or atlas_name == 'schafer100_2mm':
-            ls_voxel_wise = [masker.fit_transform(concatenated_subjects[sub]) for sub in subjects]
+            # ls_voxel_wise = [masker.fit_transform(concatenated_subjects[sub],
+            #                                        confounds= confounds_ls[i][cond])
+            #                                          for i, sub in enumerate(subjects)
+            # ]
+            ls_voxel_wise = []
+            fitted_maskers[cond] = []
+            for i, sub in enumerate(subjects):
+                transformed_data = masker.fit_transform(concatenated_subjects[sub], confounds=confounds_ls[i][cond])
+                ls_voxel_wise.append(transformed_data)
+                fitted_maskers[cond].append(masker)  # Store the fitted masker for this subject
+
             print('ls_voxel_wise shape : ', [img.shape for img in ls_voxel_wise])
             transformed_data_per_cond[cond] = ls_voxel_wise
             fitted_maskers[cond] = masker
@@ -254,9 +273,6 @@ if transform_imgs == True:
         #transformed_sphere_per_roi[cond] = utils.extract_save_sphere(concatenated_subjects, cond, results_dir, roi_coords, sphere_radius=sphere_radius)
         end_cond_time = time.time()
         print(f"Condition {cond} completed in {end_cond_time - start_cond_time:.2f} seconds")
-
-        from nilearn.plotting import plot_carpet
-    
 
     end_total_time = time.time()
     print(f"Total time for data extraction: {end_total_time - start_total_time:.2f} seconds")
@@ -355,7 +371,7 @@ for sub in range(n_sub):
     subject = subjects[sub]
     for cond in conditions:
         file_path = os.path.join(qc_path, f'{subject}_{cond}_carpet_detrend.png')
-        inv_img = fitted_maskers[cond].inverse_transform(transformed_data_per_cond[cond][:,:,sub])
+        inv_img = fitted_maskers[cond].inverse_transform(transformed_data_per_cond[cond][sub])
         display = plot_carpet(
             inv_img,
             detrend=True,
@@ -365,17 +381,6 @@ for sub in range(n_sub):
             title=f"global patterns {subject} in cond {cond}",
         )
 
-#%%
-inv_imgs1 = [fitted_maskers[cond].inverse_transform(transformed_data_per_cond[cond][:,:,sub]) for sub in range(n_sub)]
-
-#%%
-display = plot_carpet(
-    inv_imgs1[0],
-    detrend=False,
-    t_r=3,
-    standardize=True,
-    title="global patterns over time",
-)
 
 #%%
 # Perform ISC

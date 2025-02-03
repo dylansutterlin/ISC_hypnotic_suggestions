@@ -116,7 +116,7 @@ def mkdirs_if_not_exist(results_dir, bool_condition):
 
 
 
-def load_isc_data(base_path, folder_is='task'):
+def load_isc_data(base_path, folder_is='task', model = 'sugg'):
     """
     Load ISC data from the specified folder structure.
 
@@ -143,32 +143,88 @@ def load_isc_data(base_path, folder_is='task'):
         if os.path.isdir(folder_path):  
     
             for file in os.listdir(folder_path): #file is subject normally
-                if file.endswith('.nii.gz'):  # Check for .nii.gz files
-                    file_path = os.path.join(folder_path, file)
-                    file_id = file.split('_')[0]  # Extract subject from filename
+                if model in file : 
+                    # print(file)
+                    if file.endswith('.nii.gz'):  # Check for .nii.gz files
+                        file_path = os.path.join(folder_path, file)
+                        file_id = file.split('_')[0]  # Extract subject from filename
 
-                    if folder_is == 'task':
-                        # Append metadata and data to the list
-                        data_list.append({
-                            'subject': file_id,
-                            'task': folder,
-                            'file_path': file_path,
-        
-                        })
-                    # adjusted 15-01-25 for jeni preproc where subj/ contains all tasks files
-                    elif folder_is =='subject':
-                        if file_id == 'N': # adjust for neutral cond : N_Ana / N_Hyper
-                            file_id = file.split('_')[0] + file.split('_')[1]
-                        data_list.append({
-                            'subject': folder,
-                            'task': file_id,
-                            'file_path': file_path,
+                        if folder_is == 'task':
+                            # Append metadata and data to the list
+                            data_list.append({
+                                'subject': file_id,
+                                'task': folder,
+                                'file_path': file_path,
+            
+                            })
+                        # adjusted 15-01-25 for jeni preproc where subj/ contains all tasks files
+                        elif folder_is =='subject':
+                            if file_id == 'N': # adjust for neutral cond : N_Ana / N_Hyper
+                                file_id = file.split('_')[0] + file.split('_')[1]
+                            data_list.append({
+                                'subject': folder,
+                                'task': file_id,
+                                'file_path': file_path,
 
-                        })
- 
+                            })
+
     df = pd.DataFrame(data_list)
 
     return df
+
+def load_confounds(base_path):
+    sub_conf = {}
+    for folder in os.listdir(base_path):
+        folder_path = os.path.join(base_path, folder)
+        if os.path.isdir(folder_path):  
+    
+            for file in [f for f in os.listdir(folder_path) if f.startswith('mvmnt_reg')]:
+                #print(folder, file)
+                p = os.path.join(base_path, folder, file)
+                reg_dct = load_pickle(p)
+                sub_conf[folder] = reg_dct
+
+    return sub_conf
+
+
+def filter_and_rename_confounds(dct_conf_unsorted, subjects, model_is):
+    """
+    Filters and renames confound keys for each subject based on `model_is`.
+    If the key starts with 'N_', it concatenates the first two parts without an underscore.
+
+    Parameters
+    ----------
+    dct_conf_unsorted : dict
+        Dictionary of confounds per subject.
+    subjects : list
+        List of subject IDs.
+    model_is : str
+        Substring to filter relevant confound keys.
+
+    Returns
+    -------
+    list of dict
+        List of dictionaries with filtered and renamed confound keys per subject.
+    """
+    ls_dct_conf = []
+
+    for sub in subjects:
+        sub_dct = dct_conf_unsorted[sub].copy()
+        filtered_dct = {}
+
+        for cond_key in list(sub_dct.keys()):
+            if model_is in cond_key:
+                parts = cond_key.split('_')
+                if parts[0] == 'N':
+                    novel_key = parts[0] + parts[1]  # Merge "N_" into "NANA", "NHYPER", etc.
+                else:
+                    novel_key = parts[0]
+                filtered_dct[novel_key] = sub_dct[cond_key]
+
+        ls_dct_conf.append(filtered_dct)
+
+    return ls_dct_conf
+
 
 
 def get_files_for_condition_combination(subjects, task_combinations, sub_task_files):

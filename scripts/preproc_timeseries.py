@@ -101,7 +101,7 @@ masker_params_dict = {
 }
 
 # initialize preproc model and save dirs
-preproc_model_name = "model2_{}subjects_{}_detrend_{}".format(
+preproc_model_name = "model1_{}subjects_{}_detrend_{}".format(
     len(setup.subjects),masker_params_dict['standardize'], datetime.today().strftime("%d-%m-%y")
 )
 save_dir = os.path.join(setup.results_dir, preproc_model_name)
@@ -622,9 +622,10 @@ for i, sub in enumerate(setup.subjects):
     for ncond, cond in enumerate(regressors_names):
         nifti_imgs = sub_data[cond]
         nscans = nifti_imgs.shape[-1]
+        print('imgs having shape :', nifti_imgs.shape)
         nifti_save_path = os.path.join(subject_folder, f"{cond}_{nscans}-vol.nii.gz")
         nifti_imgs.to_filename(nifti_save_path)
-        
+
         func_cond_paths.append(nifti_save_path)
 
     # Save nuisance regressors
@@ -696,14 +697,17 @@ for cond in regressors_names:
     sub_timeseries = []
     sub_maskers = []
     for i, sub in enumerate(setup.subjects):
+        print(sub)
         if sub == exclude_subject:  # Skip sub-02
             print(f"Skipping {sub}")
             continue 
         sub_imgs = extracted_volumes_per_cond[i][cond]
         sub_reg = nuis_reg_per_cond[i][cond]
         ts = masker.fit_transform(sub_imgs, confounds=sub_reg)
+        print(ts.shape) # cmt
         sub_timeseries.append(ts)
         sub_maskers.append(masker)
+    breakpoint() # !!!!!
     sub_timeseries_all_cond[cond] = np.stack(sub_timeseries, axis=-1) #TR x ROI x subjects 
     fitted_maskers[cond] = sub_maskers
     print(sub_timeseries_all_cond[cond].shape)
