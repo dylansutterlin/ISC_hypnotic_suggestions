@@ -250,7 +250,7 @@ def plot_isc_median_with_significance(isc_median, p_values, atlas_labels, p_thre
     fdr_correction : bool, optional
         Whether to apply FDR correction to p-values. Default is False.
     """
-    # Apply FDR correction if requested
+    # Apply FDR correction 
     if fdr_correction:
         _, corrected_p_values, _, _ = multipletests(p_values, alpha=p_threshold, method='fdr_bh')
         sig_mask = corrected_p_values < p_threshold
@@ -280,7 +280,6 @@ def plot_isc_median_with_significance(isc_median, p_values, atlas_labels, p_thre
     inset_ax.set_ylabel("Count", fontsize=8)
     inset_ax.tick_params(axis='both', which='major', labelsize=8)
 
-    # Save or display the plot
     if save_path:
         os.makedirs(os.path.dirname(save_path), exist_ok=True)
         plt.savefig(save_path, dpi=300)
@@ -290,6 +289,7 @@ def plot_isc_median_with_significance(isc_median, p_values, atlas_labels, p_thre
     else:
         plt.close()
 
+    return sig_mask
 
 import nibabel as nib
 import numpy as np
@@ -324,33 +324,36 @@ def project_isc_to_brain(atlas_path, isc_median, atlas_labels, p_values=None, p_
     # Create an empty volume to store ISC values
     isc_vol = np.zeros_like(atlas_data)
     non_sig_max_isc = []
-
+    sig_min_isc = []
     # Assign ISC values to corresponding atlas regions
     for roi_idx, label in enumerate(atlas_labels):
         roi_mask = atlas_data == roi_idx + 1
         if p_values is not None and p_values[roi_idx] < p_threshold:
             # Assign significant ISC value
             isc_vol[roi_mask] = isc_median[roi_idx]
+            sig_min_isc.append(isc_median[roi_idx])
         else:
             # Track the highest ISC value for non-significant ROIs
             non_sig_max_isc.append(isc_median[roi_idx])
 
-    # Create a Nifti image for the ISC projection
     isc_img = nib.Nifti1Image(isc_vol, atlas_img.affine, atlas_img.header)
-
-    max_isc_thresh = np.max(np.array(non_sig_max_isc))
+    
+    # max_isc_thresh = np.max(np.array(non_sig_max_isc))
+    if len(sig_min_isc) > 0:
+        min_sig = np.min(np.array(sig_min_isc))
+    else : min_sig = 0.0001
     # Save the ISC map if save_path is provided
     if save_path:
         os.makedirs(os.path.dirname(save_path), exist_ok=True)
         nib.save(isc_img, save_path)
         print(f"ISC projection saved to {save_path}")
+    max_isc = np.max(isc_vol)
+    print(f"Max ISC value: {max_isc}")
 
-    # Plot the ISC map
     if show:
-    
-        plot_stat_map(isc_img, title=title, threshold=max_isc_thresh,vmax=1, colorbar=True, display_mode='z', cut_coords=7, draw_cross=False)
+        plot_stat_map(isc_img, title=title, threshold=min_sig,vmax=max_isc, colorbar=True, display_mode='z', cut_coords=7, draw_cross=False)
 
-    return isc_img, max_isc_thresh
+    return isc_img, min_sig 
 
 
 def project_isc_to_brain_perm(atlas_path, isc_median, atlas_labels, p_values=None, p_threshold=0.01,title = '"ISC Median Values (Thresholded)', save_path=None, show=True):
@@ -410,10 +413,12 @@ def project_isc_to_brain_perm(atlas_path, isc_median, atlas_labels, p_values=Non
         nib.save(isc_img, save_path)
         print(f"ISC projection saved to {save_path}")
 
-    # Plot the ISC map
+    max_diff = np.max(np.abs(isc_vol))
+    sign_max = np.max(isc_vol) if np.max(isc_vol) > 0 else np.min(isc_vol)
+    print(f"Max ISC abs diff: {max_diff} and sign : {sign_max}")
+
     if show:
-    
-        plot_stat_map(isc_img, title=title, threshold=max_isc_thresh,vmax=1, colorbar=True, display_mode='x', cut_coords=6, draw_cross=False)
+        plot_stat_map(isc_img, title=title, threshold=max_isc_thresh,vmax=max_diff, colorbar=True, display_mode='x', cut_coords=6, draw_cross=False)
 
     return isc_img, max_isc_thresh, pd.DataFrame(sig_labels_data)
 
@@ -584,4 +589,39 @@ def plot_scatter_legend(correl1, correl2, var_name = ['var1', 'var2'], grp_id=No
         print(f"Plot saved to {save_path}")
     else:
         plt.show()
+
+
+# Function to plot images in a grid
+from PIL import Image
+
+def plot_images_grid(image_paths, title,save_to=False, show=True):
+    """Plots images in a flexible grid layout."""
+    num_images = len(image_paths)
+    cols = min(5, num_images)  # Define max columns to keep layout balanced
+    rows = int(np.ceil(num_images / cols))
+
+    fig, axes = plt.subplots(rows, cols, figsize=(cols * 3, rows * 3))
+
+    # Flatten axes if needed
+    axes = np.array(axes).reshape(-1)
+
+    for ax, img_path in zip(axes, image_paths):
+        img = Image.open(img_path)
+        ax.imshow(img)
+        ax.axis("off")
+        ax.set_title(os.path.basename(img_path).split("_")[0])  
+
+    # Hide empty subplots
+    for ax in axes[len(image_paths):]:
+        ax.axis("off")
+
+    plt.suptitle(title, fontsize=16)
+    plt.tight_layout()
+    if show:
+        plt.show()
+
+    if save_to:
+        plt.savefig(save_to, dpi=300, bbox_inches='tight')
+        print(f"Image grid saved to {save_to}")
+
 

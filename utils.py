@@ -226,6 +226,40 @@ def filter_and_rename_confounds(dct_conf_unsorted, subjects, model_is):
     return ls_dct_conf
 
 
+def assert_same_affine(concatenated_subjects, check_other_img=None):
+    '''
+    Check if all subjects have the same affine matrix and shape
+    Dict. of subject with 4D timseries
+
+    Parameters
+    ----------
+    concatenated_subjects : dict
+    check_other_img : nibabel image to compare with the concatenated subjects
+
+    '''
+    subjects = concatenated_subjects.keys()
+    for i, sub in enumerate(subjects):
+        vols = concatenated_subjects[sub]
+
+        if i == 0:
+            ref_aff = vols.affine
+            ref_shape = vols.shape
+        else:
+            curr_aff = vols.affine
+            curr_shape = vols.shape
+
+            if not np.allclose(curr_aff, ref_aff):
+                print(f"Warning: Subject {sub} has a different affine matrix.")
+
+            if curr_shape != ref_shape:
+                print(f"Warning: Subject {sub} has a different shape {curr_shape} compared to reference {ref_shape}.")
+
+    if check_other_img is not None:
+        if not np.allclose(ref_aff, check_other_img.affine):
+            print("Warning: The affine matrix of the other image is different from the concatenated subjects.")
+        if ref_shape != check_other_img.shape:
+            print(f"Warning: The shape of the other image {check_other_img.shape} is different from the concatenated subjects.")
+
 
 def get_files_for_condition_combination(subjects, task_combinations, sub_task_files):
     '''
@@ -251,6 +285,10 @@ def load_pickle(file_path):
     with open(file_path, 'rb') as f:
         data = pkl.load(f)
     return data
+
+def save_json(file_path, data):
+    with open(file_path, "w") as f:
+        json.dump(data, f, indent=4)
 
 def load_json(file_path):
     with open(file_path, 'r') as f:
@@ -338,11 +376,122 @@ def extract_save_sphere(concatenated_imgs, condition, results_dir, roi_coords, s
     return roi_timeseries
 
 
+
+def identify_zero_variance_subjects(data_per_cond, subjects):
+    """
+    Identifies subjects who have zero variance in any condition and should be removed across all conditions.
+
+    Parameters:
+    - transformed_data_per_cond (dict): Dictionary where keys are condition names and values are 3D arrays (TRs, voxels, subjects).
+    - subjects (list): List of subject IDs.
+
+    Returns:
+    - subjects_to_remove (list): List of subjects to remove across all conditions.
+    """
+    n_subjects = len(subjects)
+    zero_variance_subjects = np.zeros(n_subjects, dtype=bool)  # Track subjects with zero variance
+
+    for cond, data in data_per_cond.items():
+        print(f"Checking zero variance for condition: {cond}")
+
+        if isinstance(data, list):
+            data_3d = np.stack(data, axis=-1)
+        elif isinstance(data, np.ndarray):
+            data_3d = data
+        else:
+            raise ValueError("Unexpected data format.")
+        assert data_3d.shape[-1] == n_subjects, f"Data shape {data_3d.shape} does not match subjects {n_subjects}"
+
+        # Identify subjects with zero-variance voxels (across all voxels)
+        no_variance_sub_bool = np.any(np.var(data_3d, axis=0) == 0, axis=0)
+        
+        zero_variance_subjects |= no_variance_sub_bool  # Accumulate subjects to remove
+
+    subjects_to_remove = list(np.array(subjects)[zero_variance_subjects])
+
+    print(f"Subjects to be removed due to zero-variance voxels in any condition: {subjects_to_remove}")
+    return subjects_to_remove
+
+
+def remove_subjects(data_per_cond,fitted_maskers, subjects, subjects_to_remove):
+    """
+    Removes identified subjects across all conditions.
+
+    Parameters:
+    - transformed_data_per_cond (dict): Condition-wise fMRI data (TRs, voxels, subjects).
+    - subjects (list): List of subjects.
+    - subjects_to_remove (list): List of subjects to be removed.
+
+    Returns:
+    - updated_data_per_cond (dict): Cleaned fMRI data without removed subjects.
+    - updated_subjects (list): Updated list of subjects.
+    """
+    n_sub = len(subjects)
+    subjects_array = np.array(subjects)
+    keep_indices = ~np.isin(subjects_array, subjects_to_remove)
+    print(f"Keeping subjects: {subjects_array[keep_indices]}")
+    print('keeping indices :', keep_indices)
+
+    updated_data_per_cond = {}
+    for cond, data in data_per_cond.items():
+
+        if isinstance(data, list):
+            data_3d = np.stack(data, axis=-1)  # Convert list of 2D arrays to 3D (TRs, voxels, subjects)
+        elif isinstance(data, np.ndarray):
+            data_3d = data
+        else:
+            raise TypeError(f"Unexpected data type for condition {cond}: {type(data)}")
+        assert data_3d.shape[-1] == n_sub, f"Data shape {data_3d.shape} does not match expected number of subjects {n_sub}"
+        
+        updated_data_per_cond[cond] = data_3d[:, :, keep_indices]
+
+        assert updated_data_per_cond[cond].shape[-1] == sum(keep_indices), \
+            f"Post-removal shape {updated_data_per_cond[cond].shape} does not match expected {sum(keep_indices)} subjects"
+
+    updated_maskers = {
+        cond: [masker for i, masker in enumerate(maskers) if keep_indices[i]]
+        for cond, maskers in fitted_maskers.items()
+    }
+    updated_subjects = subjects_array[keep_indices].tolist()
+
+    print(f"Removed: {subjects_to_remove}")
+
+    return updated_data_per_cond, updated_maskers, updated_subjects
+
+
+# def assert_zero_variance_sub(data_3d, subjects):
+#     """
+#     Checks for zero-variance voxels in fMRI time series data, reports if found, 
+#     and replaces zero-value voxels with NaNs.
+
+#     Parameters:
+#     - data_3d: ndarray of shape (TRs, ROIs, subjects)
+#     """
+#     # data_copy = data_3d.copy()
+#     remove_sub_zero_variance =[]
+#     for i, sub in enumerate(subjects):
+#         time_series = data_3d[:, :, i]
+#         zero_variance_voxels = np.var(time_series, axis=0) == 0
+
+#         if np.any(zero_variance_voxels):  # Only print if zero-variance voxels exist
+#             zero_voxels = np.sum(time_series == 0, axis=0) == time_series.shape[0]
+#             print(f"[Warning!!] Zero variance detected for {sub} in {zero_variance_voxels.sum()} voxels/parcel")
+#             print(f"Number of oxels with all zero values: {zero_voxels.sum()}")
+#             remove_sub_zero_variance.append(True)
+#         else:
+#             remove_sub_zero_variance.append(False)
+#     return np.array(remove_sub_zero_variance)
+
+
+
+
+
+
 def isc_1sample(data_3d, pairwise, n_boot=5000, side = 'two-sided', summary_statistic=None):
     
     isc_result = isc(data_3d, pairwise=pairwise, summary_statistic=None)
     print(f"ISC shape: {isc_result.shape}")
-    
+    print('bootstrap')
     observed, ci, p, distribution = bootstrap_isc(
     isc_result,
     pairwise=pairwise,
@@ -352,7 +501,7 @@ def isc_1sample(data_3d, pairwise, n_boot=5000, side = 'two-sided', summary_stat
     ci_percentile=95,
     )
     #phase_obs, phase_p, phase_dist = phaseshift_isc(isc_result, pairwise=pairwise, summary_statistic="median",side= side, n_shifts=n_boot)
-
+    print('bootstrap done')
     median_isc = compute_summary_statistic(isc_result, 'median', axis=0) # per ROI : 1, n_voxels
     total_median_isc = compute_summary_statistic(isc_result, 'median', axis=None)
     print(f'Median ISC : {total_median_isc}')
