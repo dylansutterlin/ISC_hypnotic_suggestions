@@ -22,25 +22,32 @@ from nilearn.plotting import view_img_on_surf
 reload(visu_utils)
 reload(utils)
 # %% Load the data
-
+model_names = {
+    'model1': 'model2_0202preproc_mvmnt-reg_high-variance-False_23sub_schafer100_2mm',
+    'model2': 'model2_0202preproc_NO-mvmnt-reg_high-variance-False_23sub_schafer100_2mm',
+    'model3': 'model4_sugg_0602_preproc_reg-mvmnt-False_high-variance-False_23sub_voxelWise_lanA800',
+    'model4': 'model4_sugg_0602_preproc_reg-mvmnt-True_high-variance-False_23sub_voxelWise_lanA800'
+}
+parcel_names = {
+    'model1' : 'schafer100_2mm',
+    'model2': 'schafer100_2mm',
+    'model3': 'voxelWise_lanA800',
+    'model4': 'voxelWise_lanA800'
+}
 project_dir = "/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions"
 # base_path = "/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/data/test_data_sugg_3sub"
 preproc_model_data = '23subjects_zscore_sample_detrend_FWHM6_low-pass428_10-12-24/suggestion_blocks_concat_4D_23sub'
 
 base_path = os.path.join(project_dir, 'results/imaging/preproc_data', preproc_model_data)
 
-#jeni prepoc
-base_path =  r'/data/rainville/Hypnosis_ISC/4D_data/segmented/concat_bks'
-behav_path = os.path.join(project_dir, 'results/behavioral/behavioral_data_cleaned.csv')
+model_name = model_names['model4']
+parcel_name = parcel_names['model4']
 
-#model_name = f'model5_jeni_lvlpreproc-23sub_schafer100_2mm'
-model_name = "model1_0202preproc-23sub_schafer100_2mm"
-model_name = "model2_0202preproc_mvmnt-reg_high-variance-False_23sub_schafer100_2mm"
 results_dir = os.path.join(project_dir, f'results/imaging/ISC/{model_name}')
-
 setup = utils.load_json(os.path.join(results_dir, "setup_parameters.json"))
 
-#%%all_results_paths = utils.load_json(os.path.join(results_dir, "result_paths.json"))
+# %% 
+# all_results_paths = utils.load_json(os.path.join(results_dir, "result_paths.json"))
 atlas_name = 'Difumo256' # change to setup['atlas_name']
 n_sub = setup['n_sub']
 
@@ -48,7 +55,7 @@ atlas_data = fetch_atlas_schaefer_2018(n_rois = 100, resolution_mm=2)
 atlas = nib.load(atlas_data['maps'])
 atlas_path = atlas_data['maps'] #os.path.join(project_dir,os.path.join(project_dir, 'masks', 'k50_2mm', '*.nii*'))
 labels = list(atlas_data['labels'])
-
+labels = None
 
 
 # %%
@@ -64,7 +71,7 @@ interactive_views = []
 for cond in conditions:
     #masker =utils.load_pickle(os.path.join(results_dir, cond, f'maskers_{atlas_name}_{cond}_{n_sub}sub.pkl'))
     #isc_bootstrap = utils.load_pickle(all_results_paths[result_key][cond])
-    masker = utils.load_pickle(f'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/ISC/{model_name}/{cond}/maskers_schafer100_2mm_{cond}_23sub.pkl')
+    masker = utils.load_pickle(f'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/ISC/{model_name}/{cond}/maskers_{parcel_name}_{cond}_23sub.pkl')
     isc_bootstrap = utils.load_pickle(f'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/ISC/{model_name}/{cond}/isc_results_{cond}_5000boot_pairWiseTrue.pkl')
     isc_rois = pd.DataFrame(isc_bootstrap['isc'], columns=labels)
 
@@ -80,12 +87,14 @@ for cond in conditions:
     unc_p = 0.01
     # to brain plot 
     reload(visu_utils)
+    if labels == None:
+        labels = [f'ROI_{i}' for i in range(isc_rois.shape[1])]
     isc_img, isc_thresh = visu_utils.project_isc_to_brain(
         atlas_path=atlas_path,
         isc_median=isc_median,
         atlas_labels=labels,
         p_values=p_values,
-        p_threshold=fdr_p,
+        p_threshold=0.01,
         title = f"ISC Median per ROI for {cond}",
         save_path=None,
         show=True
@@ -116,12 +125,10 @@ for cond in conditions:
     interactive_views.append(interactive_view)
 
 # %%
+masker = utils.load_pickle('/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/ISC/model4_sugg_0602_preproc_reg-mvmnt-True_high-variance-False_23sub_voxelWise_lanA800/HYPER/maskers_voxelWise_lanA800_HYPER_23sub.pkl')
 
 #%%
-
-
-#%%
-# Combinde conditions
+# Combined conditions
 # ================
 reload(visu_utils)
 reload(utils)
@@ -134,7 +141,7 @@ for i, cond in enumerate(all_conditions):
     scans = n_scans[i]
     #masker =utils.load_pickle(os.path.join(results_dir, cond, f'maskers_{atlas_name}_{cond}_{n_sub}sub.pkl'))
     #isc_bootstrap = utils.load_pickle(all_results_paths[result_key][cond])
-    masker = utils.load_pickle(f'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/ISC/{model_name}/HYPER/maskers_schafer100_2mm_HYPER_23sub.pkl')
+    # masker = utils.load_pickle(f'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/ISC/{model_name}/HYPER/maskers_schafer100_2mm_HYPER_23sub.pkl')
     isc_bootstrap = utils.load_pickle(f'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/ISC/{model_name}/concat_suggs_1samp_boot/isc_results_{cond}_{scans}TRs_5000boot_pairWiseTrue.pkl')
     isc_rois = pd.DataFrame(isc_bootstrap['isc'], columns=labels)
     isc_median = isc_bootstrap['observed']
@@ -144,20 +151,8 @@ for i, cond in enumerate(all_conditions):
     n_boot = setup['n_boot']
     fdr_p = utils.fdr(p_values, q=0.05)
     bonf_p = utils.bonferroni(p_values, alpha=0.05)
-
+    print(f'FDR thresh : {fdr_p}')
     # to brain plot 
-    reload(visu_utils)
-    isc_img, isc_thresh = visu_utils.project_isc_to_brain(
-        atlas_path=atlas_path,
-        isc_median=isc_median,
-        atlas_labels=labels,
-        p_values=p_values,
-        p_threshold=fdr_p,
-        title = f"ISC Median per ROI for {cond}",
-        save_path=None,
-        show=True
-    )
-    views[cond] = view_img_on_surf(isc_img, threshold=isc_thresh, surf_mesh='fsaverage')
     reload(visu_utils)
     sig_mask = visu_utils.plot_isc_median_with_significance(
         isc_median=isc_median,
@@ -168,6 +163,23 @@ for i, cond in enumerate(all_conditions):
         show=True,
         fdr_correction=False
     )
+    if 'voxelWise' in parcel_name:
+        isc_median[~sig_mask] = 0
+        isc_img = masker[0].inverse_transform(isc_median)
+        isc_thresh = 0
+    else:
+        isc_img, isc_thresh = visu_utils.project_isc_to_brain(
+            atlas_path=atlas_path,
+            isc_median=isc_median,
+            atlas_labels=labels,
+            p_values=p_values,
+            p_threshold=fdr_p,
+            title = f"ISC Median per ROI for {cond}",
+            save_path=None,
+            show=True
+        )
+    views[cond] = view_img_on_surf(isc_img, threshold=isc_thresh, surf_mesh='fsaverage')
+    reload(visu_utils)
     p_mask = p_values < fdr_p
     sig_labels = [labels[i] for i in range(len(labels)) if p_mask[i]]
     print('Sig ROIs :', sig_labels)
@@ -178,6 +190,9 @@ for i, cond in enumerate(all_conditions):
             title=f"Median ISC {cond} (FDR<.05)"
         )
     interactive_views.append(interactive_view)
+
+
+# %%
 
 #%%
 import matplotlib.pyplot as plt
@@ -199,30 +214,32 @@ plt.title(f"Shifted Bootstrap Distribution for ROI {roi_index}")
 plt.legend()
 plt.show()
 
+# %%
+
 #%%
 #=====================================
-# Bootstrap per combined conditions
-result_key = 'isc_combined_results'
-folder = 'concat_suggs_1samp_boot'
-#folder = 'concat_suggs_1samp_boot'
-combined_conditions = ['all_sugg', 'modulation', 'neutral']
-conditions = ['Hyper', 'Ana', 'NHyper', 'NAna']
-cond = combined_conditions[1]
-n_scans = 191
+# # Bootstrap per combined conditions
+# result_key = 'isc_combined_results'
+# folder = 'concat_suggs_1samp_boot'
+# #folder = 'concat_suggs_1samp_boot'
+# combined_conditions = ['all_sugg', 'modulation', 'neutral']
+# conditions = ['Hyper', 'Ana', 'NHyper', 'NAna']
+# cond = combined_conditions[1]
+# n_scans = 191
 
-#for cond in conditions:
-masker =utils.load_pickle(os.path.join(results_dir, conditions[0], f'maskers_{atlas_name}_{conditions[0]}_{n_sub}sub.pkl'))
-file = f"isc_results_{cond}_{n_scans}TRs_{setup['n_perm']}boot_pairWiseTrue.pkl"
-isc_bootstrap = utils.load_pickle(os.path.join(results_dir, folder, file))
+# #for cond in conditions:
+# masker =utils.load_pickle(os.path.join(results_dir, conditions[0], f'maskers_{atlas_name}_{conditions[0]}_{n_sub}sub.pkl'))
+# file = f"isc_results_{cond}_{n_scans}TRs_{setup['n_perm']}boot_pairWiseTrue.pkl"
+# isc_bootstrap = utils.load_pickle(os.path.join(results_dir, folder, file))
 
-isc_rois = isc_bootstrap['isc']
-isc_median = isc_bootstrap['observed']
-ci = isc_bootstrap['confidence_intervals']
-p_values = isc_bootstrap['p_values']
-dist = isc_bootstrap['distribution']
-n_boot = setup['n_boot']
+# isc_rois = isc_bootstrap['isc']
+# isc_median = isc_bootstrap['observed']
+# ci = isc_bootstrap['confidence_intervals']
+# p_values = isc_bootstrap['p_values']
+# dist = isc_bootstrap['distribution']
+# n_boot = setup['n_boot']
 
-fdr_p = utils.fdr(p_values, q=0.05)
+# fdr_p = utils.fdr(p_values, q=0.05)
 
 #%%
 
@@ -279,6 +296,8 @@ for i, cont in enumerate(contrasts):
             title=f"Median ISC {cont} (FDR<.05)"
         )
     interactive_views.append(interactive_view)
+
+# %%
 
 #%%
 #=======================

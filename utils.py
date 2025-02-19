@@ -226,40 +226,6 @@ def filter_and_rename_confounds(dct_conf_unsorted, subjects, model_is):
     return ls_dct_conf
 
 
-def assert_same_affine(concatenated_subjects, check_other_img=None):
-    '''
-    Check if all subjects have the same affine matrix and shape
-    Dict. of subject with 4D timseries
-
-    Parameters
-    ----------
-    concatenated_subjects : dict
-    check_other_img : nibabel image to compare with the concatenated subjects
-
-    '''
-    subjects = concatenated_subjects.keys()
-    for i, sub in enumerate(subjects):
-        vols = concatenated_subjects[sub]
-
-        if i == 0:
-            ref_aff = vols.affine
-            ref_shape = vols.shape
-        else:
-            curr_aff = vols.affine
-            curr_shape = vols.shape
-
-            if not np.allclose(curr_aff, ref_aff):
-                print(f"Warning: Subject {sub} has a different affine matrix.")
-
-            if curr_shape != ref_shape:
-                print(f"Warning: Subject {sub} has a different shape {curr_shape} compared to reference {ref_shape}.")
-
-    if check_other_img is not None:
-        if not np.allclose(ref_aff, check_other_img.affine):
-            print("Warning: The affine matrix of the other image is different from the concatenated subjects.")
-        if ref_shape != check_other_img.shape:
-            print(f"Warning: The shape of the other image {check_other_img.shape} is different from the concatenated subjects.")
-
 
 def get_files_for_condition_combination(subjects, task_combinations, sub_task_files):
     '''
@@ -491,7 +457,7 @@ def isc_1sample(data_3d, pairwise, n_boot=5000, side = 'two-sided', summary_stat
     
     isc_result = isc(data_3d, pairwise=pairwise, summary_statistic=None)
     print(f"ISC shape: {isc_result.shape}")
-    print('bootstrap')
+    print('--bootstrap')
     observed, ci, p, distribution = bootstrap_isc(
     isc_result,
     pairwise=pairwise,
@@ -501,7 +467,7 @@ def isc_1sample(data_3d, pairwise, n_boot=5000, side = 'two-sided', summary_stat
     ci_percentile=95,
     )
     #phase_obs, phase_p, phase_dist = phaseshift_isc(isc_result, pairwise=pairwise, summary_statistic="median",side= side, n_shifts=n_boot)
-    print('bootstrap done')
+    print('done--')
     median_isc = compute_summary_statistic(isc_result, 'median', axis=0) # per ROI : 1, n_voxels
     total_median_isc = compute_summary_statistic(isc_result, 'median', axis=None)
     print(f'Median ISC : {total_median_isc}')

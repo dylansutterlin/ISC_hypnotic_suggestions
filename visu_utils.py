@@ -317,7 +317,7 @@ def project_isc_to_brain(atlas_path, isc_median, atlas_labels, p_values=None, p_
     show : bool, optional
         Whether to display the plot. Default is True.
     """
-    # Load the atlas
+    
     atlas_img = nib.load(atlas_path)
     atlas_data = atlas_img.get_fdata()
 
