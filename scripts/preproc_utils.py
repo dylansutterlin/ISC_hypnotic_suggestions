@@ -2,6 +2,7 @@ import os
 import glob as glob
 import pandas as pd
 import numpy as np
+import json
 import nibabel as nib
 import matplotlib.cm as cm
 from scipy import stats
@@ -22,7 +23,7 @@ import seaborn as sns
 from nilearn.maskers import NiftiLabelsMasker
 import pickle as pkl
 
-def save_data(save_path, data):
+def save_pickle(save_path, data):
     with open(save_path, 'wb') as f:
         pkl.dump(data, f)
 
@@ -31,6 +32,10 @@ def load_pickle(file_path):
         data = pkl.load(f)
     return data
 
+def save_json(file_path, data):
+    with open(file_path, "w") as f:
+        json.dump(data, f, indent=4)
+    
 def load_json(file_path):
     with open(file_path, 'r') as f:
         data = json.load(f)
@@ -606,6 +611,55 @@ def create_tr_masks_for_shock(combined_dm, regressor, all_conds = ['ANA', 'N_ANA
 
     return clean_indices, target_columns
 
+def extract_tr_indices_from_events(events_df, regressor, TR, total_scans, need_str = 'instrbk'):
+    """
+    Extract TR indices for each condition based on event file timings.
+
+    Parameters:
+    - events_df (pd.DataFrame): Event file containing 'onset', 'duration', and 'trial_type'.
+    - regressors_names (list): List of target regressors (e.g., 'ANA_sugg', 'HYPER_sugg', etc.).
+    - TR (float): Repetition time (time per fMRI volume acquisition).
+    - total_scans (int): The total number of scans in the fMRI run.
+
+    Returns:
+    - dict: A dictionary where keys are regressors and values are lists of TR indices.
+    """
+    
+
+    # Extract base condition (removing '_sugg' or '_shock')
+    if need_str == 'instrbk':
+        condition = regressor[:-5]  
+    if need_str == 'shock':
+        condition = regressor[:-6]
+        
+    # Filter only events matching the condition and containing 'instrbk'
+    relevant_events = events_df[
+        (events_df['trial_type'].str.startswith(condition)) & 
+        (events_df['trial_type'].str.contains(need_str))
+    ]
+
+    # Initialize empty list to store TR indices
+    condition_trs = []
+
+    for _, row in relevant_events.iterrows():
+        onset_tr = int(round(row['onset'] / TR))  # Convert onset to TR index
+        duration_tr = int(round(row['duration'] / TR))  # Convert duration to TR count
+
+        # Generate all TRs spanning the event
+        tr_range = np.arange(onset_tr, onset_tr + duration_tr)
+
+        # Clip TRs to ensure they do not exceed total scan count
+        tr_range = tr_range[tr_range < total_scans]
+
+        # Append to the list
+        condition_trs.extend(tr_range)
+
+    # Store indices for this regressor
+    tr_indices = np.array(condition_trs)  # Convert to NumPy array for easy handling
+
+    print(f"Extracted {len(condition_trs)} TRs for {regressor}: {condition_trs}")
+
+    return tr_indices, list(relevant_events['trial_type'])
 
 
 def extract_regressor_timeseries(masked_2d_timeseries,indices_dct, conditions):
