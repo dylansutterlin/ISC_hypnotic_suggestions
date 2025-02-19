@@ -521,6 +521,7 @@ for i, sub in enumerate(setup.subjects):
     kept_col = {}
 
     for cond in regressors_names:
+        
         if 'ANA' in cond or 'N_ANA' in cond:
             events = events_ana[i]
             total_scans = data.nscans["Ana"][sub]
