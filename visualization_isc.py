@@ -17,7 +17,7 @@ from brainiak.isc import isc, bootstrap_isc, permutation_isc, compute_summary_st
 from nilearn.maskers import MultiNiftiMapsMasker, MultiNiftiMasker
 from nilearn.datasets import fetch_atlas_schaefer_2018
 from sklearn.utils import Bunch
-import visu_utils
+import scripts.visu_utils as visu_utils
 from nilearn.plotting import view_img_on_surf
 reload(visu_utils)
 reload(utils)

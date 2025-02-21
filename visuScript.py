@@ -11,7 +11,7 @@ import utils
 import os
 import matplotlib.pyplot as plt
 from statsmodels.stats.multitest import multipletests
-import visu_utils as vu
+import scripts.visu_utils as vu
 # Threshold values
 p_threshold_uncorrected = 0.1  # Uncorrected
 p_threshold_001 = 0.001
