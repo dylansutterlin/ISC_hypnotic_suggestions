@@ -23,6 +23,11 @@ import seaborn as sns
 from nilearn.maskers import NiftiLabelsMasker
 import pickle as pkl
 
+
+import pandas as pd
+import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
+
 def save_pickle(save_path, data):
     with open(save_path, 'wb') as f:
         pkl.dump(data, f)
@@ -272,78 +277,6 @@ def get_timestamps(
 #----------------------------
 # Quality check function
 
-import os
-import matplotlib.pyplot as plt
-import seaborn as sns
-from nilearn.maskers import NiftiLabelsMasker
-
-def generate_individual_labelMasker_reports_heatmap(subjects, func_list, mask_nifti, project_dir, condition_name="Analgesia"):
-    """
-    Generate and save individual ROI reports and heatmaps for each subject.
-
-    Parameters
-    ----------
-    func_list : list of str
-        List of paths to the functional files for each subject.
-    mask_nifti : str
-        Path to the 4D mask NIfTI file.
-    project_dir : str
-        Path to the project directory where results will be saved.
-    condition_name : str, optional
-        Name of the condition (default is "Analgesia").
-        This name will be used in folder and report/heatmap names.
-
-    Returns
-    -------
-    list of numpy.ndarray
-        List of masked timeseries for all subjects.
-    """
-    # Directory to save individual reports
-    report_dir = os.path.join(project_dir, 'results/imaging', f'ROI_reports_{condition_name}')
-    os.makedirs(report_dir, exist_ok=True)
-
-    # Initialize NiftiLabelsMasker
-    label_masker = NiftiLabelsMasker(mask_nifti, standardize=True, detrend=True)
-
-    # Storage for masked timeseries
-    masked_timeseries = []
-
-    for i, file in enumerate(func_list):
-        sub_id = subjects[i]
-        print(f"Processing subject {sub_id}...")
-        
-        # Extract timeseries for the subject
-        ts = label_masker.fit_transform(file)
-        masked_timeseries.append(ts)
-
-        # Generate and save the report for this subject
-        report = label_masker.generate_report()
-        report_path = os.path.join(report_dir, f'ROI_report_{sub_id}_{condition_name}.html')
-        report.save_as_html(report_path)
-
-        # Plot heatmap of ROI × TRs
-        fig, ax = plt.subplots(figsize=(10, 6))
-        sns.heatmap(ts.T, cmap='coolwarm', cbar=True, ax=ax)
-        ax.set_title(f"{sub_id} - Time Series of All ROIs ({condition_name})", fontsize=16)
-        ax.set_xlabel('Timepoints', fontsize=12)
-        ax.set_ylabel('ROI Index', fontsize=12)
-        plt.tight_layout()
-
-        heatmap_path = os.path.join(report_dir, f'ROI_heatmap_{sub_id}_{condition_name}.png')
-        plt.savefig(heatmap_path, dpi=300)
-        plt.close()
-
-        print(f"Heatmap saved for {sub_id} at {heatmap_path}")
-        print(f"Report saved for {sub_id} at {report_path}")
-
-    return masked_timeseries
-
-
-
-import pandas as pd
-import matplotlib.pyplot as plt
-import matplotlib.patches as mpatches
-
 def count_plot_TRs_2conditions(
     subjects,
     event_files, 
@@ -455,7 +388,6 @@ def count_plot_TRs_2conditions(
     ax.set_ylabel("Total TRs", fontsize=14)
     ax.set_title(title, fontsize=16)
     ax.set_xticks(x_positions)
-    ax.set_xticklabels(TRs_df["Subject"], rotation=45, fontsize=10)
 
     # Create a manual legend with distinct colors
     neutral_patch = mpatches.Patch(color=neutral_color, label="Neutral TRs")
@@ -472,56 +404,8 @@ def count_plot_TRs_2conditions(
 
     return TRs_df, fig
 
-import os
-from nilearn.maskers import MultiNiftiLabelsMasker
-
-
-def generate_multinifti_report(func_list, mask_nifti, atlas_name, save_dir, condition_name="Analgesia"):
-    """
-    Generate and save a MultiNiftiLabelsMasker report for a given condition.
-
-    Parameters
-    ----------
-    func_list : list of str
-        List of paths to the functional files for the condition.
-    mask_nifti : str
-        Path to the 4D mask NIfTI file.
-    project_dir : str
-        Path to the project directory where results will be saved.
-    condition_name : str, optional
-        Name of the condition (default is "Analgesia").
-        This name will be used in folder and report names.
-
-    Returns
-    -------
-    None
-    """
-    # Ensure mask_nifti is a valid 4D mask
-    assert len(mask_nifti.shape) == 4, "Mask image must be 3D."
-
-    nsub = len(func_list)
-    
-    # Initialize MultiNiftiLabelsMasker
-    masker_type = 'MultiNiftiLabelsMasker'
-    multi_masker = MultiNiftiLabelsMasker(mask_nifti, standardize=True, detrend=True)
-
-    # Fit-transform the functional files
-    fitted_mask = multi_masker.fit_transform(func_list)
-
-
-    # Generate and save the report
-    report = multi_masker.generate_report()
-    report_name = f'{atlas_name}_Multireport_{condition_name}_{nsub}-subjects.html'
-    report_path = os.path.join(save_dir, report_name)
-    report.save_as_html(report_path)
-
-    print(f"Report saved at: {report_path}")
-
-    return fitted_mask
-
 
 #======First LEvel GLM function==================
-
 
 def create_tr_masks_for_suggestion(combined_dm, regressor,all_conds = ['ANA', 'N_ANA', 'HYPER', 'N_HYPER'], verbose=True):
     """
@@ -611,7 +495,30 @@ def create_tr_masks_for_shock(combined_dm, regressor, all_conds = ['ANA', 'N_ANA
 
     return clean_indices, target_columns
 
-def extract_tr_indices_from_events(events_df, regressor, TR, total_scans, need_str = 'instrbk'):
+
+def concatenate_event_files_all_subjects(events_ana, events_hyper, subject_ids):
+
+    concatenated_events = []
+
+    for i, sub in enumerate(subject_ids):
+
+        events_ana_sub, events_hyper_sub = events_ana[i], events_hyper[i]
+
+        last_ana_onset = events_ana_sub['onset'].iloc[-1]
+        last_ana_duration = events_ana_sub['duration'].iloc[-1]
+        onset_offset = last_ana_onset + last_ana_duration
+    
+        events_hyper_sub = events_hyper_sub.copy()
+        events_hyper_sub['onset'] += onset_offset
+
+        concat_df = pd.concat([events_ana_sub, events_hyper_sub], ignore_index=True).sort_values(by="onset").reset_index(drop=True)
+        concatenated_events.append(concat_df)
+
+    return concatenated_events
+
+
+# second method to extract TRs, based on event file, not design matrix
+def extract_tr_indices_from_events_sugg(events_df, regressor, TR, total_scans):
     """
     Extract TR indices for each condition based on event file timings.
 
@@ -627,64 +534,114 @@ def extract_tr_indices_from_events(events_df, regressor, TR, total_scans, need_s
     
 
     # Extract base condition (removing '_sugg' or '_shock')
-    if need_str == 'instrbk':
-        condition = regressor[:-5]  
-    if need_str == 'shock':
-        condition = regressor[:-6]
-        
-    # Filter only events matching the condition and containing 'instrbk'
+    need_str = 'instrbk'
+    condition = regressor[:-5]  # custom for suggestions
+
     relevant_events = events_df[
         (events_df['trial_type'].str.startswith(condition)) & 
         (events_df['trial_type'].str.contains(need_str))
     ]
-
-    # Initialize empty list to store TR indices
     condition_trs = []
 
     for _, row in relevant_events.iterrows():
-        onset_tr = int(round(row['onset'] / TR))  # Convert onset to TR index
+
+        onset_tr = int(round(row['onset'] / TR))  
         duration_tr = int(round(row['duration'] / TR))  # Convert duration to TR count
 
         # Generate all TRs spanning the event
         tr_range = np.arange(onset_tr, onset_tr + duration_tr)
-
         # Clip TRs to ensure they do not exceed total scan count
         tr_range = tr_range[tr_range < total_scans]
-
-        # Append to the list
         condition_trs.extend(tr_range)
 
-    # Store indices for this regressor
     tr_indices = np.array(condition_trs)  # Convert to NumPy array for easy handling
-
     print(f"Extracted {len(condition_trs)} TRs for {regressor}: {condition_trs}")
 
     return tr_indices, list(relevant_events['trial_type'])
 
 
-def extract_regressor_timeseries(masked_2d_timeseries,indices_dct, conditions):
+def extract_tr_indices_from_events_shock(events_df, regressor, TR, total_scans, max_gap=15):
     """
-    Extracts the timeseries for each condition based on specific regressors from design matrix indices.
-    takes a dict with all the indices/rows to extract in the timeseries.
+    Extract TR indices for shock events by grouping consecutive shocks within blocks.
 
     Parameters:
-
-        masked_2d_timeseries : np.ndarray
-            2d Timeseries array. transformed from e.g. niftiMasker
-        indices_dct : dict
-            Condition indices. 1 key per regressor, value contains indices to extract (from design matrix).
-
-
+    - events_df (pd.DataFrame): Event file with 'onset', 'duration', and 'trial_type'.
+    - regressor (str): Shock regressor name (e.g., 'ANA_shock', 'HYPER_shock').
+    - TR (float): Repetition time in seconds.
+    - total_scans (int): Total number of fMRI volumes in the run.
+    - max_gap (float): Maximum gap in seconds to define consecutive shocks as part of the same block.
+        !! ISI was either 6, 9 or 12 for shock, hence >15 capture all shocks
     Returns:
-        dict : Extracted timeseries for each condition.
+    - np.array: List of TR indices corresponding to consecutive shock blocks.
     """
-    
-    # Extract timeseries for each condition
-    condition_timeseries = {}
-    for cond in conditions:
-        condition_timeseries[cond] = masked_2d_timeseries[indices_dct[cond], :]
+    need_str = "shock"
+    condition = regressor[:-6]  # Remove '_shock' to get condition base name
+    relevant_events = events_df[
+        (events_df['trial_type'].str.startswith(condition)) & 
+        (events_df['trial_type'].str.contains(need_str))
+    ].copy()
 
-    return condition_timeseries
+    if relevant_events.empty:
+        print(f"No shock events found for {regressor}")
+        return np.array([])
+    
+    relevant_events = relevant_events.sort_values(by="onset").reset_index(drop=True)
+    all_trs = []
+    block_start = relevant_events.iloc[0]['onset']  # First onset in block
+    last_onset = block_start  # Track last onset to detect gaps
+
+    for i in range(1, len(relevant_events)):
+        onset = relevant_events.iloc[i]['onset']
+        
+        # If the gap between shocks is too large, we start a new block
+        if (onset - last_onset) > max_gap:
+
+            # Convert block to TR indices and store them
+            start_tr = int(round(block_start / TR))
+            end_tr = int(round(last_onset / TR))
+            block_trs = np.arange(start_tr, end_tr + 1)
+            all_trs.extend(block_trs[block_trs < total_scans])  # Clip to max scans
+            block_start = onset
+
+        last_onset = onset
+
+    # manually add the last block to all_trs, because we only finalize when
+    #a gap is detected. so last TR is not added bc no gap after it
+    start_tr = int(round(block_start / TR))
+    end_tr = int(round(last_onset / TR))
+    block_trs = np.arange(start_tr, end_tr + 1)
+    all_trs.extend(block_trs[block_trs < total_scans]) 
+
+    print(f"Extracted {len(all_trs)} TRs for {regressor}: {all_trs}")
+
+    return np.array(all_trs), list(relevant_events['trial_type'])
+
+
+# ----
+# # gets timeseries from indices
+# def extract_regressor_timeseries(masked_2d_timeseries,indices_dct, conditions):
+#     """
+#     Extracts the timeseries for each condition based on specific regressors from design matrix indices.
+#     takes a dict with all the indices/rows to extract in the timeseries.
+
+#     Parameters:
+
+#         masked_2d_timeseries : np.ndarray
+#             2d Timeseries array. transformed from e.g. niftiMasker
+#         indices_dct : dict
+#             Condition indices. 1 key per regressor, value contains indices to extract (from design matrix).
+
+
+#     Returns:
+#         dict : Extracted timeseries for each condition.
+#     """
+    
+#     # Extract timeseries for each condition
+#     condition_timeseries = {}
+#     for cond in conditions:
+#         condition_timeseries[cond] = masked_2d_timeseries[indices_dct[cond], :]
+
+#     return condition_timeseries
 
 
 def plot_timecourses_from_ls(df_list, labels, save_to = False, n_rows=4, n_cols=4, condition_name="_", show=False, measure_lengend = 'Mean'):

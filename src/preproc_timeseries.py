@@ -39,7 +39,16 @@ import importlib
 from nilearn.image import index_img, concat_imgs
 from nilearn.glm.first_level import FirstLevelModel
 # import preproc_utils as utils
-from scripts import preproc_utils as utils 
+
+from importlib import reload
+
+if os.getcwd().endswith('ISC_hypnotic_suggestions'):
+    from scripts import preproc_utils as utils
+else:
+    script_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '../scripts'))
+    sys.path.append(script_dir)
+    import preproc_utils as utils
+    import visu_utils 
 # %%
 # parent_dir = os.path.abspath(os.path.join(os.path.dirname("func.py"), ".."))
 # sys.path.append(parent_dir)
@@ -52,7 +61,7 @@ from scripts import preproc_utils as utils
 data_dir = '/data/rainville/Hypnosis_ISC/4D_data/full_run'
 ana_run = glob.glob(os.path.join(data_dir, 'sub*', '*analgesia*.nii.gz'))
 subjects = [os.path.basename(os.path.dirname(path)) for path in ana_run]
-nsub = 2 #23 #len(subjects)
+nsub = 23 #23 #len(subjects)
 
 setup = Bunch(
     data_dir="/data/rainville/Hypnosis_ISC/4D_data/full_run",
@@ -129,9 +138,6 @@ utils.save_json(save_setup_p, setup)
 
 print(f"Directory {save_dir} created.")
 print(f"Masker parameters saved to {masker_params_path}")
-
-# %% [markdown]
-# # GLM and data structure
 
 # %% [markdown]
 # #### Import and load data!
@@ -331,6 +337,7 @@ data.confounds_Hyper = hyper_confounds
 # #### Number of TRs (total condition duration / TR) TR=3 in this dataset
 
 # %%
+reload(utils)
 
 # hyper condition
 TRs_df, fig_hyper = utils.count_plot_TRs_2conditions(
@@ -507,55 +514,71 @@ for sub in setup.subjects:
         indices_all_cond.append(cond_indices) # list of dict per sub
         kept_columns.append(kept_col)
 
-# %% 
+# %%
+
+# %% [markdown]
+## Second qay of accounting for TRs indices extraction
+# %%
 # Method 2 based on event file
+# from importlib import reload
+# reload(utils)
 
-indices_all_cond = []
-kept_columns = []
-tr = masker_params_dict["t_r"]
-# Extract TRs indices for regressors of all subjects (dict for each sub)
-for i, sub in enumerate(setup.subjects):
+# concat_events = utils.concatenate_event_files_all_subjects(events_ana, events_hyper, setup.subjects)
 
-    print(f"==Extracting TRs indices based on event files {sub}==")
-    cond_indices = {}
-    kept_col = {}
+# indices_all_cond = []
+# kept_columns = []
+# tr = masker_params_dict["t_r"]
+# # Extract TRs indices for regressors of all subjects (dict for each sub)
+# for i, sub in enumerate(setup.subjects):
 
-    for cond in regressors_names:
+#     print(f"==Extracting TRs indices based on event files {sub}==")
+#     cond_indices = {}
+#     kept_col = {}
+
+#     for cond in regressors_names:
         
-        if 'ANA' in cond or 'N_ANA' in cond:
-            events = events_ana[i]
-            total_scans = data.nscans["Ana"][sub]
-        elif 'HYPER' in cond or 'N_HYPER' in cond:
-            events = events_hyper[i]
-            total_scans = data.nscans["Hyper"][sub]
-            
-        if 'sugg' in cond:
-            extra_str = 'instrbk'
-            cond_indices[cond], kept_col[cond] = utils.extract_tr_indices_from_events(events,
-                                                                                      cond,
-                                                                                      tr,
-                                                                                      total_scans,
-                                                                                      need_str=extra_str)
-        elif 'shock' in cond:
-            extra_str = 'shock'
-            cond_indices[cond], kept_col[cond] = utils.extract_tr_indices_from_events(
-                                                                            events,
-                                                                            cond,
-                                                                            tr,
-                                                                            total_scans,
-                                                                            need_str=extra_str
-                                                                            )
+#         # if 'ANA' in cond or 'N_ANA' in cond:
+#         #     events = events_ana[i]
+#         #     nscans_ana
+#         #     total_scans = data.nscans["Ana"][sub]
+#         # elif 'HYPER' in cond or 'N_HYPER' in cond:
+#         #     events = events_hyper[i]
+#         #     total_scans = data.nscans["Hyper"][sub]
+#         total_scans = data.nscans["Ana"][sub] + data.nscans["Hyper"][sub]
+#         events= concat_events[i]
+#         if 'sugg' in cond:
+#             extra_str = 'instrbk'
+#             cond_indices[cond], kept_col[cond] = utils.extract_tr_indices_from_events_sugg(events,
+#                                                                                       cond,
+#                                                                                       tr,
+#                                                                                       total_scans
+#             )
+                                                                                      
+#         elif 'shock' in cond:
+#             extra_str = 'shock'
 
-        indices_all_cond.append(cond_indices) # list of dict per sub
-        kept_columns.append(kept_col)
+#             cond_indices[cond], kept_col[cond] = utils.extract_tr_indices_from_events_shock(
+#                                                                             events,
+#                                                                             cond,
+#                                                                             tr,
+#                                                                             total_scans
+#                                                                             )
+
+#         indices_all_cond.append(cond_indices) # list of dict per sub
+#         kept_columns.append(kept_col)
 
 # %%
 # Visualize segmented events
+sub_i = 0
+sub = setup.subjects[sub_i]
+save_tr_visu = os.path.join(setup.save_dir, f"TRs_visualization_{sub}")
+os.makedirs(save_tr_visu, exist_ok=True)
+fig_paths = []
 for cond in regressors_names:
 
-    test_shock = kept_col[cond]
-    ind_shock = cond_indices[cond]
-    extracted_timeseries = dm_combined[list(test_shock)]
+    test_shock = kept_columns[sub_i][cond]
+    ind_shock = indices_all_cond[sub_i][cond]
+    extracted_timeseries = design_matrices_2runs[sub][list(test_shock)]
 
     x_values = np.arange(len(extracted_timeseries))
 
@@ -570,8 +593,18 @@ for cond in regressors_names:
     plt.title(f"design matrix regressors for {cond}")
     plt.legend()
     plt.grid(True)
+    fig_path = os.path.join(save_tr_visu, f"{cond}_TRs.png")
+    fig_paths.append(fig_path)
+    plt.savefig(fig_path)
+    
     plt.show()
 
+
+# %% 
+#save combined figures
+reload(visu_utils)
+visu_utils.plot_images_grid(fig_paths, 'All conditions extracted TRs', save_to=os.path.join(save_tr_visu, "grid_view_all_TRs.png"))
+# %%
 
 # %% [markdown]
 ## Get timeseries for each cond indices
@@ -647,13 +680,22 @@ for i, sub in enumerate(setup.subjects):
     sub_nuis_reg = sub_nuis[cond]
     # n_reg = sub_nuis_reg.shape[0]
     nuis_reg_save_path = os.path.join(subject_folder, f"mvmnt_reg_dct_{len(regressors_names)}conds.pkl")
-    utils.save_data(nuis_reg_save_path, nuis_reg_per_cond[i])
+    utils.save_pickle(nuis_reg_save_path, nuis_reg_per_cond[i])
     func_imgs_paths[sub] = func_cond_paths 
     nuis_params_paths[sub] = nuis_reg_save_path
 
 data.func_imgs_paths = func_imgs_paths
 data.nuis_params_paths = nuis_params_paths
 
+# %%
+# save data
+save_data_p = os.path.join(setup.save_dir, 'data_'.pkl"))
+preproc_utils.save_pickle(save_data_p, data)
+
+
+# %% [markdown]
+# Quality check
+### Carpet plot etc. 
 # %%
 # mean images for each condition and plot
 mean_img_dir = os.path.join(setup.save_dir, "mean_activation")
@@ -678,82 +720,165 @@ for condition in regressors_names:
 
     print(f"Saved mean image plot for {condition} at {mean_image_plot_path}")
 print(f"\nAll mean images saved in {mean_img_dir}")
+# %%
+# ========================
+# %% [markdown]
+# QC check
+# %%
+# Atlas and mask resample  reports
+from nilearn.image import index_img
+import qc_utils
+reload(qc_utils)
+
+# assert afine of data
+for cond in regressors_names:
+    func_cond = [subject_imgs[cond] for subject_imgs in extracted_volumes_per_cond]
+    same_aff = qc_utils.assert_same_affine(func_cond, setup.subjects)
+if same_aff:
+    ref_img = index_img(extracted_volumes_per_cond[0][regressors_names[0]], 0)
+    data_shape = ref_img.shape[0:3] #3D
+    data_affine = ref_img.affine
+    print(f"Data shape : {data_shape}, Data affine : {data_affine}")
+
+# %%
+from nilearn.image import resample_to_img, binarize_img
+from nilearn.plotting import plot_roi
+from nilearn.datasets import fetch_atlas_schaefer_2018
+
+data_mask = nib.load('/data/rainville/Hypnosis_ISC/masks/brainmask_91-109-91.nii')
+_ = qc_utils.assert_same_affine(func_cond, setup.subjects, data_mask)
+plot_roi(data_mask, title='data_mask', display_mode='ortho', draw_cross=False)
+
+# %%
+resamp_mask = qc_utils.resamp_to_img_mask(data_mask, ref_img)
+_ = qc_utils.assert_same_affine(func_cond, setup.subjects, resamp_mask)
+plot_roi(resamp_mask, bg_img = ref_img, title='resampled_mask', display_mode='ortho', draw_cross=False)
+
+lan800_prob = nib.load(os.path.join(setup.project_dir, 'masks/lipkin2022_lanA800', 'LanA_n806.nii'))
+lan800_mask = binarize_img(lan800_prob, threshold=.30)
+resamp_lan800 = qc_utils.resamp_to_img_mask(lan800_mask, ref_img)
+plot_roi(resamp_lan800,bg_img=ref_img, title='lan800', display_mode='ortho', draw_cross=False)
+
+atlas_data = fetch_atlas_schaefer_2018(n_rois = 200, resolution_mm=2)
+atlas_native = nib.load(atlas_data['maps'])
+atlas = qc_utils.resamp_to_img_mask(atlas_native, ref_img)
+plot_roi(atlas,bg_img=ref_img, title='atlas', display_mode='ortho', draw_cross=False)
+_ = qc_utils.assert_same_affine(func_cond, setup.subjects, atlas)
+
 #%%
 # Carpet plot unprocessed timseries
 from nilearn.plotting import plot_carpet
 
+MAX_ITER = 1
 qc_path = os.path.join(setup.save_dir, 'QC_carpet')
+carpet_files_per_cond = {}
 os.makedirs(qc_path, exist_ok=True)
-for sub, subject in enumerate(setup.subjects):
-    for cond in regressors_names:
-        file_path = os.path.join(qc_path, f'{subject}_{cond}_carpet_detrend.png')
+
+for cond in regressors_names[:MAX_ITER]:
+
+    qc_cond_path = os.path.join(qc_path, cond)
+    os.makedirs(qc_cond_path, exist_ok=True)
+    carpet_files_per_cond[cond] = []
+    
+    for sub, subject in enumerate(setup.subjects):
+
+    # for cond in regressors_names:
+        file_path = os.path.join(qc_cond_path, f'{subject}_{cond}_carpet_detrend.png')
         imgs = extracted_volumes_per_cond[sub][cond]
         display = plot_carpet(
             imgs,
+            mask_img=resamp_mask,
             detrend=True,
             t_r=3,
             standardize=True,
             title=f"global patterns {subject} in cond {cond}",
         )
         display.savefig(file_path) 
+        carpet_files_per_cond[cond].append(file_path)
         display.show()
+
+# %%
+for cond in regressors_names[:MAX_ITER]:
+    n_subs = len(setup.subjects)
+    visu_utils.plot_images_grid(carpet_files_per_cond[cond], f'Carpet plot {cond}, {n_subs} subj.', save_to=os.path.join(qc_path, f"grid_view_carpet_{cond}_{n_subs}subs.png"))
 
 # %% [markdown]
 # ======================
 # Fit transform images
+
 transformed_dir = os.path.join(setup.save_dir, "transformed_2d_imgs")
 os.makedirs(transformed_dir, exist_ok=True)
 exclude_subject = 'sub-02'
-# for eachsubjects, fit transform the 4D images and stack in the -1 dim the arrays, save to npz
+masker_params_dict.update({'mask_img': resamp_mask})
 masker = NiftiMasker(**masker_params_dict)
 
 sub_timeseries_all_cond = {}
 fitted_maskers = {}
-for cond in regressors_names:
+
+
+for i, cond in enumerate(regressors_names[:MAX_ITER]):
     sub_timeseries = []
     sub_maskers = []
+    
     for i, sub in enumerate(setup.subjects):
         print(sub)
         if sub == exclude_subject:  # Skip sub-02
             print(f"Skipping {sub}")
             continue 
+
         sub_imgs = extracted_volumes_per_cond[i][cond]
         sub_reg = nuis_reg_per_cond[i][cond]
         ts = masker.fit_transform(sub_imgs, confounds=sub_reg)
         print(ts.shape) # cmt
         sub_timeseries.append(ts)
         sub_maskers.append(masker)
-    breakpoint() # !!!!!
+
     sub_timeseries_all_cond[cond] = np.stack(sub_timeseries, axis=-1) #TR x ROI x subjects 
     fitted_maskers[cond] = sub_maskers
     print(sub_timeseries_all_cond[cond].shape)
 
     cond_path = os.path.join(transformed_dir, f'{cond}_{i+1}sub.npz')
-    np.savez_compressed(cond_path, sub_timeseries_all_cond[cond])
+
+    # np.savez_compressed(cond_path, sub_timeseries_all_cond[cond])
 ncond = len(regressors_names)
 masker_path = os.path.join(transformed_dir, f'maskers_dct_all_{ncond}cond_{i}sub.pkl')
-utils.save_data(masker_path, fitted_maskers)
+# utils.save_pickle(masker_path, fitted_maskers)
+
 # %%
 # Plot carpet on inverse transformed data with regressed movement
 
 qc_path_reg = os.path.join(setup.save_dir, 'QC_carpet_regressed_conf')
 os.makedirs(qc_path_reg, exist_ok=True)
-for sub, subject in enumerate(setup.subjects):
-    for cond in regressors_names:
-        file_path = os.path.join(qc_path, f'{subject}_{cond}_carpet_detrend.png')
-        imgs = extracted_volumes_per_cond[sub][cond]
+reg_carpet_files_per_cond = {}
+
+for i, cond in enumerate(regressors_names[:MAX_ITER]):
+
+    qc_cond_path = os.path.join(qc_path, cond)
+    os.makedirs(qc_cond_path, exist_ok=True)
+    reg_carpet_files_per_cond[cond] = []
+    
+    for sub, subject in enumerate(setup.subjects):
+
+        file_path = os.path.join(qc_cond_path, f'{subject}_{cond}_reg-carpet_detrend.png')
+        masker_i = fitted_maskers[cond][sub]
+        imgs = masker_i.inverse_transform(sub_timeseries_all_cond[cond][:,:,i])
         display = plot_carpet(
             imgs,
+            mask_img=resamp_mask,
             detrend=True,
             t_r=3,
             standardize=True,
             title=f"global patterns {subject} in cond {cond}",
         )
-        display.savefig(file_path)  # Save manually
+        display.savefig(file_path) 
+        reg_carpet_files_per_cond[cond].append(file_path)
         display.show()
 
-# combine carpet plot into one image
-
+# %%
+for cond in regressors_names[:MAX_ITER]:
+    n_subs = len(setup.subjects)
+    visu_utils.plot_images_grid(reg_carpet_files_per_cond[cond], f'Carpet plot {cond}, {n_subs} subj.', save_to=os.path.join(qc_path, f"grid_view_carpet_{cond}_{n_subs}subs.png"))
+# %%
 # %% 
 # save data
 
