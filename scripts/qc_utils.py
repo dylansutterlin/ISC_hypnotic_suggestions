@@ -19,8 +19,12 @@ def assert_same_affine(func_ls, subjects, check_other_img=None):
 
     '''
     looks_good = True
+    
     for i, sub in enumerate(subjects):
-        vols = index_img(func_ls[i], 0)
+        if len(func_ls) == 1:
+            vols = func_ls
+        else:
+            vols = index_img(func_ls[i], 0)
 
         if i == 0:
             ref_aff = vols.affine
