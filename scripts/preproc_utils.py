@@ -4,7 +4,7 @@ import pandas as pd
 import numpy as np
 import json
 import nibabel as nib
-import matplotlib.cm as cm
+# import matplotlib.cm as cm
 from scipy import stats
 from sklearn.utils import Bunch
 from nilearn import plotting

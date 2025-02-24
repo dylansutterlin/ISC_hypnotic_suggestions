@@ -65,7 +65,7 @@ nsub = 23 #23 #len(subjects)
 
 setup = Bunch(
     data_dir="/data/rainville/Hypnosis_ISC/4D_data/full_run",
-    conditions = ["Analgesia", "Hyperalgesia"],
+    run_names = ["Analgesia", "Hyperalgesia"],
     ana_run=glob.glob(
         os.path.join(
             "/data/rainville/Hypnosis_ISC/4D_data/full_run",
@@ -92,7 +92,7 @@ setup = Bunch(
 
 )
 setup.APM_subjects = ['APM' + sub[4:] for sub in setup.subjects][0:nsub] # make APMXX format instead of subXX
-
+setup.tr = 3
 
 voxel_masker = Bunch(name="voxel_wise")
 
@@ -108,7 +108,7 @@ masker_params_dict = {
     "detrend": False,
     "low_pass": None,
     "high_pass": None,  # 1/428 sec.
-    "t_r": 3,
+    "t_r": setup.tr,
     "smoothing_fwhm": None,
     "standardize_confounds": True,
     "verbose": 3,
@@ -148,18 +148,18 @@ print(f"Masker parameters saved to {masker_params_path}")
 # extract event files
 events_dir = setup.events_dir
 confound_dir = setup.confound_dir
-conditions = setup.conditions
+run_names = setup.run_names
 APM_subjects = setup.APM_subjects
 
 events_ana = [
     utils.get_timestamps(
-        data_dir, sub, events_dir, conditions[0], return_path=False
+        data_dir, sub, events_dir, run_names[0], return_path=False
     ).sort_values(by="onset")
     for sub in APM_subjects
 ]
 events_hyper = [
     utils.get_timestamps(
-        data_dir, sub, events_dir, conditions[1], return_path=False
+        data_dir, sub, events_dir, run_names[1], return_path=False
     ).sort_values(by="onset")
     for sub in APM_subjects
 ]
@@ -381,16 +381,21 @@ plt.close(fig_ana)
 setup.keys(), voxel_masker.keys()
 
 # %%
-run_names = [setup.conditions[0][0:3], setup.conditions[1][0:5]] # Ana and Hyper
+run_names_short = ['Ana','Hyper'] # [setup.conditions[0][0:3], setup.conditions[1][0:5]] # Ana and Hyper
 design_matrices_2runs = {}
 design_matrices_2runs_files = []
+dm_ana_df = []
+dm_hyper_df = []
+dm_ana_files = []
+dm_hyper_files = []
+
 save_path = os.path.join(setup.save_dir, "design_matrices_TxT")
 os.makedirs(save_path, exist_ok=True)
 
 for i, sub in enumerate(setup.subjects):
 
     tr = masker_params_dict["t_r"]
-    names = setup.conditions
+    # names = setup.run_names
     # ts_ana = voxel_masker.preproc_2d_Ana[i]
     # ts_hyper = voxel_masker.preproc_2d_Hyper[i]
     nscans_ana = nib.load(setup.ana_run[i]).shape[-1] #ts_ana.shape[0]
@@ -426,6 +431,7 @@ for i, sub in enumerate(setup.subjects):
     dm_ana.columns = [f"Ana_{col}" if col.startswith("nuis") else col for col in dm_ana.columns]
     dm_hyper.columns = [f"Hyper_{col}" if col.startswith("nuis") else col for col in dm_hyper.columns]
 
+
     # Combine design matrices
     zero_padding_ana = pd.DataFrame(0, index=dm_ana.index, columns=dm_hyper.columns)
     dm_ana_padded = pd.concat([dm_ana, zero_padding_ana], axis=1)
@@ -436,14 +442,22 @@ for i, sub in enumerate(setup.subjects):
     dm_combined = pd.concat([dm_ana_padded, dm_hyper_padded], axis=0)
     design_matrices_2runs[sub] = dm_combined
 
+    # save individual design matrices
+    dm_ana_df.append(dm_ana)
+    dm_hyper_df.append(dm_hyper)
+    dm_ana_files.append(os.path.join(save_path, f"{sub}-Ana-design_matrix.csv"))
+    dm_hyper_files.append(os.path.join(save_path, f"{sub}-Hyper-design_matrix.csv"))
+    dm_ana_df[i].to_csv(dm_ana_files[-1])
+    dm_hyper_df[i].to_csv(dm_hyper_files[-1])
+
     # Save combined design matrix as CSV
-    csv_name = f'{sub}-{"-".join(run_names)}-design_matrix.csv'
+    csv_name = f'{sub}-{"-".join(run_names_short)}-design_matrix.csv'
     dm_combined_csv_path = os.path.join(save_path, csv_name)
     dm_combined.to_csv(dm_combined_csv_path)
     design_matrices_2runs_files.append(dm_combined_csv_path)
 
     # Save combined design matrix as PNG
-    png_name = f'{sub}-{"-".join(run_names)}-design_matrix.png'
+    png_name = f'{sub}-{"-".join(run_names_short)}-design_matrix.png'
     dm_combined_png_path = os.path.join(save_path, png_name)
 
     plot_design_matrix(dm_combined, rescale=True)
@@ -455,6 +469,7 @@ for i, sub in enumerate(setup.subjects):
     print(
         f"Saved design matrix for subject {sub}: CSV ({csv_name}) and PNG ({png_name})."
     )
+
 # %%
     # Plot for the last subject
     if i == len(setup.subjects) - 1:
@@ -475,6 +490,8 @@ for i, sub in enumerate(setup.subjects):
         plt.show()
 
 data.design_mat_2runs_files = design_matrices_2runs_files
+data.ana_design_mat_files = dm_ana_files
+data.hyper_design_mat_files = dm_hyper_files
 
 #%%
 # return design_matrices_2runs
@@ -485,9 +502,9 @@ data.design_mat_2runs_files = design_matrices_2runs_files
 
 # %%
 # conditions = ['ANA', 'N_ANA', 'HYPER', 'N_HYPER']
-regressors_names = ['ANA_sugg', 'N_ANA_sugg', 'HYPER_sugg', 'N_HYPER_sugg',
+condition_names = ['ANA_sugg', 'N_ANA_sugg', 'HYPER_sugg', 'N_HYPER_sugg',
                     'ANA_shock', 'N_ANA_shock', 'HYPER_shock', 'N_HYPER_shock']
-data.regressors_names = regressors_names
+data.condition_names = condition_names
 indices_all_cond = []
 kept_columns = []
 full_confounds = [np.vstack([ana, hyper]) for ana, hyper in zip(data.confounds_Ana, data.confounds_Hyper)]
@@ -501,7 +518,7 @@ for sub in setup.subjects:
     cond_indices = {}
     kept_col = {}
     
-    for cond in regressors_names:
+    for cond in condition_names:
         if 'sugg' in cond:
             cond_indices[cond], kept_col[cond] = utils.create_tr_masks_for_suggestion(
                 dm_combined, regressor=cond
@@ -514,6 +531,7 @@ for sub in setup.subjects:
         indices_all_cond.append(cond_indices) # list of dict per sub
         kept_columns.append(kept_col)
 
+data.regressors_per_conds = kept_columns[0] # regressors are the same for all subj
 # %%
 
 # %% [markdown]
@@ -535,7 +553,7 @@ for sub in setup.subjects:
 #     cond_indices = {}
 #     kept_col = {}
 
-#     for cond in regressors_names:
+#     for cond in condition_names:
         
 #         # if 'ANA' in cond or 'N_ANA' in cond:
 #         #     events = events_ana[i]
@@ -574,7 +592,7 @@ sub = setup.subjects[sub_i]
 save_tr_visu = os.path.join(setup.save_dir, f"TRs_visualization_{sub}")
 os.makedirs(save_tr_visu, exist_ok=True)
 fig_paths = []
-for cond in regressors_names:
+for cond in condition_names:
 
     test_shock = kept_columns[sub_i][cond]
     ind_shock = indices_all_cond[sub_i][cond]
@@ -615,7 +633,7 @@ nuis_reg_per_cond = []
 
 # Get TR indices for each conditions and concatenate volumes
 for i, sub in enumerate(setup.subjects):
-    print(f"Processing subject {sub}: Extracting NIfTI volumes for {regressors_names}")
+    print(f"Processing subject {sub}" ) #: Extracting NIfTI volumes for {condition_names}")
 
     ana_img = nib.load(setup.ana_run[i])  # Analgesia run
     hyper_img = nib.load(setup.hyper_run[i])  # Hyperalgesia run
@@ -623,7 +641,7 @@ for i, sub in enumerate(setup.subjects):
     sliced_imgs_per_cond = {}
     sliced_confounds_per_cond = {}
 
-    for cond in regressors_names:
+    for cond in condition_names:
         # Extract TR indices from design matrix
         sliced_imgs_per_cond[cond] = index_img(full_4d_img, indices_all_cond[i][cond])
         # Extract movement regressors 
@@ -642,7 +660,7 @@ for i, sub in enumerate(setup.subjects):
     extracted_volumes_per_cond.append(sliced_imgs_per_cond)
     nuis_reg_per_cond.append(sliced_confounds_per_cond) # out  [dict where keys are cond : np.array, ...]
 
-print(f"Extracted NIfTI volumes and nuisance regressors for all subjects: {regressors_names}")
+print(f"Extracted NIfTI volumes and nuisance regressors for all subjects: {condition_names}")
 # %% [markdown]
 # #### Save concatenated timeseries for each condition
 #
@@ -658,7 +676,7 @@ nuis_params_paths = {}
 # reconstruct the 4D nifti files for each subject
 for i, sub in enumerate(setup.subjects):
 
-    print(f"[{sub}] : Saving 4D timeseries for cond {list(regressors_names)}")
+    print(f"[{sub}] : Saving 4D timeseries for cond {list(condition_names)}")
     cond_names = list(extracted_volumes_per_cond[i].keys())
     sub_data = extracted_volumes_per_cond[i]
     sub_nuis = nuis_reg_per_cond[i]
@@ -667,7 +685,7 @@ for i, sub in enumerate(setup.subjects):
     func_cond_paths = []
     sub_imgs_shape = []
 
-    for ncond, cond in enumerate(regressors_names):
+    for ncond, cond in enumerate(condition_names):
 
         nifti_imgs = sub_data[cond]
         nscans = nifti_imgs.shape[-1]
@@ -679,7 +697,7 @@ for i, sub in enumerate(setup.subjects):
     # Save nuisance regressors
     sub_nuis_reg = sub_nuis[cond]
     # n_reg = sub_nuis_reg.shape[0]
-    nuis_reg_save_path = os.path.join(subject_folder, f"mvmnt_reg_dct_{len(regressors_names)}conds.pkl")
+    nuis_reg_save_path = os.path.join(subject_folder, f"mvmnt_reg_dct_{len(condition_names)}conds.pkl")
     utils.save_pickle(nuis_reg_save_path, nuis_reg_per_cond[i])
     func_imgs_paths[sub] = func_cond_paths 
     nuis_params_paths[sub] = nuis_reg_save_path
@@ -689,8 +707,8 @@ data.nuis_params_paths = nuis_params_paths
 
 # %%
 # save data
-save_data_p = os.path.join(setup.save_dir, 'data_'.pkl"))
-preproc_utils.save_pickle(save_data_p, data)
+save_data_p = os.path.join(setup.save_dir, 'data_info_regressors.pkl')
+utils.save_pickle(save_data_p, data)
 
 
 # %% [markdown]
@@ -702,7 +720,7 @@ mean_img_dir = os.path.join(setup.save_dir, "mean_activation")
 os.makedirs(mean_img_dir, exist_ok=True)
 
 # Compute mean image per condition
-for condition in regressors_names:
+for condition in condition_names:
 
     img_list = [subject_imgs[condition] for subject_imgs in extracted_volumes_per_cond if condition in subject_imgs]
     mean_condition_img = mean_img(img_list)
@@ -731,11 +749,11 @@ import qc_utils
 reload(qc_utils)
 
 # assert afine of data
-for cond in regressors_names:
+for cond in condition_names:
     func_cond = [subject_imgs[cond] for subject_imgs in extracted_volumes_per_cond]
     same_aff = qc_utils.assert_same_affine(func_cond, setup.subjects)
 if same_aff:
-    ref_img = index_img(extracted_volumes_per_cond[0][regressors_names[0]], 0)
+    ref_img = index_img(extracted_volumes_per_cond[0][condition_names[0]], 0)
     data_shape = ref_img.shape[0:3] #3D
     data_affine = ref_img.affine
     print(f"Data shape : {data_shape}, Data affine : {data_affine}")
@@ -752,6 +770,7 @@ plot_roi(data_mask, title='data_mask', display_mode='ortho', draw_cross=False)
 # %%
 resamp_mask = qc_utils.resamp_to_img_mask(data_mask, ref_img)
 _ = qc_utils.assert_same_affine(func_cond, setup.subjects, resamp_mask)
+resamp_mask.to_filename(os.path.join(setup.save_dir, 'resampled_to_data_MNI_mask.nii.gz'))
 plot_roi(resamp_mask, bg_img = ref_img, title='resampled_mask', display_mode='ortho', draw_cross=False)
 
 lan800_prob = nib.load(os.path.join(setup.project_dir, 'masks/lipkin2022_lanA800', 'LanA_n806.nii'))
@@ -769,12 +788,13 @@ _ = qc_utils.assert_same_affine(func_cond, setup.subjects, atlas)
 # Carpet plot unprocessed timseries
 from nilearn.plotting import plot_carpet
 
-MAX_ITER = 1
+MAX_ITER = len(condition_names)
+
 qc_path = os.path.join(setup.save_dir, 'QC_carpet')
 carpet_files_per_cond = {}
 os.makedirs(qc_path, exist_ok=True)
 
-for cond in regressors_names[:MAX_ITER]:
+for cond in condition_names[:MAX_ITER]:
 
     qc_cond_path = os.path.join(qc_path, cond)
     os.makedirs(qc_cond_path, exist_ok=True)
@@ -782,7 +802,7 @@ for cond in regressors_names[:MAX_ITER]:
     
     for sub, subject in enumerate(setup.subjects):
 
-    # for cond in regressors_names:
+    # for cond in condition_names:
         file_path = os.path.join(qc_cond_path, f'{subject}_{cond}_carpet_detrend.png')
         imgs = extracted_volumes_per_cond[sub][cond]
         display = plot_carpet(
@@ -798,7 +818,7 @@ for cond in regressors_names[:MAX_ITER]:
         display.show()
 
 # %%
-for cond in regressors_names[:MAX_ITER]:
+for cond in condition_names[:MAX_ITER]:
     n_subs = len(setup.subjects)
     visu_utils.plot_images_grid(carpet_files_per_cond[cond], f'Carpet plot {cond}, {n_subs} subj.', save_to=os.path.join(qc_path, f"grid_view_carpet_{cond}_{n_subs}subs.png"))
 
@@ -808,7 +828,7 @@ for cond in regressors_names[:MAX_ITER]:
 
 transformed_dir = os.path.join(setup.save_dir, "transformed_2d_imgs")
 os.makedirs(transformed_dir, exist_ok=True)
-exclude_subject = 'sub-02'
+# exclude_subject = 'sub-02'
 masker_params_dict.update({'mask_img': resamp_mask})
 masker = NiftiMasker(**masker_params_dict)
 
@@ -816,15 +836,15 @@ sub_timeseries_all_cond = {}
 fitted_maskers = {}
 
 
-for i, cond in enumerate(regressors_names[:MAX_ITER]):
+for i, cond in enumerate(condition_names[:MAX_ITER]):
     sub_timeseries = []
     sub_maskers = []
     
     for i, sub in enumerate(setup.subjects):
         print(sub)
-        if sub == exclude_subject:  # Skip sub-02
-            print(f"Skipping {sub}")
-            continue 
+        # if sub == exclude_subject:  # Skip sub-02
+        #     print(f"Skipping {sub}")
+        #     continue 
 
         sub_imgs = extracted_volumes_per_cond[i][cond]
         sub_reg = nuis_reg_per_cond[i][cond]
@@ -833,14 +853,14 @@ for i, cond in enumerate(regressors_names[:MAX_ITER]):
         sub_timeseries.append(ts)
         sub_maskers.append(masker)
 
-    sub_timeseries_all_cond[cond] = np.stack(sub_timeseries, axis=-1) #TR x ROI x subjects 
+    sub_timeseries_all_cond[cond] = sub_timeseries # np.stack(sub_timeseries, axis=-1) #TR x ROI x subjects 
     fitted_maskers[cond] = sub_maskers
-    print(sub_timeseries_all_cond[cond].shape)
+    # print(sub_timeseries_all_cond[cond].shape)
 
     cond_path = os.path.join(transformed_dir, f'{cond}_{i+1}sub.npz')
 
     # np.savez_compressed(cond_path, sub_timeseries_all_cond[cond])
-ncond = len(regressors_names)
+ncond = len(condition_names)
 masker_path = os.path.join(transformed_dir, f'maskers_dct_all_{ncond}cond_{i}sub.pkl')
 # utils.save_pickle(masker_path, fitted_maskers)
 
@@ -851,7 +871,7 @@ qc_path_reg = os.path.join(setup.save_dir, 'QC_carpet_regressed_conf')
 os.makedirs(qc_path_reg, exist_ok=True)
 reg_carpet_files_per_cond = {}
 
-for i, cond in enumerate(regressors_names[:MAX_ITER]):
+for i, cond in enumerate(condition_names[:MAX_ITER]):
 
     qc_cond_path = os.path.join(qc_path, cond)
     os.makedirs(qc_cond_path, exist_ok=True)
@@ -861,7 +881,7 @@ for i, cond in enumerate(regressors_names[:MAX_ITER]):
 
         file_path = os.path.join(qc_cond_path, f'{subject}_{cond}_reg-carpet_detrend.png')
         masker_i = fitted_maskers[cond][sub]
-        imgs = masker_i.inverse_transform(sub_timeseries_all_cond[cond][:,:,i])
+        imgs = masker_i.inverse_transform(sub_timeseries_all_cond[cond][sub]) #[:,:,i])
         display = plot_carpet(
             imgs,
             mask_img=resamp_mask,
@@ -875,7 +895,7 @@ for i, cond in enumerate(regressors_names[:MAX_ITER]):
         display.show()
 
 # %%
-for cond in regressors_names[:MAX_ITER]:
+for cond in condition_names[:MAX_ITER]:
     n_subs = len(setup.subjects)
     visu_utils.plot_images_grid(reg_carpet_files_per_cond[cond], f'Carpet plot {cond}, {n_subs} subj.', save_to=os.path.join(qc_path, f"grid_view_carpet_{cond}_{n_subs}subs.png"))
 # %%
