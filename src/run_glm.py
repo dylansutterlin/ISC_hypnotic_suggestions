@@ -32,6 +32,7 @@ import preproc_utils
 import visu_utils 
 import glm_utils as utils
 from sklearn.utils import Bunch
+
 # %% [markdown]
 ## load data
 model_dir = r'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/preproc_data/model1_23subjects_zscore_sample_detrend_21-02-25'
@@ -39,13 +40,20 @@ setup_dct = preproc_utils.load_json(os.path.join(model_dir, 'setup_parameters.js
 data_info_dct = preproc_utils.load_pickle(os.path.join(model_dir, 'data_info_regressors.pkl'))
 masker_params = preproc_utils.load_json(os.path.join(model_dir, 'preproc_params.json'))
 
-MAX_ITER = 2
+MAX_ITER = None
 
 setup = Bunch(**setup_dct)
 data = Bunch(**data_info_dct)
 masker_params = Bunch(**masker_params)
+glm_info = Bunch()
+subjects = setup.subjects
 
-subjects = setup.subjects[:MAX_ITER]
+if MAX_ITER == None :
+    MAX_ITER= len(subjects) 
+else: 
+    subjects = subjects[:MAX_ITER]
+    setup.subjects = subjects   
+
 regressors_dct = data.regressors_per_conds
 condition_names = setup.run_names
 tr = setup.tr
@@ -77,8 +85,6 @@ subjects_contrasts_files = {}
 for sub, subject in enumerate(subjects):
 
     print(f"Processing {subject}...")
-    subject = subjects[0]
-    sub = 0
     # design matrices
     dm_combined = pd.read_csv(data.design_mat_2runs_files[sub], index_col=0)
     nscans_ana = data.nscans["Ana"][subject]
@@ -121,7 +127,63 @@ for sub, subject in enumerate(subjects):
     contrast_maps[subject] = sub_contrasts
     subjects_contrasts_files[subject] = contrasts_files
 
+glm_info.contrast_files_1level = subjects_contrasts_files
+# %% [markdown]
+## Second level localizer
 # %%
+
+from nilearn.glm.second_level import SecondLevelModel
+from nilearn.plotting import plot_stat_map, plot_glass_brain
+
+# --- SECOND-LEVEL ANALYSIS FOR LOCALIZER EFFECTS ---
+
+from nilearn.glm.second_level import make_second_level_design_matrix
+
+group_design_matrix = make_second_level_design_matrix(
+    subjects, confounds=None
+)
+
+group_dm = create_second_level_dm(len(subjects), len(loc_contrasts_vectors[subjects[0]]), show=True)
+
+# %%
+glm_second_save = os.path.join(setup.save_dir, 'GLM_results', 'second_level')
+os.makedirs(glm_second_save, exist_ok=True)
+group_contrast_maps = {}
+group_contrast_files = {}
+
+for cond in list(regressors_dct.keys()):
+    print(f"Processing group-level analysis for {cond}...")
+    
+
+    contrast_imgs = [contrast_maps[sub][cond] for sub in subjects]
+
+    second_level_model = SecondLevelModel(smoothing_fwhm=None)
+    second_level_model.fit(contrast_imgs, design_matrix=group_dm)
+    
+    group_z_map = second_level_model.compute_contrast(output_type="z_score")
+    
+    group_contrast_path = os.path.join(glm_second_save, f"group_{cond}.nii.gz")
+    group_z_map.to_filename(group_contrast_path)
+    print(f"Saved group-level contrast map for {cond} to {group_contrast_path}")
+    
+    plot_stat_map(group_z_map, title=f"Group-Level Activation for {cond}",
+                  threshold=3.0)
+    plt.show()
+    
+    plot_glass_brain(group_z_map, colorbar=True, threshold=3.0,
+                     title=f"Group-Level Glass Brain for {cond}")
+    plt.show()
+
+    group_contrast_maps[cond] = group_z_map
+    group_contrast_files[cond] = group_contrast_path
+
+glm_info.group_contrast_files = group_contrast_files
+
+# %%
+utils.save_json(os.path.join(setup.save_dir, 'GLM_results', 'glm_info.json'), glm_info)
+
+# %%
+
 # from nilearn.glm.first_level import FirstLevelModel
 
 # for i, sub in enumerate(setup.subjects):
