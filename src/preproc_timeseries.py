@@ -49,6 +49,9 @@ else:
     sys.path.append(script_dir)
     import preproc_utils as utils
     import visu_utils 
+
+import gc
+
 # %%
 # parent_dir = os.path.abspath(os.path.join(os.path.dirname("func.py"), ".."))
 # sys.path.append(parent_dir)
@@ -61,7 +64,7 @@ else:
 data_dir = '/data/rainville/Hypnosis_ISC/4D_data/full_run'
 ana_run = glob.glob(os.path.join(data_dir, 'sub*', '*analgesia*.nii.gz'))
 subjects = [os.path.basename(os.path.dirname(path)) for path in ana_run]
-nsub = 23 #23 #len(subjects)
+nsub = 10 #23 #len(subjects)
 
 setup = Bunch(
     data_dir="/data/rainville/Hypnosis_ISC/4D_data/full_run",
@@ -746,7 +749,7 @@ print(f"\nAll mean images saved in {mean_img_dir}")
 # Atlas and mask resample  reports
 from nilearn.image import index_img
 import qc_utils
-reload(qc_utils)
+# reload(qc_utils)
 
 # assert afine of data
 for cond in condition_names:
@@ -830,7 +833,7 @@ transformed_dir = os.path.join(setup.save_dir, "transformed_2d_imgs")
 os.makedirs(transformed_dir, exist_ok=True)
 # exclude_subject = 'sub-02'
 masker_params_dict.update({'mask_img': resamp_mask})
-masker = NiftiMasker(**masker_params_dict)
+masker = NiftiMasker(**masker_params_dict, dtype='float32', memory_level = 0)
 
 sub_timeseries_all_cond = {}
 fitted_maskers = {}
@@ -839,7 +842,8 @@ fitted_maskers = {}
 for i, cond in enumerate(condition_names[:MAX_ITER]):
     sub_timeseries = []
     sub_maskers = []
-    
+    gc.collect()
+
     for i, sub in enumerate(setup.subjects):
         print(sub)
         # if sub == exclude_subject:  # Skip sub-02
@@ -847,8 +851,11 @@ for i, cond in enumerate(condition_names[:MAX_ITER]):
         #     continue 
 
         sub_imgs = extracted_volumes_per_cond[i][cond]
+        sub_imgs_data = sub_imgs.get_fdata().astype(np.float32)
+        sub_imgs_float32 = nib.Nifti1Image(sub_imgs_data, sub_imgs.affine, sub_imgs.header)
+
         sub_reg = nuis_reg_per_cond[i][cond]
-        ts = masker.fit_transform(sub_imgs, confounds=sub_reg)
+        ts = masker.fit_transform(sub_imgs_float32, confounds=sub_reg)
         print(ts.shape) # cmt
         sub_timeseries.append(ts)
         sub_maskers.append(masker)
@@ -873,7 +880,7 @@ reg_carpet_files_per_cond = {}
 
 for i, cond in enumerate(condition_names[:MAX_ITER]):
 
-    qc_cond_path = os.path.join(qc_path, cond)
+    qc_cond_path = os.path.join(qc_path_reg, cond)
     os.makedirs(qc_cond_path, exist_ok=True)
     reg_carpet_files_per_cond[cond] = []
     
@@ -897,7 +904,9 @@ for i, cond in enumerate(condition_names[:MAX_ITER]):
 # %%
 for cond in condition_names[:MAX_ITER]:
     n_subs = len(setup.subjects)
-    visu_utils.plot_images_grid(reg_carpet_files_per_cond[cond], f'Carpet plot {cond}, {n_subs} subj.', save_to=os.path.join(qc_path, f"grid_view_carpet_{cond}_{n_subs}subs.png"))
+    visu_utils.plot_images_grid(reg_carpet_files_per_cond[cond],
+                                 f'Carpet plot {cond}, {n_subs} subj.',
+                                 save_to=os.path.join(qc_path_reg, f"grid_view_carpet_{cond}_{n_subs}subs.png"))
 # %%
 # %% 
 # save data
