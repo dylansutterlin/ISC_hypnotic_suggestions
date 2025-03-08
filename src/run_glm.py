@@ -21,21 +21,24 @@ from nilearn.glm.second_level import SecondLevelModel
 from nilearn.glm.contrasts import compute_contrast
 from nilearn.image import mean_img, concat_imgs
 from nilearn.plotting import plot_design_matrix, plot_stat_map
-
+from nilearn import plotting
 
 if not os.getcwd().endswith('ISC_hypnotic_suggestions'):
-
+    print('Appending scripts/ to python path')
     script_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '../scripts'))
     sys.path.append(script_dir)
 
 import preproc_utils
 import visu_utils 
 import glm_utils as utils
+import qc_utils
 from sklearn.utils import Bunch
-
+from importlib import reload
+from nilearn import datasets
 # %% [markdown]
 ## load data
-model_dir = r'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/preproc_data/model1_23subjects_zscore_sample_detrend_21-02-25'
+model_name = r'model2_23subjects_zscore_sample_detrend_25-02-25' #r'model2_3subjects_zscore_sample_detrend_25-02-25'
+model_dir = rf'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/preproc_data/{model_name}'
 setup_dct = preproc_utils.load_json(os.path.join(model_dir, 'setup_parameters.json'))
 data_info_dct = preproc_utils.load_pickle(os.path.join(model_dir, 'data_info_regressors.pkl'))
 masker_params = preproc_utils.load_json(os.path.join(model_dir, 'preproc_params.json'))
@@ -43,6 +46,7 @@ masker_params = preproc_utils.load_json(os.path.join(model_dir, 'preproc_params.
 MAX_ITER = None
 
 setup = Bunch(**setup_dct)
+setup.run_id = ['ANA', 'HYPER']
 data = Bunch(**data_info_dct)
 masker_params = Bunch(**masker_params)
 glm_info = Bunch()
@@ -61,26 +65,39 @@ tr = setup.tr
 reload(utils)
 ref_img = nib.load(setup.ana_run[0])
 mask = utils.load_data_mask(ref_img)
+mni_temp = datasets.load_mni152_template(resolution=None)
+mni_bg = qc_utils.resamp_to_img_mask(mni_temp, mask)
 
-save_glm = os.path.join(setup.save_dir, 'GLM_results')
-os.makedirs(save_glm, exist_ok=True)
+save_root = os.path.join(setup.project_dir, 'results', 'imaging', 'GLM', model_name)
+os.makedirs(save_root, exist_ok=True)
+setup.save_dir = save_root
+
+# save_glm = os.path.join(setup.save_dir, 'GLM_results')
+# os.makedirs(save_glm, exist_ok=True)
 
 # %% [markdown]
 ## First level localizer
 from importlib import reload
 reload(utils)
 
-contrasts = {
-    "Analgesia_vs_Neutral": "ANA_sugg - N_ANA_sugg",
-    "Hyperalgesia_vs_Neutral": "HYPER_sugg - N_HYPER_sugg",
-    "Pain_vs_NoPain": "ANA_shock + HYPER_shock - N_ANA_shock - N_HYPER_shock",
+
+# combined runs GLM. Pre fixed effect try march 7th 25
+extra_regressors_idx = {
+    'all_sugg': [0, 1, 2, 3],
+    'all_shock': [4, 5, 6, 7]
 }
 
-# Storage for first-level models and contrast maps
+contrasts_spec = {
+    "ANA_sugg_minus_N_ANA_sugg": (1.5, -1),
+    "HYPER_sugg_minus_N_HYPER_sugg": (1.5, -1),
+    "HYPER_sugg_minus_ANA_sugg": (1, -1),
+    "ANA_shock+HYPER_shock_minus_N_ANA_shock+N_HYPER_shock": (1, -1)
+}
+
 loc_contrasts_vectors = {}
 first_level_models = {}
 contrast_maps = {}
-subjects_contrasts_files = {}
+first_lev_files = {}
 
 for sub, subject in enumerate(subjects):
 
@@ -89,8 +106,19 @@ for sub, subject in enumerate(subjects):
     dm_combined = pd.read_csv(data.design_mat_2runs_files[sub], index_col=0)
     nscans_ana = data.nscans["Ana"][subject]
     nscans_hyper = data.nscans["Hyper"][subject]
-    dm_combined["Run_Intercept_Ana"] = np.concatenate([np.ones(nscans_ana), np.zeros(nscans_hyper)])
-    dm_combined["Run_Intercept_Hyper"] = np.concatenate([np.zeros(nscans_ana), np.ones(nscans_hyper)])
+    
+    # remove columns from design matrix
+    # rm_cols = ['reg6', 'reg7'] + [col for col in dm_combined.columns if col.startswith('drift')]
+    # dm_combined = dm_combined.drop(rm_cols, axis=1)
+   
+    # dm_combined["Run_Intercept_Ana"] = np.concatenate([np.ones(nscans_ana), np.zeros(nscans_hyper)])
+    # dm_combined["Run_Intercept_Hyper"] = np.concatenate([np.zeros(nscans_ana), np.ones(nscans_hyper)])
+
+    # plot design matrix but only for subject 1
+    if sub == 0: plot=True
+    else: plot=False
+    plot_design_matrix(dm_combined)
+
     #Func images
     func1 = nib.load(setup.ana_run[sub])
     func2 = nib.load(setup.hyper_run[sub])
@@ -98,9 +126,11 @@ for sub, subject in enumerate(subjects):
     # make localizer contrasts
     if sub == 0: plot=True
     else: plot=False
-    loc_contrasts_vectors[subject] = utils.make_contrasts(dm_combined, regressors_dct, plot = plot)
-
-    first_level_model = FirstLevelModel(t_r=tr, mask_img=mask, smoothing_fwhm=None, standardize=False)
+    loc_contrasts_vectors[subject] = utils.make_localizer_vec_from_reg(dm_combined, regressors_dct,extra_indices_dct= extra_regressors_idx, plot = plot)
+    loc_contrasts_vectors[subject].update(utils.make_contrast_vec_from_reg(dm_combined, regressors_dct, contrasts_spec, plot=plot))
+  
+    
+    first_level_model = FirstLevelModel(t_r=tr, mask_img=mask, smoothing_fwhm=None, standardize=False, signal_scaling=False)
     first_level_model.fit(func_imgs, design_matrices=dm_combined, confounds=None) # already in dm
 
     sub_contrasts = {}
@@ -110,56 +140,87 @@ for sub, subject in enumerate(subjects):
     i = 0
     for condition, contrast_vector in loc_contrasts_vectors[subject].items():
         
+        os.makedirs(os.path.join(save_glm, condition), exist_ok=True)
+
+        print(f"{condition}...")
         if i < MAX_CONT:
-            print(f"Localizer for {condition}...")
+            print(f"contrast for {condition}...")
             contrast_map = first_level_model.compute_contrast(contrast_vector, output_type="z_score")
             sub_contrasts[condition] = contrast_map
 
             # Save contrast maps
-            contrast_path = os.path.join(save_glm, f"{condition}_localizer_{subject}.nii.gz")
-            contrasts_files[condition] = contrast_path
-            contrast_map.to_filename(contrast_path)
+            contrasts_files[condition] = os.path.join(save_glm, condition, f"firstlev_localizer_{subject}.nii.gz")
+            contrast_map.to_filename(contrasts_files[condition])
             i += 1
         else :
             break
 
     first_level_models[subject] = first_level_model
     contrast_maps[subject] = sub_contrasts
-    subjects_contrasts_files[subject] = contrasts_files
+    first_lev_files[subject] = contrasts_files
 
-glm_info.contrast_files_1level = subjects_contrasts_files
+contrast_names = list(first_lev_files[subject].keys())
+glm_info.first_level_models = first_level_models
+glm_info.contrast_files_1level = first_lev_files
+
+
+# extra_regressors_idx = {
+#     'all_sugg': [0, 1, 2, 3],
+#     'all_shock': [4, 5, 6, 7]
+# }
+
+# %%
+cond = 'all_sugg'
+first_lev_files = glm_info.contrast_files_1level
+for subject in subjects:
+    img = first_lev_files[subject][cond]
+    display = plotting.plot_stat_map(
+        img,
+        title=f"first level stats unc. {cond}",
+        threshold=3.0,            
+        display_mode='ortho')     
+
+    plt.show()
+    plt.close()
 # %% [markdown]
 ## Second level localizer
 # %%
 
 from nilearn.glm.second_level import SecondLevelModel
 from nilearn.plotting import plot_stat_map, plot_glass_brain
+from nilearn.glm.second_level import make_second_level_design_matrix
 
 # --- SECOND-LEVEL ANALYSIS FOR LOCALIZER EFFECTS ---
 
-from nilearn.glm.second_level import make_second_level_design_matrix
 
-group_design_matrix = make_second_level_design_matrix(
+group_dm = make_second_level_design_matrix(
     subjects, confounds=None
 )
 
-group_dm = create_second_level_dm(len(subjects), len(loc_contrasts_vectors[subjects[0]]), show=True)
+from nilearn.plotting import plot_design_matrix
 
-# %%
+fig, ax1 = plt.subplots(1, 1, figsize=(3, 4), constrained_layout=True)
+
+ax = plot_design_matrix(group_dm, axes=ax1)
+ax.set_ylabel("maps")
+ax.set_title("Second level design matrix", fontsize=12)
+plt.show()
+
 glm_second_save = os.path.join(setup.save_dir, 'GLM_results', 'second_level')
 os.makedirs(glm_second_save, exist_ok=True)
 group_contrast_maps = {}
 group_contrast_files = {}
+second_level_models = {}
 
-for cond in list(regressors_dct.keys()):
+for cond in contrast_names:
     print(f"Processing group-level analysis for {cond}...")
     
-
     contrast_imgs = [contrast_maps[sub][cond] for sub in subjects]
 
     second_level_model = SecondLevelModel(smoothing_fwhm=None)
     second_level_model.fit(contrast_imgs, design_matrix=group_dm)
-    
+    second_level_models[cond] = second_level_model
+
     group_z_map = second_level_model.compute_contrast(output_type="z_score")
     
     group_contrast_path = os.path.join(glm_second_save, f"group_{cond}.nii.gz")
@@ -179,8 +240,130 @@ for cond in list(regressors_dct.keys()):
 
 glm_info.group_contrast_files = group_contrast_files
 
+utils.save_pickle(os.path.join(glm_second_save, 'results_paths.pkl'), glm_info)
+
+
 # %%
-utils.save_json(os.path.join(setup.save_dir, 'GLM_results', 'glm_info.json'), glm_info)
+
+reload(qc_utils)
+print('Dot product...')
+conditions_nps = {}
+pain_reg = ['ANA_shock', 'N_ANA_shock', 'HYPER_shock', 'N_HYPER_shock']
+signature_folder = os.path.join(setup.project_dir,'masks/mvpa_signatures')
+
+for cond in pain_reg:
+        
+    cond_files = {subj: contrasts[cond] for subj, contrasts in first_lev_files.items() if subj != 'sub-47'}
+
+    cond_dot = qc_utils.compute_similarity(cond_files, signature_folder, pattern = 'NPS', metric='dot_product', resample_to_mask=True)
+    conditions_nps[cond] = cond_dot
+
+# Print the results
+
+print("Dot Product Similarity for pain contrasts")
+print(conditions_nps)
+
+utils.save_pickle(os.path.join(setup.save_dir, 'GLM_results', 'NPS_dot_pain.pkl'), conditions_nps)
+# %%
+# utils.save_json(os.path.join(setup.save_dir, 'GLM_results', 'glm_info.json'), glm_info)
+
+print("Done with all GLM processing!")
+# %%
+
+'''
+# %% NPS
+dot_p = r'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/preproc_data/model1_23subjects_zscore_sample_detrend_21-02-25/GLM_results/NPS_dot_pain.pkl'
+dot = utils.load_pickle(dot_p)
+print(dot)
+
+from scipy.stats import ttest_1samp
+
+for cond in dot.keys():
+
+    shock_similarity = np.array(dot[cond]).ravel()
+
+    t_stat, p_val = ttest_1samp(shock_similarity, 0)
+    print(f"One-sample t-test for {cond}: t = {t_stat:.3f}, p = {p_val:.3f}")
+
+# %%
+
+res_p = r'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/preproc_data/model1_23subjects_zscore_sample_detrend_21-02-25/GLM_results/second_level/results_paths.pkl'
+res = utils.load_pickle(res_p)
+
+file_firstlev = res['contrast_files_1level']
+file_group = res['group_contrast_files']
+
+all_regs = list(file_firstlev[subjects[0]].keys())
+
+pain_reg = all_regs[8:]
+
+# %% NPS
+signature_folder = os.path.join(setup.project_dir,'masks/mvpa_signatures')
+conditions_nps = {}
+for cond in pain_reg:
+        
+    cond_files = {subj: contrasts[cond] for subj, contrasts in file_firstlev.items() if subj != 'sub-47'}
+
+    cond_dot = qc_utils.compute_similarity(cond_files, signature_folder, pattern = 'NPS', metric='dot_product', resample_to_mask=True)
+    conditions_nps[cond] = cond_dot
+
+    shock_similarity = np.array(cond_dot).ravel()
+    t_stat, p_val = ttest_1samp(shock_similarity, 0)
+    print(f"One-sample t-test for {cond}: t = {t_stat:.3f}, p = {p_val:.3f}")
+
+# %% VISU 1st
+from nilearn import plotting
+cond = 'all_sugg'
+
+for subject in subjects:
+    img = file_firstlev[subject][cond]
+    display = plotting.plot_stat_map(
+        img,
+        title=f"first level stats unc. {cond}",
+        threshold=3.0,            
+        display_mode='ortho')     
+
+    plt.show()
+
+# %% VISU 2nd
+
+from nilearn import plotting
+#p_folder = r'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/preproc_data/model1_23subjects_zscore_sample_detrend_21-02-25/GLM_results/second_level'
+
+for condition in all_regs:
+    img = file_group[condition]
+    display = plotting.plot_stat_map(
+        img,
+        title=f"second level stats unc. {condition}",
+        threshold=3.0,            
+        display_mode='ortho')     
+
+    plt.show()
+
+# %%
+from nilearn import plotting
+views = []
+for condition in all_regs:
+    img = file_group[condition]
+    # Create an interactive view of the statistical map.
+    view = plotting.view_img(img, threshold=3.0, title=f"Second level stats unc. {condition}")
+    # If you're in a Jupyter Notebook, simply display the view:
+    views.append(view)
+    # Alternatively, you can open the view in your browser:
+    # view.open_in_browser()
+
+# %%
+# p_folder = r'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/preproc_data/model1_23subjects_zscore_sample_detrend_21-02-25/GLM_results'
+
+# for condition in list(regressors_dct.keys()):
+#     img = f'{condition}_localizer_sub-47.nii.gz'
+#     display = plotting.plot_stat_map(
+#         os.path.join(p_folder, img),
+#         title=f"Stat Map: {condition}",
+#         threshold=3.0,            
+#         display_mode='ortho')     
+
+#     plt.show()
 
 # %%
 
@@ -196,3 +379,5 @@ utils.save_json(os.path.join(setup.save_dir, 'GLM_results', 'glm_info.json'), gl
 # # Initialize the GLM model (you probably already did this in your pipeline)
 # fmri_glm = FirstLevelModel()  # Adjust t_r as per your TR value
 # fmri_glm = fmri_glm.fit(setup.ana_run[i], design_matrices=dm_combined[i])  # Replace `fmri_img` with your actual fMRI data
+
+'''
