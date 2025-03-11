@@ -282,19 +282,19 @@ conditions_nps = {}
 pain_reg = ['ANA_shock', 'N_ANA_shock', 'HYPER_shock', 'N_HYPER_shock']
 signature_folder = os.path.join(setup.project_dir,'masks/mvpa_signatures')
 
-for cond in pain_reg:
+# for cond in pain_reg:
         
-    cond_files = {subj: contrasts[cond] for subj, contrasts in first_lev_files.items() if subj != 'sub-47'}
+#     cond_files = {subj: contrasts[cond] for subj, contrasts in first_lev_files.items() if subj != 'sub-47'}
 
-    cond_dot = qc_utils.compute_similarity(cond_files, signature_folder, pattern = 'NPS', metric='dot_product', resample_to_mask=True)
-    conditions_nps[cond] = cond_dot
+#     cond_dot = qc_utils.compute_similarity(cond_files, signature_folder, pattern = 'NPS', metric='dot_product', resample_to_mask=True)
+#     conditions_nps[cond] = cond_dot
 
-# Print the results
+# # Print the results
 
-print("Dot Product Similarity for pain contrasts")
-print(conditions_nps)
+# print("Dot Product Similarity for pain contrasts")
+# print(conditions_nps)
 
-utils.save_pickle(os.path.join(setup.save_dir, 'GLM_results', 'NPS_dot_pain.pkl'), conditions_nps)
+# utils.save_pickle(os.path.join(setup.save_dir, 'GLM_results', 'NPS_dot_pain.pkl'), conditions_nps)
 # %%
 # utils.save_json(os.path.join(setup.save_dir, 'GLM_results', 'glm_info.json'), glm_info)
 
