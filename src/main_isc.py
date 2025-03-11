@@ -1,27 +1,33 @@
 
+
 # %%
 import sys
 import os
 
-if not os.getcwd().endswith('ISC_hypnotic_suggestions'):
-    print('Appending scripts/ to python path')
-    script_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '../scripts'))
-    sys.path.append(script_dir)
-    os.chdir('/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions')
+# append project dir to python paths
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+script_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '../scripts'))
+sys.path.append(script_dir)
+#     os.chdir('/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions')
 
-if os.getcwd().endswith('ISC_hypnotic_suggestions'):
-    print('Current directory is project root')
-    script_dir = os.path    .abspath(os.path.join(os.getcwd(), 'scripts'))
-    print(f'Appending {script_dir} to python path')
-    sys.path.append(script_dir)
 
-print(sys.path[-1])    
-print(os.getcwd())
+# if not os.getcwd().endswith('ISC_hypnotic_suggestions'):
+#     print('Appending scripts/ to python path')
 
-# %%
+# if os.getcwd().endswith('ISC_hypnotic_suggestions'):
+#     print('Current directory is project root')
+#     script_dir = os.path.abspath(os.path.join(os.getcwd(), 'scripts'))
+#     print(f'Appending {script_dir} to python path')
+#     sys.path.append(script_dir)
+
+    # sys.path.append('/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/setups')
+
+# print(sys.path[-1])    
+# print(os.getcwd())
+
 import time
-import sys
-import os
 import json
 import glob
 from datetime import datetime
@@ -44,40 +50,65 @@ import visu_utils
 import qc_utils
 
 reload(isc_utils)
-# %% Load the data
 
-project_dir = "/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions"
-preproc_model_data = 'model2_23subjects_zscore_sample_detrend_25-02-25/extracted_4D_per_cond_23sub'
-base_path = os.path.join(project_dir, 'results/imaging/preproc_data', preproc_model_data)
+import importlib
+# %%
+# Detect if running in an interactive environment (VSCode, Jupyter, etc.)
+def is_interactive():
+    return hasattr(sys, 'ps1') or "ipykernel" in sys.modules
 
-#jeni prepoc
-# base_path =  r'/data/rainville/Hypnosis_ISC/4D_data/segmented/concat_bks'
-behav_path = os.path.join(project_dir, 'results/behavioral/behavioral_data_cleaned.csv')
-exclude_sub = []
-KEEP_N_SUB = None
-model_is = 'sugg'
+# Use CLI arguments if running as a script, otherwise set a default setup
+if not is_interactive():
+    import argparse
+    parser = argparse.ArgumentParser(description="Run ISC analysis with different setups")
+    parser.add_argument("-s", "--setup", type=str, required=True, help="Name of the setup module (e.g., atlas_setup)")
+    args = parser.parse_args()
+    setup_name = args.setup.replace('/', '.').replace('.py', '')
+    # setup_name = 'setups.debug_setup'
+    # breakpoint()
+else:
+    print("Running in interactive mode. Using default setup: `atlas_setup`")
+    setup_name = "setups.debug_setup"  # Default setup when running cells manually
 
-# import sys
-# sys.path.append(os.path.join(project_dir, 'QC_py310'))
-# import func
+print("Current Working Directory:", os.getcwd())
 
-# %% 
-# base_path = '/home/dsutterlin/projects/test_data/suggestion_block_concat_4D_3subj'
-# project_dir = '/home/dsutterlin/projects/ISC_hypnotic_suggestions'
-# behav_path = os.path.join('/home/dsutterlin/projects/ISC_hypnotic_suggestions/results/behavioral', 'behavioral_data_cleaned.csv')
+if "setups" not in sys.modules:
+    sys.path.append(os.path.abspath("setups"))
 
+setup_module = importlib.import_module(f"{setup_name}")
+setup = setup_module.init()
+
+print(f"Loaded setup: {setup_name}")
+# print(f"Running model: {setup.model_name} with {setup.n_sub} subjects")
+print(f"Results will be saved in: {setup.results_dir}")
+
+# %%
+project_dir = setup.project_dir
+preproc_model_data = setup.preproc_model_data
+base_path = setup.base_path
+behav_path = setup.behav_path
+exclude_sub = setup.exclude_sub
+keep_n_sub = setup.keep_n_sub
+model_is = setup.model_is
+reg_conf = setup.reg_conf
+keep_n_confouds =  setup.keep_n_conf
+
+conditions = setup.conditions
+transform_imgs = setup.transform_imgs
+do_isc_analyses = setup.do_isc_analyses
+do_rsa = setup.do_rsa
+n_boot = setup.n_boot
+do_pairwise = setup.do_pairwise
+n_perm = setup.n_perm
+n_perm_rsa = setup.n_perm_rsa
+n_rois = setup.n_rois
+atlas_name = setup.atlas_name
+model_name = setup.model_name
+results_dir = setup.results_dir
+
+# behav data
 isc_data_df = isc_utils.load_isc_data(base_path, folder_is='subject', model = model_is) # !! change params if change base_dir
 isc_data_df = isc_data_df.sort_values(by='subject')
-
-# ana_lvl = '/data/rainville/Hypnosis_ISC/4D_data/segmented_Ana_Instr_leveled/concat_Ana_Instr_leveled'
-# ana_df = utils.load_isc_data(ana_lvl, folder_is='subject')
-# ana_df['task'] = 'Ana'
-# ana_df = ana_df.sort_values(by='subject')
-
-# ana_file_map = ana_df.set_index('subject')['file_path']  # Map of subject to Ana file paths
-# isc_data_df.loc[isc_data_df['task'] == 'Ana', 'file_path'] = isc_data_df.loc[
-#     isc_data_df['task'] == 'Ana', 'subject'
-# ].map(ana_file_map)
 
 # exclude subjects
 isc_data_df = isc_data_df[~isc_data_df['subject'].isin(exclude_sub)]
@@ -86,95 +117,26 @@ subjects = isc_data_df['subject'].unique()
 n_sub = len(subjects)
 
 # confounds !! unsorted!
-reg_conf=True
 dct_conf_unsorted = isc_utils.load_confounds(base_path)
 confounds_ls = isc_utils.filter_and_rename_confounds(dct_conf_unsorted, subjects, model_is)
-keep_n_confouds = 6 # !! remove last 2 rows
-#%%
-# check isc among confounds
-# isc_conf = {}
-# reload(utils)
-# for cond in conditions:
-#     arr_ls = []
-#     for sub in range(len(subjects)):
-#         sub_arr = confounds_ls[sub][cond]
-#         arr_ls.append(sub_arr)
-#     arrays = np.stack(arr_ls, axis=-1)[:,0:6,:] 
-#     print(f'Confounds ISC in cond {cond} wih {arrays.shape}')
+#isc_conf = isc_utils.check_confounds_isc(confounds_ls, conditions, subjects,show=True)
 
-#     isc_conf[cond] = utils.isc_1sample(arrays, pairwise=True, n_boot=5000, summary_statistic=None)
-    
-#     median = np.median(isc_conf[cond]['isc'], axis=0)
-#     p_val = isc_conf[cond]['p_values']
-#     conf_names = ['reg'+ str(i) for i in range(1,7)]
-#     visu_utils.plot_isc_median_with_significance(median,p_val,conf_names, show=True)
-
-
-#%%
 sub_check = {}
 # Select a subset of subjects
-if KEEP_N_SUB is not None:
-    isc_data_df = isc_data_df[isc_data_df['subject'].isin(isc_data_df['subject'].unique()[:KEEP_N_SUB])]
+if keep_n_sub is not None:
+    isc_data_df = isc_data_df[isc_data_df['subject'].isin(isc_data_df['subject'].unique()[:keep_n_sub])]
     subjects = isc_data_df['subject'].unique()
     n_sub = len(subjects)
 
-#model_name = f'model3_jeni_preproc-23sub'
-# conditions = ['Hyper', 'Ana', 'NHyper', 'NAna'] #['all_sugg', 'modulation', 'neutral']
-conditions = ['HYPER', 'ANA', 'NHYPER', 'NANA'] 
-transform_imgs = True #False
-do_isc_analyses = True 
-do_rsa = True    
-nsub = len(subjects)
-n_sub = len(subjects)
-n_boot = 100
-do_pairwise = True
-n_perm = 100
-n_perm_rsa = 100 #change to 10 000!
-# hyperparams
-n_rois = 200
-atlas_name = f'schafer{n_rois}_2mm' #'voxelWise_lanA800' #'schafer100_2mm'  #'schafer100_2mm' #'' #'schafer100_2mm' #'voxelWise' #Difumo256' # !!!!!!! 'Difumo256'
-atlas_bunch = Bunch(name=atlas_name)
-# model_name = f'model5_jeni_lvlpreproc-{str(n_sub)}sub_{atlas_name}' #_pairwise{do_pairwise}'
-model_name = f'model5_{model_is}_{str(n_sub)}sub_{atlas_name}_preproc_reg-mvmnt-{reg_conf}_high-variance-False' #_{datetime.today().strftime("%d-%m-%y")}' #_pairwise{do_pairwise}'
-# model_name = "model2_0202preproc_NO-mvmnt-reg_high-variance-False_23sub_schafer100_2mm"
+# initialize results dir
+setup.subjects = subjects
+setup.check_and_create_results_dir()
+setup.save_to_json()
+print('Results directory at :' , setup.results_dir)
 
-results_dir = os.path.join(project_dir, f'results/imaging/ISC/{model_name}')
-
-#%%
-if not os.path.exists(results_dir):
-    os.makedirs(results_dir)
-elif transform_imgs == False:
-    print(f"Results directory {results_dir} already exists and will be used to save (new) isc results!!")
-else:
-    print(f"Results directory {results_dir} already exists and will be overwritten!!")
-    print("Press 'y' to overwrite or 'n' to exit")
-    while True:
-        user_input = input("Enter your choice: ").lower()
-        if user_input == 'y':
-            break
-        elif user_input == 'n':
-            print("Exiting...")
-            exit()
-        else:
-            print("Invalid input. Please enter 'y' or 'n'.")
-
-setup = Bunch()
-setup.project_dir = project_dir
-setup.load_data_from = base_path
-setup.behav_path = behav_path
-setup.conditions = conditions
-setup.exclude_sub = exclude_sub
-setup.n_sub = n_sub
-setup.model_name = model_name
-setup.results_dir = results_dir
-setup.subjects = list(subjects)
-setup.n_boot = n_boot
-setup.do_pairwise = do_pairwise
-setup.n_perm = n_perm
-
-save_setup = os.path.join(setup.results_dir, "setup_parameters.json")
-with open(save_setup, 'w') as fp:
-    json.dump(dict(setup), fp, indent=4)
+# save_setup = os.path.join(setup.results_dir, "setup_parameters.json")
+# with open(save_setup, 'w') as fp:
+#     json.dump(dict(setup), fp, indent=4)
 
 result_paths = {
     "isc_results": {},
@@ -182,7 +144,7 @@ result_paths = {
     "condition_contrast_results": {},
     "group_permutation_results": {},
     "rsa_isc_results": {},
-    "setup_parameters": save_setup
+    "setup_parameters": os.path.join(setup.results_dir, 'setup_parameters.json')
 }
 
 # %%
@@ -433,12 +395,12 @@ if transform_imgs == True:
         cond_folder = os.path.join(results_dir, cond)
         if not os.path.exists(cond_folder):
             os.makedirs(cond_folder)
-        save_path = os.path.join(cond_folder, f'transformed_data_{atlas_name}_{cond}_{nsub}sub.npz')
+        save_path = os.path.join(cond_folder, f'transformed_data_{atlas_name}_{cond}_{n_sub}sub.npz')
         data_3d = np.stack(data, axis=-1) # ensure TRs x ROI x subjs
         np.savez_compressed(save_path, data_3d)
         #utils.save_data(s3ave_path, data)
 
-        masker_path = os.path.join(cond_folder, f'maskers_{atlas_name}_{cond}_{nsub}sub.pkl')
+        masker_path = os.path.join(cond_folder, f'maskers_{atlas_name}_{cond}_{n_sub}sub.pkl')
         isc_utils.save_data(masker_path, fitted_maskers[cond])
         print(f'Transformed timseries and maskers saved to {cond_folder}')
 
@@ -486,9 +448,9 @@ else:
 
     for cond in setup.conditions:
         load_path = os.path.join(setup.results_dir, cond)
-        transformed_path =  os.path.join(load_path, f'transformed_data_{atlas_name}_{cond}_{nsub}sub.npz')
+        transformed_path =  os.path.join(load_path, f'transformed_data_{atlas_name}_{cond}_{n_sub}sub.npz')
         transformed_data_per_cond[cond] = np.load(transformed_path)['arr_0'] #utils.load_pickle(os.path.join(load_path, transformed_path))
-        fitted_mask_file = f'maskers_{atlas_name}_{cond}_{nsub}sub.pkl'
+        fitted_mask_file = f'maskers_{atlas_name}_{cond}_{n_sub}sub.pkl'
         fitted_maskers[cond] = isc_utils.load_pickle(os.path.join(load_path, fitted_mask_file))
 
         #load_roi = os.path.join(load_path, roi_folder)
@@ -531,8 +493,6 @@ if atlas_name != f'schafer{n_rois}_2mm':
     setup.kept_subjects = subjects
     n_sub= len(subjects)
 
-# %%
-
 #%%
 
 if do_isc_analyses:
@@ -572,8 +532,6 @@ if do_isc_analyses:
         end_cond_time = time.time()
         print(f" {cond} done in {end_cond_time - start_cond_time:.2f} sec")
         print(f"ISC results saved for {cond} at {save_path}")
-
-# %%
 
 # %%
 
@@ -739,16 +697,6 @@ if do_isc_analyses:
         print(f'Performing 2 group permutation ISC : {contrast}')
         start_cond_time = time.time()
         combined_data_ls = [transformed_data_per_cond[task] for task in contrast_to_test[i]]
-        # if contrast == 'Hyper-Ana':
-        #     adjusted_Hyper, adjusted_Ana = utils.trim_TRs(combined_data_ls[0], combined_data_ls[1])
-        #     print('/!\ Trimed 2 TRs for Ana and added 1 for Hyper ')
-        # elif contrast == 'Ana-Hyper':
-        #     adjusted_Ana, adjusted_Hyper = utils.trim_TRs(combined_data_ls[1], combined_data_ls[0])
-        #     print('/!\ Trimed 2 TRs for Hyper and added 1 for Ana ')
-        # if i == 2: # for the neutral condtions, no need to trim
-        #     combined_data = np.concatenate(combined_data_ls, axis=2)
-        # else:
-        #     combined_data = np.concatenate([adjusted_Hyper, adjusted_Ana], axis=2)
 
         combined_data = np.concatenate(combined_data_ls, axis=2)
         n_scans = combined_data.shape[0]
@@ -851,6 +799,8 @@ if do_rsa :
             f = os.path.join(concat_cond_save, f"isc_results_{cond}_{n_scans}TRs_{n_boot}boot_pairWise{do_pairwise}.pkl")
             isc_results[cond] = isc_utils.load_pickle(f) 
 
+    # check if all cond are in isc_results
+    breakpoint()
     # ISC-RSA
     # reload(utils)
     print('============================')
@@ -869,6 +819,9 @@ if do_rsa :
             result_paths['rsa_isc_results'][sim_model][cond] = {}
             subjectwise_rsa_results[cond] = {}
 
+            # check mkdirs ?
+            if cond == 'all_sugg':
+                breakpoint()
             save_cond_rsa = os.path.join(rsa_save_dir, f'rsa-isc_{cond}') # make condition folder
             os.makedirs(save_cond_rsa, exist_ok=True)
 
