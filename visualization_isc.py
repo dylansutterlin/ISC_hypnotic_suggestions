@@ -5,7 +5,7 @@ import os
 import seaborn as sns
 from nilearn import plotting
 from nilearn.plotting import view_img 
-import utils
+import scripts.isc_utils as isc_utils
 import time
 from importlib import reload
 import nibabel as nib
@@ -20,7 +20,7 @@ from sklearn.utils import Bunch
 import scripts.visu_utils as visu_utils
 from nilearn.plotting import view_img_on_surf
 reload(visu_utils)
-reload(utils)
+reload(isc_utils)
 # %% Load the data
 model_names = {
     'model1': 'model2_0202preproc_mvmnt-reg_high-variance-False_23sub_schafer100_2mm',
@@ -44,7 +44,7 @@ model_name = model_names['model4']
 parcel_name = parcel_names['model4']
 
 results_dir = os.path.join(project_dir, f'results/imaging/ISC/{model_name}')
-setup = utils.load_json(os.path.join(results_dir, "setup_parameters.json"))
+setup = isc_utils.load_json(os.path.join(results_dir, "setup_parameters.json"))
 
 # %% 
 # all_results_paths = utils.load_json(os.path.join(results_dir, "result_paths.json"))
@@ -62,7 +62,7 @@ labels = None
 # Bootstrap per condition visualization
 # =====================================
 reload(visu_utils)
-reload(utils)
+reload(isc_utils)
 result_key = 'isc_results'
 conditions = ['HYPER', 'ANA', 'NHYPER', 'NANA']
     # cond = conditions[0]
@@ -71,8 +71,8 @@ interactive_views = []
 for cond in conditions:
     #masker =utils.load_pickle(os.path.join(results_dir, cond, f'maskers_{atlas_name}_{cond}_{n_sub}sub.pkl'))
     #isc_bootstrap = utils.load_pickle(all_results_paths[result_key][cond])
-    masker = utils.load_pickle(f'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/ISC/{model_name}/{cond}/maskers_{parcel_name}_{cond}_23sub.pkl')
-    isc_bootstrap = utils.load_pickle(f'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/ISC/{model_name}/{cond}/isc_results_{cond}_5000boot_pairWiseTrue.pkl')
+    masker = isc_utils.load_pickle(f'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/ISC/{model_name}/{cond}/maskers_{parcel_name}_{cond}_23sub.pkl')
+    isc_bootstrap = isc_utils.load_pickle(f'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/ISC/{model_name}/{cond}/isc_results_{cond}_5000boot_pairWiseTrue.pkl')
     isc_rois = pd.DataFrame(isc_bootstrap['isc'], columns=labels)
 
     isc_median = isc_bootstrap['observed']
@@ -81,8 +81,8 @@ for cond in conditions:
     p_values = isc_bootstrap['p_values']
     dist = isc_bootstrap['distribution']
     n_boot = setup['n_boot']
-    fdr_p = utils.fdr(p_values, q=0.05)
-    bonf_p = utils.bonferroni(p_values, alpha=0.05)
+    fdr_p = isc_utils.fdr(p_values, q=0.05)
+    bonf_p = isc_utils.bonferroni(p_values, alpha=0.05)
     print(f'FDR thresh : {fdr_p}')
     unc_p = 0.01
     # to brain plot 
@@ -125,13 +125,13 @@ for cond in conditions:
     interactive_views.append(interactive_view)
 
 # %%
-masker = utils.load_pickle('/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/ISC/model4_sugg_0602_preproc_reg-mvmnt-True_high-variance-False_23sub_voxelWise_lanA800/HYPER/maskers_voxelWise_lanA800_HYPER_23sub.pkl')
+masker = isc_utils.load_pickle('/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/ISC/model4_sugg_0602_preproc_reg-mvmnt-True_high-variance-False_23sub_voxelWise_lanA800/HYPER/maskers_voxelWise_lanA800_HYPER_23sub.pkl')
 
 #%%
 # Combined conditions
 # ================
 reload(visu_utils)
-reload(utils)
+reload(isc_utils)
 result_key = 'isc_results'
 interactive_views = []
 all_conditions = ['all_sugg', 'modulation', 'neutral']
@@ -142,15 +142,15 @@ for i, cond in enumerate(all_conditions):
     #masker =utils.load_pickle(os.path.join(results_dir, cond, f'maskers_{atlas_name}_{cond}_{n_sub}sub.pkl'))
     #isc_bootstrap = utils.load_pickle(all_results_paths[result_key][cond])
     # masker = utils.load_pickle(f'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/ISC/{model_name}/HYPER/maskers_schafer100_2mm_HYPER_23sub.pkl')
-    isc_bootstrap = utils.load_pickle(f'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/ISC/{model_name}/concat_suggs_1samp_boot/isc_results_{cond}_{scans}TRs_5000boot_pairWiseTrue.pkl')
+    isc_bootstrap = isc_utils.load_pickle(f'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/ISC/{model_name}/concat_suggs_1samp_boot/isc_results_{cond}_{scans}TRs_5000boot_pairWiseTrue.pkl')
     isc_rois = pd.DataFrame(isc_bootstrap['isc'], columns=labels)
     isc_median = isc_bootstrap['observed']
     ci = isc_bootstrap['confidence_intervals']
     p_values = isc_bootstrap['p_values']
     dist = isc_bootstrap['distribution']
     n_boot = setup['n_boot']
-    fdr_p = utils.fdr(p_values, q=0.05)
-    bonf_p = utils.bonferroni(p_values, alpha=0.05)
+    fdr_p = isc_utils.fdr(p_values, q=0.05)
+    bonf_p = isc_utils.bonferroni(p_values, alpha=0.05)
     print(f'FDR thresh : {fdr_p}')
     # to brain plot 
     reload(visu_utils)
@@ -262,13 +262,13 @@ for i, cont in enumerate(contrasts):
     #isc_bootstrap = utils.load_pickle(all_results_paths[result_key][cond])
     file = f'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/ISC/{model_name}/cond_contrast_permutation/isc_results_{cont}_{scans}TRs_5000perm_pairWiseTrue.pkl'
     # isc_contrast = utils.load_pickle(os.path.join(results_dir, result_key, file))
-    isc_contrast = utils.load_pickle(file)
+    isc_contrast = isc_utils.load_pickle(file)
 
     grouped_isc = isc_contrast['grouped_isc']        # Grouped ISC values
     observed_diff = isc_contrast['observed_diff']    # Observed differences in ISC
     p_values = isc_contrast['p_value']               # P-values for the ISC contrasts
     distribution = isc_contrast['distribution']      
-    fdr_p = utils.fdr(p_values, q=0.05)
+    fdr_p = isc_utils.fdr(p_values, q=0.05)
     unc_p = 0.05
 
     reload(visu_utils)
@@ -320,13 +320,13 @@ for shss_grp, n_sub in zip(['high_shss', 'low_shss'], [11, 12]):
         #isc_bootstrap = utils.load_pickle(all_results_paths[result_key][cond])
         file = f'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/ISC/{model_name}/group_perm_{shss_grp}/isc_results_{n_sub}sub_{cont}_5000perm_pairWiseTrue.pkl'
         # isc_contrast = utils.load_pickle(os.path.join(results_dir, result_key, file))
-        isc_contrast = utils.load_pickle(file)
+        isc_contrast = isc_utils.load_pickle(file)
 
         grouped_isc = isc_contrast['grouped_isc']        
         observed_diff = isc_contrast['observed_diff']    # Observed differences in ISC
         p_values = isc_contrast['p_value']               # P-values for the ISC contrasts
         distribution = isc_contrast['distribution']      
-        fdr_p = utils.fdr(p_values, q=0.05)
+        fdr_p = isc_utils.fdr(p_values, q=0.05)
         unc_p = 0.01
         print('FDR thresh : ', fdr_p)
         # reload(visu_utils)
@@ -385,7 +385,7 @@ views = {}
 for cond in conditions:
     #masker =utils.load_pickle(os.path.join(results_dir, conditions[0], f'maskers_{atlas_name}_{conditions[0]}_{n_sub}sub.pkl'))
     # isc_group = utils.load_pickle(all_results_paths[result_key][cond])
-    isc_group = utils.load_pickle(f'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/ISC/{model_name}/behavioral_group_permutation/{cond}_group_permutation_results_5000perm.pkl')
+    isc_group = isc_utils.load_pickle(f'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/ISC/{model_name}/behavioral_group_permutation/{cond}_group_permutation_results_5000perm.pkl')
     behav_ls = list(isc_group.keys())
     sig_rois_cond[cond] = {}
     views[cond] = {}
@@ -396,7 +396,7 @@ for cond in conditions:
         observed_diff = isc_group[y]['observed_diff']    # Observed differences in ISC
         p_values = isc_group[y]['p_value']               # P-values for the ISC contrasts
         distribution = isc_group[y]['distribution'] 
-        fdr_p = utils.fdr(p_values, q=0.05)
+        fdr_p = isc_utils.fdr(p_values, q=0.05)
         unc_p = 0.01 #0.05
         print(f'FDR thresh : {fdr_p}')
         reload(visu_utils)
@@ -450,7 +450,7 @@ for y_name in behav_ls:
     rsa_dict_2ttest[y_name] = {}
 
     for cond in conditions:
-        isc_bootstrap = utils.load_pickle(
+        isc_bootstrap = isc_utils.load_pickle(
             f'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/ISC/{model_name}/{cond}/isc_results_{cond}_5000boot_pairWiseTrue.pkl'
         )
         isc_rois = pd.DataFrame(isc_bootstrap['isc'], columns=labels)
@@ -462,7 +462,7 @@ for y_name in behav_ls:
                 f'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/ISC/{model_name}/rsa_isc_results_{simil_model}/rsa-isc_{cond}/{y_name}_rsa_isc_{simil_model}simil_10000perm_pvalues.csv'
             )
             p_values = np.array(rsa_df['p_value'])
-            fdr_p = utils.fdr(p_values, q=0.05)
+            fdr_p = isc_utils.fdr(p_values, q=0.05)
 
             rsa_dict_2ttest[y_name][cond][simil_model] = {
                 'correlation': rsa_df['correlation'],
@@ -535,20 +535,20 @@ for cond in conditions:
 
 #%%
 reload(visu_utils)
-fdr_test_p = utils.fdr(np.array(n_test_p), q=0.05)
+fdr_test_p = isc_utils.fdr(np.array(n_test_p), q=0.05)
 
 #%%
 heatmaps = {}
 for i, simil_model in enumerate(models):
     # Load ISC bootstrap data
-    isc_bootstrap = utils.load_pickle(
+    isc_bootstrap = isc_utils.load_pickle(
         f'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/ISC/model5_jeni_lvlpreproc-23sub_schafer100_2mm/{cond}/isc_results_{cond}_5000boot_pairWiseTrue.pkl'
     )
     isc_rois = pd.DataFrame(isc_bootstrap['isc'], columns=labels)
 
     # Compute similarity matrix
     y = np.array(behav_df[y_name])
-    sim_behav = utils.compute_behav_similarity(y, metric=simil_model)
+    sim_behav = isc_utils.compute_behav_similarity(y, metric=simil_model)
 
     # Normalize similarity matrix for better visualization
     sim_behav_norm = (sim_behav - sim_behav.min()) / (sim_behav.max() - sim_behav.min())
@@ -613,7 +613,7 @@ for y_name, cond in zip(behav_ls, conditions):
     print(f'====Processing {y_name} across conditions======')
     key_name = f'{y_name}-{cond}'
     rsa_dict_2ttest[key_name] = {}
-    isc_bootstrap = utils.load_pickle(
+    isc_bootstrap = isc_utils.load_pickle(
         f'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/ISC/model5_jeni_lvlpreproc-23sub_schafer100_2mm/{cond}/isc_results_{cond}_5000boot_pairWiseTrue.pkl'
     )
     isc_pairwise = isc_bootstrap['isc']
@@ -624,7 +624,7 @@ for y_name, cond in zip(behav_ls, conditions):
     y = np.array(X_pheno[y_name])
     y = (y - np.mean(y)) / np.std(y)
     for simil_model in models:
-        sim_behav = utils.compute_behav_similarity(y, metric = simil_model)
+        sim_behav = isc_utils.compute_behav_similarity(y, metric = simil_model)
         df_subjectwise_rsa = pd.DataFrame(index=range(isc_pairwise.shape[0]), columns=atlas_labels)
 
         for col_j in range(isc_pairwise.shape[1]): # j ROIs
@@ -634,7 +634,7 @@ for y_name, cond in zip(behav_ls, conditions):
                 roi_name = atlas_labels[col_j]
 
             isc_roi_vec = isc_pairwise[:, col_j]
-            rsa_results = utils.matrix_permutation(sim_behav, isc_roi_vec, n_permute=n_perm_rsa, metric="spearman", how="upper", tail=1, return_perms = True)
+            rsa_results = isc_utils.matrix_permutation(sim_behav, isc_roi_vec, n_permute=n_perm_rsa, metric="spearman", how="upper", tail=1, return_perms = True)
             values_rsa_perm[roi_name] = {'correlation': rsa_results['correlation'], 'p_value': rsa_results['p']}
             #distribution_rsa_perm[roi_name] = rsa_results['perm_dist']
 
@@ -643,7 +643,7 @@ for y_name, cond in zip(behav_ls, conditions):
         rsa_df.to_csv(csv_path)
         
         p_values = np.array(rsa_df['p_value'])
-        fdr_p = utils.fdr(p_values, q=0.05)
+        fdr_p = isc_utils.fdr(p_values, q=0.05)
 
         rsa_dict_2ttest[key_name][simil_model] = {
             'correlation': rsa_df['correlation'],

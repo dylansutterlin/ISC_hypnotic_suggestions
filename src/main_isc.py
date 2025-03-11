@@ -1,36 +1,47 @@
 
 # %%
 import sys
+import os
 
 if not os.getcwd().endswith('ISC_hypnotic_suggestions'):
     print('Appending scripts/ to python path')
     script_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '../scripts'))
     sys.path.append(script_dir)
-
     os.chdir('/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions')
+
+if os.getcwd().endswith('ISC_hypnotic_suggestions'):
+    print('Current directory is project root')
+    script_dir = os.path    .abspath(os.path.join(os.getcwd(), 'scripts'))
+    print(f'Appending {script_dir} to python path')
+    sys.path.append(script_dir)
+
+print(sys.path[-1])    
 print(os.getcwd())
 
 # %%
-from scripts import isc_utils
 import time
-from importlib import reload
-import nibabel as nib
-import numpy as np
+import sys
 import os
-import pandas as pd
 import json
-from nilearn.image import concat_imgs
-from brainiak.isc import isc, bootstrap_isc, permutation_isc, compute_summary_statistic, phaseshift_isc
-from nilearn.maskers import MultiNiftiMapsMasker, MultiNiftiMasker, NiftiMasker, NiftiLabelsMasker
+import glob
+from datetime import datetime
+from importlib import reload
+
+import numpy as np
+import pandas as pd
+import nibabel as nib
 from sklearn.utils import Bunch
+from nilearn.image import concat_imgs, resample_img, new_img_like, binarize_img, resample_to_img, index_img
+from nilearn.maskers import MultiNiftiMapsMasker, MultiNiftiMasker, NiftiMasker, NiftiLabelsMasker
 from nilearn.datasets import fetch_atlas_schaefer_2018
 from nilearn import plotting
 from nilearn.plotting import plot_carpet, plot_roi, plot_stat_map
-from nilearn.image import resample_img, new_img_like, binarize_img, resample_to_img, index_img
-import glob as glob
-import scripts.visu_utils as visu_utils
-from scripts import qc_utils    
-from datetime import datetime
+
+from brainiak.isc import isc, bootstrap_isc, permutation_isc, compute_summary_statistic, phaseshift_isc
+
+import isc_utils
+import visu_utils
+import qc_utils
 
 reload(isc_utils)
 # %% Load the data
@@ -43,7 +54,7 @@ base_path = os.path.join(project_dir, 'results/imaging/preproc_data', preproc_mo
 # base_path =  r'/data/rainville/Hypnosis_ISC/4D_data/segmented/concat_bks'
 behav_path = os.path.join(project_dir, 'results/behavioral/behavioral_data_cleaned.csv')
 exclude_sub = []
-KEEP_N_SUB = 4
+KEEP_N_SUB = None
 model_is = 'sugg'
 
 # import sys
@@ -110,7 +121,7 @@ if KEEP_N_SUB is not None:
 #model_name = f'model3_jeni_preproc-23sub'
 # conditions = ['Hyper', 'Ana', 'NHyper', 'NAna'] #['all_sugg', 'modulation', 'neutral']
 conditions = ['HYPER', 'ANA', 'NHYPER', 'NANA'] 
-transform_imgs = False #False
+transform_imgs = True #False
 do_isc_analyses = True 
 do_rsa = True    
 nsub = len(subjects)
@@ -124,7 +135,7 @@ n_rois = 200
 atlas_name = f'schafer{n_rois}_2mm' #'voxelWise_lanA800' #'schafer100_2mm'  #'schafer100_2mm' #'' #'schafer100_2mm' #'voxelWise' #Difumo256' # !!!!!!! 'Difumo256'
 atlas_bunch = Bunch(name=atlas_name)
 # model_name = f'model5_jeni_lvlpreproc-{str(n_sub)}sub_{atlas_name}' #_pairwise{do_pairwise}'
-model_name = f'model5_{model_is}_preproc_reg-mvmnt-{reg_conf}_high-variance-False_{str(n_sub)}sub_{atlas_name}_{datetime.today().strftime("%d-%m-%y")}' #_pairwise{do_pairwise}'
+model_name = f'model5_{model_is}_{str(n_sub)}sub_{atlas_name}_preproc_reg-mvmnt-{reg_conf}_high-variance-False' #_{datetime.today().strftime("%d-%m-%y")}' #_pairwise{do_pairwise}'
 # model_name = "model2_0202preproc_NO-mvmnt-reg_high-variance-False_23sub_schafer100_2mm"
 
 results_dir = os.path.join(project_dir, f'results/imaging/ISC/{model_name}')
@@ -266,8 +277,11 @@ elif atlas_name == f'schafer{n_rois}_2mm':
     atlas_native = nib.load(atlas_data['maps'])
     atlas = qc_utils.resamp_to_img_mask(atlas_native, ref_img)
     atlas_path = atlas_data['maps'] #os.path.join(project_dir,os.path.join(project_dir, 'masks', 'k50_2mm', '*.nii*'))
-    atlas_labels = list(atlas_data['labels'])
+    # atlas_labels = list(atlas_data['labels'])
+    # atlas_labels.insert(0, 'background')
+    atlas_labels = [str(label, 'utf-8') if isinstance(label, bytes) else str(label) for label in atlas_data['labels']]
     atlas_labels.insert(0, 'background')
+
 
 # elif atlas_name == 'lanA800':
 #     atlas = nib.load(os.path.join(project_dir, 'masks/lipkin2022_lanA800', 'LanA_n806.nii'))
@@ -413,7 +427,6 @@ if transform_imgs == True:
 
         print('Subject : ', subject, 'imgs shapes : ', shapes)
 
-    #breakpoint() #!!!
 	# save transformed data and masker
     for cond in conditions:
         data = transformed_data_per_cond[cond]
@@ -529,15 +542,24 @@ if do_isc_analyses:
     reload(isc_utils)
     isc_results = {}
     start_time = time.time()
+
+    # assert that data is shape TRs x ROI x subjects and not ls of TRxROI
+    transformed_formated = {}
     for cond, data in transformed_data_per_cond.items():
-        print(f'Performing ISC for condition: {cond}')
-        start_cond_time = time.time()
-        # Convert list of 2D arrays to 3D array (n_TRs, n_voxels, n_subjects)
+
         if isinstance(data, list):
             data_3d = np.stack(data, axis=-1)
         elif isinstance(data, np.ndarray):
             data_3d = data
         assert data_3d.shape[-1] == n_sub, f"Data shape {data_3d.shape} does not match number of subjects {n_sub}"
+        transformed_formated[cond] = data_3d
+
+    transformed_data_per_cond = transformed_formated # replace with 3d arrays
+
+    for cond, data in transformed_data_per_cond.items():
+        print(f'Performing ISC for condition: {cond}')
+        start_cond_time = time.time()
+        # Convert list of 2D arrays to 3D array (n_TRs, n_voxels, n_subjects)
         print(data_3d.shape)
 
         isc_results[cond] = isc_utils.isc_1sample(data_3d, pairwise=do_pairwise,n_boot = n_boot, summary_statistic=None)
@@ -568,8 +590,9 @@ if do_isc_analyses:
     for i, comb_cond in enumerate(combined_conditions):
         start_cond_time = time.time()
         print(f'Performing bootstraped ISC for combined condition: {comb_cond}')
-        combined_data = np.concatenate([transformed_data_per_cond[task] for task in task_to_test[i]], axis=0)
-        n_scans = combined_data.shape[0]
+        
+        combined_data = np.concatenate([transformed_data_per_cond[task]for task in task_to_test[i]], axis=0)
+        n_scans = combined_data.shape[0] #  concat along TR axis for each 3d task array
         n_sub = combined_data.shape[-1]
         # isc_combined = isc(combined_data, pairwise=do_pairwise, summary_statistic=None)
 

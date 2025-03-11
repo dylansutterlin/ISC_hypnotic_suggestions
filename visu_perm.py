@@ -7,11 +7,11 @@ import matplotlib.pyplot as plt
 from nilearn import plotting
 from nilearn.image import math_img, mean_img
 from nilearn.maskers import MultiNiftiMapsMasker, NiftiMapsMasker
-import utils
+import scripts.isc_utils as isc_utils
 import os
 import matplotlib.pyplot as plt
 from statsmodels.stats.multitest import multipletests
-import visu_utils as vu
+import scripts.visu_utils as vu
 # Threshold values
 p_threshold_uncorrected = 0.1  # Uncorrected
 p_threshold_001 = 0.001
@@ -24,7 +24,7 @@ roi_coords = {
 }
 
 import importlib
-importlib.reload(utils)
+importlib.reload(isc_utils)
 
 #model_name = "model1-22sub"
 model_name = 'model2_zcore_sample-22sub'
@@ -32,7 +32,7 @@ project_dir = "/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions"
 results_dir = os.path.join(project_dir, f'results/imaging/ISC/{model_name}')
 atlas_path = os.path.join(project_dir, 'masks/DiFuMo256/3mm/maps.nii.gz')
 conditions = ["all_sugg", "modulation", "neutral"]
-setup = utils.load_json(os.path.join(results_dir, 'setup_parameters.json'))
+setup = isc_utils.load_json(os.path.join(results_dir, 'setup_parameters.json'))
 
 atlas_path = os.path.join(project_dir, 'masks/DiFuMo256/3mm/maps.nii.gz')
 atlas_dict_path = os.path.join(project_dir, 'masks/DiFuMo256/labels_256_dictionary.csv')
@@ -40,7 +40,7 @@ atlas = nib.load(atlas_path)
 atlas_df = pd.read_csv(atlas_dict_path)
 atlas_labels = atlas_df['Difumo_names']
 
-setup = utils.load_json(os.path.join(results_dir, 'setup_parameters.json'))
+setup = isc_utils.load_json(os.path.join(results_dir, 'setup_parameters.json'))
 n_boot = setup['n_boot']
 n_perm = setup['n_perm']
 do_pairwise = setup['do_pairwise']
@@ -48,7 +48,7 @@ do_pairwise = setup['do_pairwise']
 behavioral_scores = pd.read_csv(r'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/ISC/model2_zcore_sample-22sub/behav_data_group_labels.csv', index_col=0)
 # %%
 cond = 'modulation'
-masker = utils.load_pickle(os.path.join(results_dir, cond, 'maskers_Difumo256_modulation_22sub.pkl'))
+masker = isc_utils.load_pickle(os.path.join(results_dir, cond, 'maskers_Difumo256_modulation_22sub.pkl'))
 # %%
 import importlib
 importlib.reload(vu)
@@ -58,7 +58,7 @@ importlib.reload(vu)
 cond = 'all_sugg'
 perm_results_name = f'isc_{n_perm}permutation_results_{cond}_pairwise{do_pairwise}.pkl'
 perm_results_path = os.path.join(results_dir,cond, perm_results_name)
-perm_dict = utils.load_pickle(perm_results_path)
+perm_dict = isc_utils.load_pickle(perm_results_path)
 
 y_var = 'total_chge_pain_hypAna'
 observed_isc, p_values, distributions = vu.load_isc_results_permutation(perm_dict[y_var])
