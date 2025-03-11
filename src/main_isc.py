@@ -1,6 +1,17 @@
 
 # %%
-import utils
+import sys
+
+if not os.getcwd().endswith('ISC_hypnotic_suggestions'):
+    print('Appending scripts/ to python path')
+    script_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '../scripts'))
+    sys.path.append(script_dir)
+
+    os.chdir('/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions')
+print(os.getcwd())
+
+# %%
+from scripts import isc_utils
 import time
 from importlib import reload
 import nibabel as nib
@@ -15,26 +26,26 @@ from sklearn.utils import Bunch
 from nilearn.datasets import fetch_atlas_schaefer_2018
 from nilearn import plotting
 from nilearn.plotting import plot_carpet, plot_roi, plot_stat_map
-from nilearn.image import resample_img, new_img_like, binarize_img, resample_to_img
+from nilearn.image import resample_img, new_img_like, binarize_img, resample_to_img, index_img
 import glob as glob
-import visu_utils
-from scripts import qc_utils
+import scripts.visu_utils as visu_utils
+from scripts import qc_utils    
+from datetime import datetime
 
-reload(utils)
+reload(isc_utils)
 # %% Load the data
 
 project_dir = "/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions"
-
-# base_path = "/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/data/test_data_sugg_3sub"
-preproc_model_data = 'model1_23subjects_zscore_sample_detrend_02-02-25/extracted_4D_per_cond_23sub'
+preproc_model_data = 'model2_23subjects_zscore_sample_detrend_25-02-25/extracted_4D_per_cond_23sub'
 base_path = os.path.join(project_dir, 'results/imaging/preproc_data', preproc_model_data)
 
 #jeni prepoc
 # base_path =  r'/data/rainville/Hypnosis_ISC/4D_data/segmented/concat_bks'
 behav_path = os.path.join(project_dir, 'results/behavioral/behavioral_data_cleaned.csv')
 exclude_sub = []
-keep_n_subjects = None
+KEEP_N_SUB = 4
 model_is = 'sugg'
+
 # import sys
 # sys.path.append(os.path.join(project_dir, 'QC_py310'))
 # import func
@@ -44,7 +55,7 @@ model_is = 'sugg'
 # project_dir = '/home/dsutterlin/projects/ISC_hypnotic_suggestions'
 # behav_path = os.path.join('/home/dsutterlin/projects/ISC_hypnotic_suggestions/results/behavioral', 'behavioral_data_cleaned.csv')
 
-isc_data_df = utils.load_isc_data(base_path, folder_is='subject', model = model_is) # !! change params if change base_dir
+isc_data_df = isc_utils.load_isc_data(base_path, folder_is='subject', model = model_is) # !! change params if change base_dir
 isc_data_df = isc_data_df.sort_values(by='subject')
 
 # ana_lvl = '/data/rainville/Hypnosis_ISC/4D_data/segmented_Ana_Instr_leveled/concat_Ana_Instr_leveled'
@@ -64,9 +75,10 @@ subjects = isc_data_df['subject'].unique()
 n_sub = len(subjects)
 
 # confounds !! unsorted!
-reg_conf=False
-dct_conf_unsorted = utils.load_confounds(base_path)
-confounds_ls = utils.filter_and_rename_confounds(dct_conf_unsorted, subjects, model_is)
+reg_conf=True
+dct_conf_unsorted = isc_utils.load_confounds(base_path)
+confounds_ls = isc_utils.filter_and_rename_confounds(dct_conf_unsorted, subjects, model_is)
+keep_n_confouds = 6 # !! remove last 2 rows
 #%%
 # check isc among confounds
 # isc_conf = {}
@@ -76,40 +88,43 @@ confounds_ls = utils.filter_and_rename_confounds(dct_conf_unsorted, subjects, mo
 #     for sub in range(len(subjects)):
 #         sub_arr = confounds_ls[sub][cond]
 #         arr_ls.append(sub_arr)
-#     arrays = np.stack(arr_ls, axis=-1)
+#     arrays = np.stack(arr_ls, axis=-1)[:,0:6,:] 
 #     print(f'Confounds ISC in cond {cond} wih {arrays.shape}')
 
 #     isc_conf[cond] = utils.isc_1sample(arrays, pairwise=True, n_boot=5000, summary_statistic=None)
     
+#     median = np.median(isc_conf[cond]['isc'], axis=0)
 #     p_val = isc_conf[cond]['p_values']
-#     visu_utils.plot_isc_median_with_significance()
+#     conf_names = ['reg'+ str(i) for i in range(1,7)]
+#     visu_utils.plot_isc_median_with_significance(median,p_val,conf_names, show=True)
 
 
 #%%
 sub_check = {}
 # Select a subset of subjects
-if keep_n_subjects is not None:
-    isc_data_df = isc_data_df[isc_data_df['subject'].isin(isc_data_df['subject'].unique()[:keep_n_subjects])]
+if KEEP_N_SUB is not None:
+    isc_data_df = isc_data_df[isc_data_df['subject'].isin(isc_data_df['subject'].unique()[:KEEP_N_SUB])]
     subjects = isc_data_df['subject'].unique()
     n_sub = len(subjects)
 
 #model_name = f'model3_jeni_preproc-23sub'
-conditions = ['Hyper', 'Ana', 'NHyper', 'NAna'] #['all_sugg', 'modulation', 'neutral']
+# conditions = ['Hyper', 'Ana', 'NHyper', 'NAna'] #['all_sugg', 'modulation', 'neutral']
 conditions = ['HYPER', 'ANA', 'NHYPER', 'NANA'] 
 transform_imgs = False #False
-do_isc_analyses = False 
+do_isc_analyses = True 
 do_rsa = True    
 nsub = len(subjects)
 n_sub = len(subjects)
-n_boot = 5000
+n_boot = 100
 do_pairwise = True
-n_perm = 5000
-n_perm_rsa = 5000 #change to 10 000!
+n_perm = 100
+n_perm_rsa = 100 #change to 10 000!
 # hyperparams
-atlas_name = 'voxelWise_lanA800' #'schafer100_2mm'  #'schafer100_2mm' #'' #'schafer100_2mm' #'voxelWise' #Difumo256' # !!!!!!! 'Difumo256'
+n_rois = 200
+atlas_name = f'schafer{n_rois}_2mm' #'voxelWise_lanA800' #'schafer100_2mm'  #'schafer100_2mm' #'' #'schafer100_2mm' #'voxelWise' #Difumo256' # !!!!!!! 'Difumo256'
 atlas_bunch = Bunch(name=atlas_name)
 # model_name = f'model5_jeni_lvlpreproc-{str(n_sub)}sub_{atlas_name}' #_pairwise{do_pairwise}'
-model_name = f'model4_{model_is}_0602_preproc_reg-mvmnt-{reg_conf}_high-variance-False_{str(n_sub)}sub_{atlas_name}' #_pairwise{do_pairwise}'
+model_name = f'model5_{model_is}_preproc_reg-mvmnt-{reg_conf}_high-variance-False_{str(n_sub)}sub_{atlas_name}_{datetime.today().strftime("%d-%m-%y")}' #_pairwise{do_pairwise}'
 # model_name = "model2_0202preproc_NO-mvmnt-reg_high-variance-False_23sub_schafer100_2mm"
 
 results_dir = os.path.join(project_dir, f'results/imaging/ISC/{model_name}')
@@ -131,7 +146,6 @@ else:
             exit()
         else:
             print("Invalid input. Please enter 'y' or 'n'.")
-
 
 setup = Bunch()
 setup.project_dir = project_dir
@@ -172,7 +186,7 @@ subject_file_dict = {}
 # organize files as dict{condX : {sub1 : [file1, file2, file3]
 # Does nothing where comparing all tasks by itself
 for i, cond in enumerate(conditions):
-    subject_file_dict[cond] = utils.get_files_for_condition_combination(subjects, task_to_test[i], isc_data_df)
+    subject_file_dict[cond] = isc_utils.get_files_for_condition_combination(subjects, task_to_test[i], isc_data_df)
 
 print("Conditions:", conditions)
 print("Condition combinations:", task_to_test)
@@ -185,30 +199,31 @@ for cond in conditions:
         os.makedirs(cond_folder)
     save_csv = pd.DataFrame.from_dict(subject_file_dict[cond], orient='index', columns=['func_path'])
     save_csv.to_csv(os.path.join(cond_folder, f'setup_func_path_{cond}.csv'))
-    utils.save_data(os.path.join(cond_folder, f'setup_func_path_{cond}.pkl'), subject_file_dict[cond])
+    isc_utils.save_data(os.path.join(cond_folder, f'setup_func_path_{cond}.pkl'), subject_file_dict[cond])
 
 # %%
 voxel_masker = Bunch(name="voxel_wise")
-ref_img = nib.load(subject_file_dict[conditions[0]][subjects[0]])
+ref_img = index_img(nib.load(subject_file_dict[conditions[0]][subjects[0]]), 0)
 data_shape = ref_img.shape[0:3] #3D
 data_affine = ref_img.affine
-if atlas_name=='voxelWise' or atlas_name == 'schafer100_2mm':
-    mask_path = '/data/rainville/Hypnosis_ISC/masks/brainmask_91-109-91.nii'
-    mask=nib.load(mask_path)
-    resamp_mask_cont = resample_to_img(mask, ref_img)
-    resamp_mask = binarize_img(resamp_mask_cont,mask_img=mask, threshold=0)
+
+if atlas_name=='voxelWise' or atlas_name == f'schafer{n_rois}_2mm':
+    mask = nib.load('/data/rainville/Hypnosis_ISC/masks/brainmask_91-109-91.nii')
+    # resamp_mask_cont = resample_to_img(mask, ref_img)
+    resamp_mask = qc_utils.resamp_to_img_mask(mask, ref_img)
+    mask_path = os.path.join(results_dir, 'resamp_mask_mni.nii.gz')
+    mask.to_filename(mask_path)
+    # resamp_mask = binarize_img(resamp_mask_cont,mask_img=mask, threshold=0)
     plot_roi(resamp_mask, title='resampled_mask', display_mode='ortho', draw_cross=False, output_file=os.path.join(results_dir, 'resampled_mask.png'))
 
 elif atlas_name=='voxelWise_lanA800':
     full_mask = nib.load(os.path.join(project_dir, 'masks/lipkin2022_lanA800', 'LanA_n806.nii'))
     at_thresh = 0.30
     mask_native = binarize_img(full_mask, threshold=at_thresh)
-    mask = resample_to_img(mask_native, ref_img)
+    mask = qc_utils.resamp_to_img_mask(mask_native, ref_img)
+    # mask = resample_to_img(mask_native, ref_img)
     mask_path = os.path.join(results_dir, f'bin_lanA800_{at_thresh}thresh.nii.gz')
     mask.to_filename(mask_path)
-
-    # resamp_mask_cont = resample_to_img(mask, ref_img)
-    # resamp_mask = binarize_img(resamp_mask_cont,mask_img=mask, threshold=0)
     plot_roi(mask, title='resampled_mask', display_mode='ortho', draw_cross=False, output_file=os.path.join(results_dir, 'resampled_mask.png'))
 
 masker_params_dict = {
@@ -228,7 +243,7 @@ masker_params_dict = {
 }
 
 masker_params_path = os.path.join(setup.results_dir, "masker_params.json")
-utils.save_json(masker_params_path, masker_params_dict)
+isc_utils.save_json(masker_params_path, masker_params_dict)
 
 #save plot of mask
 # mask_masker = NiftiMasker(mask_img=mask,mask_strategy='whole-brain-template').fit()
@@ -241,14 +256,18 @@ voxel_masker.obj = NiftiMasker(**masker_params_dict)
 if  'voxelWise' in atlas_name or atlas_name == 'Difumo256':
     atlas_path = os.path.join(project_dir, 'masks/DiFuMo256/3mm/maps.nii.gz')
     atlas_dict_path = os.path.join(project_dir, 'masks/DiFuMo256/labels_256_dictionary.csv')
-    atlas = nib.load(atlas_path)
+    atlas_native = nib.load(atlas_path)
+    atlas = qc_utils.resamp_to_img_mask(atlas_native, ref_img)
     # atlas_df = pd.read_csv(atlas_dict_path)
     atlas_labels = None
-elif atlas_name == 'schafer100_2mm':
-    atlas_data = fetch_atlas_schaefer_2018(n_rois = 100, resolution_mm=2)
-    atlas = nib.load(atlas_data['maps'])
+
+elif atlas_name == f'schafer{n_rois}_2mm':
+    atlas_data = fetch_atlas_schaefer_2018(n_rois = n_rois, resolution_mm=2)
+    atlas_native = nib.load(atlas_data['maps'])
+    atlas = qc_utils.resamp_to_img_mask(atlas_native, ref_img)
     atlas_path = atlas_data['maps'] #os.path.join(project_dir,os.path.join(project_dir, 'masks', 'k50_2mm', '*.nii*'))
     atlas_labels = list(atlas_data['labels'])
+    atlas_labels.insert(0, 'background')
 
 # elif atlas_name == 'lanA800':
 #     atlas = nib.load(os.path.join(project_dir, 'masks/lipkin2022_lanA800', 'LanA_n806.nii'))
@@ -272,23 +291,20 @@ roi_folder = f"sphere_{sphere_radius}mm_{len(roi_coords)}ROIS_isc"
 APM_subjects = ['APM' + sub[4:] for sub in subjects] # make APMXX format instead of subXX
 print(APM_subjects)
 sub_check['APM_behav'] = APM_subjects
-
-# phenotype= func.load_process_y(behav_path,APM_subjects)
 phenotype =pd.read_csv(behav_path, index_col=0)
 phenotype.head()
 y_interest = ['SHSS_score', 'total_chge_pain_hypAna', 'Abs_diff_automaticity']
-
-X_pheno, group_labels_df, sub_check= utils.load_process_behav(phenotype, y_interest, setup, sub_check)
+X_pheno, group_labels_df, sub_check= isc_utils.load_process_behav(phenotype, y_interest, setup, sub_check)
 #X_pheno includes group labels_df!! 
 setup.group_labels = group_labels_df
 
 # %%
 # extract timseries from atlas
-
 if transform_imgs == True:
-    start_total_time = time.time()
 
+    start_total_time = time.time()
     print(f'will fit and trasnform images for {n_sub} subjects')
+
     transformed_data_per_cond = {}
     fitted_maskers = {}
     transformed_sphere_per_roi = {}
@@ -297,8 +313,8 @@ if transform_imgs == True:
         masker = voxel_masker.obj
     elif atlas_name == 'Difumo256':
         masker = MultiNiftiMapsMasker(maps_img=atlas, standardize=False, memory='nilearn_cache', verbose=5, n_jobs= 1)
-    elif atlas_name == 'schafer100_2mm':
-        masker = NiftiLabelsMasker(labels_img=atlas, labels = atlas_labels, mask_img=mask,resampling_target="labels", standardize=True,high_variance_confounds=False, memory='nilearn_cache', verbose=5, n_jobs= 1)
+    elif atlas_name == f'schafer{n_rois}_2mm':
+        masker = NiftiLabelsMasker(labels_img=atlas, labels = atlas_labels, mask_img=resamp_mask,resampling_target='data', standardize=True,high_variance_confounds=False, memory='nilearn_cache', verbose=5, n_jobs= 1)
 
     #masker = MultiNiftiMapsMasker(maps_img=atlas, standardize=False, memory='nilearn_cache', verbose=5, n_jobs= 1)
     #masker = NiftiMasker(verbose=5)
@@ -310,10 +326,11 @@ if transform_imgs == True:
         condition_files = subject_file_dict[cond]
         concatenated_subjects = {sub : concat_imgs(sub_files) for sub, sub_files in condition_files.items()}
         print('Imgs shape : ', [img.shape for _, img in  concatenated_subjects.items()])
-        qc_utils.assert_same_affine(concatenated_subjects)
+        
+        #qc_utils.assert_same_affine(concatenated_subjects)
 
 	    #print(f'fitting images for condition : {cond} with shape {concatenated_subjects[subjects[0]][0].shape}')
-        if 'voxelWise' in atlas_name or atlas_name == 'schafer100_2mm':
+        if 'voxelWise' in atlas_name or atlas_name == f'schafer{n_rois}_2mm':
             # ls_voxel_wise = [masker.fit_transform(concatenated_subjects[sub],
             #                                        confounds= confounds_ls[i][cond])
             #                                          for i, sub in enumerate(subjects)
@@ -321,10 +338,13 @@ if transform_imgs == True:
             print(f'Fitting {atlas_name} masker for {cond}')
             ls_voxel_wise = []
             fitted_maskers[cond] = []
+            
             for i, sub in enumerate(subjects):
+
                 if reg_conf == True:
                     conf = confounds_ls[i][cond]
                 else: conf = None
+
                 transformed_data = masker.fit_transform(concatenated_subjects[sub], confounds= conf)
                 ls_voxel_wise.append(transformed_data)
                 fitted_maskers[cond].append(masker)  # Store the fitted masker for this subject
@@ -358,11 +378,11 @@ if transform_imgs == True:
     if atlas_name =='voxelWise':
         carpet_mask = resamp_mask    
         carpet_lab = None
-    elif atlas_name == 'schafer100_2mm':
+    elif atlas_name == f'schafer{n_rois}_2mm':
         carpet_mask = atlas
-        carpet_lab = atlas_labels
+        carpet_lab = None
     elif atlas_name =='voxelWise_lanA800':
-        carpet_mask = mask
+        carpet_mask = resamp_mask
         carpet_lab = None
 
     for sub in range(n_sub):
@@ -385,7 +405,7 @@ if transform_imgs == True:
 
     # combined carpet plot
     for cond in conditions:
-        carpet_files = glob.glob(os.path.join(results_dir, 'QC', f'sub-*_{conditions[0]}_carpet_*.png'))
+        carpet_files = glob.glob(os.path.join(results_dir, 'QC', f'sub-*_{cond}_carpet_*.png'))
         carpet_files = sorted(carpet_files)
         save_cond= os.path.join(results_dir,'QC', f'combined_sub_{cond}_carpet.png')
         title = f'{cond} for model : {model_name}'
@@ -406,7 +426,7 @@ if transform_imgs == True:
         #utils.save_data(s3ave_path, data)
 
         masker_path = os.path.join(cond_folder, f'maskers_{atlas_name}_{cond}_{nsub}sub.pkl')
-        utils.save_data(masker_path, fitted_maskers[cond])
+        isc_utils.save_data(masker_path, fitted_maskers[cond])
         print(f'Transformed timseries and maskers saved to {cond_folder}')
 
     print('====Done with data extraction====')
@@ -456,7 +476,7 @@ else:
         transformed_path =  os.path.join(load_path, f'transformed_data_{atlas_name}_{cond}_{nsub}sub.npz')
         transformed_data_per_cond[cond] = np.load(transformed_path)['arr_0'] #utils.load_pickle(os.path.join(load_path, transformed_path))
         fitted_mask_file = f'maskers_{atlas_name}_{cond}_{nsub}sub.pkl'
-        fitted_maskers[cond] = utils.load_pickle(os.path.join(load_path, fitted_mask_file))
+        fitted_maskers[cond] = isc_utils.load_pickle(os.path.join(load_path, fitted_mask_file))
 
         #load_roi = os.path.join(load_path, roi_folder)
         #transformed_sphere_per_roi[cond] =utils.load_pickle(os.path.join(load_roi, f"{len(roi_coords)}ROIs_timeseries.pkl")) 
@@ -490,11 +510,11 @@ else:
 #     utils.save_data(save_path, isc_dict)
 #     print(f"ISC results saved for {cond} at {save_path}")
 
-if atlas_name != 'schafer100_2mm':
+if atlas_name != f'schafer{n_rois}_2mm':
     # Assess 0 variance subjects
-    sub_to_remove = utils.identify_zero_variance_subjects(transformed_data_per_cond, subjects)
+    sub_to_remove = isc_utils.identify_zero_variance_subjects(transformed_data_per_cond, subjects)
     print(f"Subjects with 0 variance will be removed : {sub_to_remove}")
-    transformed_data_per_cond, fitted_masker, subjects = utils.remove_subjects(transformed_data_per_cond, fitted_maskers, subjects, sub_to_remove)
+    transformed_data_per_cond, fitted_masker, subjects = isc_utils.remove_subjects(transformed_data_per_cond, fitted_maskers, subjects, sub_to_remove)
     setup.kept_subjects = subjects
     n_sub= len(subjects)
 
@@ -506,7 +526,7 @@ if do_isc_analyses:
     # bootstrap_conditions = ['Hyper', 'Ana', 'NHyper', 'NAna', 'all_sugg', 'modulation', 'neutral']
 
     # ISC with ROI/voxels : bootstrap per condition (from chen et al. 2016)
-    reload(utils)
+    reload(isc_utils)
     isc_results = {}
     start_time = time.time()
     for cond, data in transformed_data_per_cond.items():
@@ -520,11 +540,11 @@ if do_isc_analyses:
         assert data_3d.shape[-1] == n_sub, f"Data shape {data_3d.shape} does not match number of subjects {n_sub}"
         print(data_3d.shape)
 
-        isc_results[cond] = utils.isc_1sample(data_3d, pairwise=do_pairwise,n_boot = n_boot, summary_statistic=None)
+        isc_results[cond] = isc_utils.isc_1sample(data_3d, pairwise=do_pairwise,n_boot = n_boot, summary_statistic=None)
 
         # save results
         save_path = os.path.join(results_dir, cond, f"isc_results_{cond}_{n_boot}boot_pairWise{do_pairwise}.pkl")
-        utils.save_data(save_path, isc_results[cond])
+        isc_utils.save_data(save_path, isc_results[cond])
         result_paths["isc_results"][cond] = save_path
 
         end_cond_time = time.time()
@@ -553,11 +573,11 @@ if do_isc_analyses:
         n_sub = combined_data.shape[-1]
         # isc_combined = isc(combined_data, pairwise=do_pairwise, summary_statistic=None)
 
-        isc_results[comb_cond] = utils.isc_1sample(combined_data, pairwise=do_pairwise,n_boot = n_boot, summary_statistic=None)
+        isc_results[comb_cond] = isc_utils.isc_1sample(combined_data, pairwise=do_pairwise,n_boot = n_boot, summary_statistic=None)
 
         # save results
         save_path = os.path.join(concat_cond_save, f"isc_results_{comb_cond}_{n_scans}TRs_{n_boot}boot_pairWise{do_pairwise}.pkl")
-        utils.save_data(save_path, isc_results[comb_cond])
+        isc_utils.save_data(save_path, isc_results[comb_cond])
         result_paths["isc_combined_results"][comb_cond] = save_path
 
         end_cond_time = time.time()
@@ -691,7 +711,7 @@ if do_isc_analyses:
     contrast_perm_save = os.path.join(results_dir, 'cond_contrast_permutation')
     os.makedirs(contrast_perm_save, exist_ok=True)
 
-    reload(utils)
+    reload(isc_utils)
     for i, contrast in enumerate(contrast_conditions):
         print(f'Performing 2 group permutation ISC : {contrast}')
         start_cond_time = time.time()
@@ -712,10 +732,10 @@ if do_isc_analyses:
 
         isc_grouped = isc(combined_data, pairwise=do_pairwise, summary_statistic=None)
         group_ids = np.array([0] * n_sub + [1] * n_sub)
-        isc_permutation_cond_contrast[contrast] = utils.group_permutation(isc_grouped, group_ids, n_perm, do_pairwise, side = 'two-sided', summary_statistic='median')
+        isc_permutation_cond_contrast[contrast] = isc_utils.group_permutation(isc_grouped, group_ids, n_perm, do_pairwise, side = 'two-sided', summary_statistic='median')
 
         save_path = os.path.join(contrast_perm_save, f"isc_results_{contrast}_{n_scans}TRs_{n_perm}perm_pairWise{do_pairwise}.pkl")
-        utils.save_data(save_path, isc_permutation_cond_contrast[contrast])
+        isc_utils.save_data(save_path, isc_permutation_cond_contrast[contrast])
         result_paths["condition_contrast_results"][contrast] = save_path
         
         print(f'contrast {contrast} done in {time.time() - start_cond_time:.2f} sec')
@@ -754,17 +774,17 @@ if do_isc_analyses:
         
             isc_grouped_selected = isc(combined_data_selected, pairwise=do_pairwise, summary_statistic=None)
             group_ids = np.array([0] * n_sub + [1] * n_sub)
-            isc_permutation_cond_contrast[contrast] = utils.group_permutation(isc_grouped_selected, group_ids_selected, n_perm, do_pairwise, side = 'two-sided', summary_statistic='median')
+            isc_permutation_cond_contrast[contrast] = isc_utils.group_permutation(isc_grouped_selected, group_ids_selected, n_perm, do_pairwise, side = 'two-sided', summary_statistic='median')
 
             save_path = os.path.join(contrast_perm_shss, f"isc_results_{keep_n}sub_{contrast}_{n_perm}perm_pairWise{do_pairwise}.pkl")
-            utils.save_data(save_path, isc_permutation_cond_contrast[contrast])
+            isc_utils.save_data(save_path, isc_permutation_cond_contrast[contrast])
             result_paths["condition_contrast_results"][contrast] = save_path
         print(f'Contrasts for {shss_grp} done in {time.time() - start_grp_time:.2f} sec')    
 
     # %%
     # ------------
     # Perform permutation based on group labels
-    reload(utils)
+    reload(isc_utils)
 
     isc_permutation_group_results = {}
     for cond, isc_dict in isc_results.items():  # `isc_results` should already contain ISC values
@@ -775,7 +795,7 @@ if do_isc_analyses:
 
         for var in group_labels_df.columns:
             group_assignment = group_labels_df[var].values  # Get group labels for this variable
-            isc_permutation_group_results[cond][var] = utils.group_permutation(isc_values, group_assignment, n_perm, do_pairwise, side = 'two-sided', summary_statistic='median')
+            isc_permutation_group_results[cond][var] = isc_utils.group_permutation(isc_values, group_assignment, n_perm, do_pairwise, side = 'two-sided', summary_statistic='median')
         
         print(f"Completed permutation ISC for {group_labels_df.columns}")
 
@@ -784,7 +804,7 @@ if do_isc_analyses:
 
     for cond, cond_results in isc_permutation_group_results.items():
         save_path = os.path.join(results_save_dir, f'{cond}_group_permutation_results_{n_perm}perm.pkl')
-        utils.save_data(save_path, cond_results)
+        isc_utils.save_data(save_path, cond_results)
         result_paths["group_permutation_results"][cond] = save_path
 
         # print(f"Saved ISC permutation results for condition: {cond} at {save_path}")
@@ -800,13 +820,13 @@ if do_rsa :
     for cond in conditions:
         if cond in ['HYPER', 'ANA', 'NHYPER', 'NANA']:
             f = os.path.join(results_dir, cond, f"isc_results_{cond}_{n_boot}boot_pairWise{do_pairwise}.pkl")
-            isc_results[cond] = utils.load_pickle(f)
+            isc_results[cond] = isc_utils.load_pickle(f)
         elif cond in combined_conditions:
             i = combined_conditions.index(cond)
             combined_data = np.concatenate([transformed_data_per_cond[task] for task in task_to_test[i]], axis=0)
             n_scans = combined_data.shape[0]
             f = os.path.join(concat_cond_save, f"isc_results_{cond}_{n_scans}TRs_{n_boot}boot_pairWise{do_pairwise}.pkl")
-            isc_results[cond] = utils.load_pickle(f) 
+            isc_results[cond] = isc_utils.load_pickle(f) 
 
     # ISC-RSA
     # reload(utils)
@@ -840,7 +860,7 @@ if do_rsa :
                 start_var_time = time.time()
                 y = np.array(X_pheno[behav_y])
                 y = (y - np.mean(y)) / np.std(y)
-                sim_behav = utils.compute_behav_similarity(y, metric = sim_model)
+                sim_behav = isc_utils.compute_behav_similarity(y, metric = sim_model)
                 result_paths['rsa_isc_results'][sim_model][cond][behav_y] = {}
                 df_subjectwise_rsa = pd.DataFrame(index=range(isc_pairwise.shape[0]), columns=atlas_labels)
 
@@ -851,7 +871,7 @@ if do_rsa :
                         roi_name = atlas_labels[col_j]
 
                     isc_roi_vec = isc_pairwise[:, col_j]
-                    rsa_results = utils.matrix_permutation(sim_behav, isc_roi_vec, n_permute=n_perm_rsa, metric="spearman", how="upper", tail=1, return_perms = True)
+                    rsa_results = isc_utils.matrix_permutation(sim_behav, isc_roi_vec, n_permute=n_perm_rsa, metric="spearman", how="upper", tail=1, return_perms = True)
                     values_rsa_perm[roi_name] = {'correlation': rsa_results['correlation'], 'p_value': rsa_results['p']}
                     distribution_rsa_perm[roi_name] = rsa_results['perm_dist']
 
@@ -862,7 +882,7 @@ if do_rsa :
                 csv_path = os.path.join(save_cond_rsa, f'{behav_y}_rsa_isc_{sim_model}simil_{n_perm_rsa}perm_pvalues.csv')
                 df_rsa.to_csv(csv_path)
                 dist_path = os.path.join(save_cond_rsa, f'{behav_y}_rsa_isc_{n_perm_rsa}perm_distribution.pkl')
-                utils.save_data(dist_path, distribution_rsa_perm)
+                isc_utils.save_data(dist_path, distribution_rsa_perm)
                 result_paths['rsa_isc_results'][sim_model][cond][behav_y] = {'csv': csv_path, 'distribution': dist_path}
             print(f'Done RSA-ISC ({sim_model} simil. model) for condition:', cond)
             print(f'{cond} time : ', time.time() - start_cond_time)
