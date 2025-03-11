@@ -44,7 +44,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-def make_localizer_vec_from_reg(design_matrix, regressors_dict, extra_indices_dct=None, direction=1, plot=True):
+def make_localizer_vec_from_reg(design_matrix, regressors_dict, extra_indices_dct=None, direction=1, plot=True, save_to = None):
 
     """
     Generate contrast vectors for a localizer using two sources:
@@ -90,14 +90,20 @@ def make_localizer_vec_from_reg(design_matrix, regressors_dict, extra_indices_dc
     # Add extra conditions based on provided indices from extra_indices_dct.
     # The indices refer to positions in the ordered list of keys of regressors_dict.
     if extra_indices_dct is not None:
+
         reg_keys = list(regressors_dict.keys())
+
         for new_condition, indices in extra_indices_dct.items():
+
             contrast_vector = np.zeros(n_columns)
+
             for idx in indices:
+
                 if idx < 0 or idx >= len(reg_keys):
                     raise ValueError(f"Index {idx} out of bounds for regressors_dict with {len(reg_keys)} keys.")
                 # Get the condition key corresponding to this index.
                 cond_key = reg_keys[idx]
+
                 # For each regressor in that condition, add 1.
                 for reg in regressors_dict[cond_key]:
                     if reg in design_matrix.columns:
@@ -120,13 +126,17 @@ def make_localizer_vec_from_reg(design_matrix, regressors_dict, extra_indices_dc
         plt.xlabel("Regressors in Design Matrix")
         plt.ylabel("Contrasts")
         plt.title("Contrast Vector Heatmap (Sanity Check)")
+
+        if save_to != None:
+            plt.savefig(os.path.join(save_to, 'localizer_weights.png'))
+
         plt.show()
 
     return contrasts
 
 
 
-def make_contrast_vec_from_reg(design_matrix, regressors_dict, contrast_spec, plot=True):
+def make_contrast_vec_from_reg(design_matrix, regressors_dict, contrast_spec, plot=True, save_to=None):
     """
     Generate contrast vectors based on a contrast specification.
     
@@ -155,15 +165,25 @@ def make_contrast_vec_from_reg(design_matrix, regressors_dict, contrast_spec, pl
     n_columns = design_matrix.shape[1]
     contrasts = {}
     
-    # Loop over each contrast specification.
+   
     for key, (w1, w2) in contrast_spec.items():
         parts = key.split('_minus_')
         if len(parts) != 2:
             raise ValueError("Contrast spec key must be of the form 'cond1_minus_cond2'")
+        
         pos_str, neg_str = parts
         pos_conditions = pos_str.split('+')
         neg_conditions = neg_str.split('+')
         
+        # Check that all extracted conditions match exactly keys in regressors_dict
+        for cond in pos_conditions:
+            if cond not in regressors_dict:
+                raise ValueError(f"Positive condition '{cond}' not found in regressors_dict keys.")
+        for cond in neg_conditions:
+            if cond not in regressors_dict:
+                raise ValueError(f"Negative condition '{cond}' not found in regressors_dict keys.")
+        
+
         contrast_vector = np.zeros(n_columns)
         
         # Assign positive weights.
@@ -188,10 +208,16 @@ def make_contrast_vec_from_reg(design_matrix, regressors_dict, contrast_spec, pl
         sns.heatmap(contrast_matrix, cmap="coolwarm", 
                     xticklabels=design_matrix.columns, 
                     yticklabels=list(contrasts.keys()), 
-                    cbar=False, linewidths=0.5)
+                    cbar=True, 
+                    cbar_kws={"label": "Contrast Weight"},
+                    linewidths=0.5)
         plt.xticks(rotation=90, ha="right", fontsize=8)
         plt.title("Condition Contrast Vector Heatmap")
         plt.tight_layout()
+
+        if save_to != None:
+            plt.savefig(os.path.join(save_to, 'contrasts_weights.png'))
+    
         plt.show()
     
     return contrasts
