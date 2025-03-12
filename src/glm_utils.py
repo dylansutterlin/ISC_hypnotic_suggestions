@@ -4,11 +4,19 @@ import json
 import pickle as pkl
 import matplotlib.pyplot as plt
 import seaborn as sns
-
-import qc_utils as utils
-from nilearn.image import concat_imgs
 from importlib import reload
 
+import src.qc_utils as utils
+import src.preproc_utils as preproc
+
+import os
+import glob
+import nibabel as nib
+from nilearn.plotting import plot_design_matrix
+from nilearn.image import concat_imgs
+from nilearn.glm.first_level import make_first_level_design_matrix
+from sklearn.utils import Bunch
+from datetime import datetime
 
 
 def save_pickle(save_path, data):
@@ -222,18 +230,6 @@ def make_contrast_vec_from_reg(design_matrix, regressors_dict, contrast_spec, pl
     
     return contrasts
 
-import qc_utils
-import preproc_utils as preproc
-import numpy as np
-import pandas as pd
-import os
-import glob
-import nibabel as nib
-from nilearn.plotting import plot_design_matrix
-from nilearn.image import concat_imgs
-from nilearn.glm.first_level import make_first_level_design_matrix
-from sklearn.utils import Bunch
-from datetime import datetime
 
 def prep_glm(nsub=3):
     data_dir = '/data/rainville/Hypnosis_ISC/4D_data/full_run'

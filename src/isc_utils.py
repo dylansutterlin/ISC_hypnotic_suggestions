@@ -10,6 +10,9 @@ from brainiak.isc import phaseshift_isc, compute_summary_statistic, isc, bootstr
 from scipy.stats import rankdata, spearmanr
 from sklearn.metrics import pairwise_distances
 
+import src.visu_utils
+
+
 def initialize_setup():
     project_dir = "/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions"
     # base_path = "/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/data/test_data_sugg_3sub"
@@ -831,8 +834,6 @@ def r_to_z(r_values):
     z_values = np.arctanh(r_values)
     return z_values
 
-
-import visu_utils
 
 def check_confounfs_isc(confounds_ls, subjects, conditions, show=True):
 

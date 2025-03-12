@@ -5,7 +5,7 @@ from sklearn.utils import Bunch
 class ExperimentSetup():
 
     def __init__(self):
-        # Define project paths
+
         self.project_dir = "/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions"
         self.preproc_model_data = 'model2_23subjects_zscore_sample_detrend_25-02-25/extracted_4D_per_cond_23sub'
         self.base_path = os.path.join(self.project_dir, 'results/imaging/preproc_data', self.preproc_model_data)
@@ -23,6 +23,10 @@ class ExperimentSetup():
         # Model parameters
         self.model_is = 'sugg'
         self.conditions = ['HYPER', 'ANA', 'NHYPER', 'NANA']
+        self.combined_conditions = ['all_sugg', 'modulation', 'neutral']
+        self.combined_task_to_test = [self.conditions, self.conditions[0:2], self.conditions[2:4]]
+        self.all_conditions = ['HYPER', 'ANA', 'NHYPER', 'NANA', 'all_sugg', 'modulation', 'neutral']
+
         self.n_boot = 5000
         self.do_pairwise = True
         self.n_perm = 5000

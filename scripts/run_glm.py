@@ -24,22 +24,21 @@ from nilearn.plotting import plot_design_matrix, plot_stat_map
 from nilearn import plotting
 from nilearn.glm.thresholding import threshold_stats_img
 
-if os.getcwd().endswith('ISC_hypnotic_suggestions'):
-    print('Appending scripts/ to python path')
-    script_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '../scripts'))
-    sys.path.append(script_dir)
+# if os.getcwd().endswith('ISC_hypnotic_suggestions'):
+#     print('Appending scripts/ to python path')
+#     script_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '../scripts'))
+#     sys.path.append(script_dir)
 
-if os.getcwd().endswith('src'):
-    os.chdir(os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
-    print('changed dir to ', os.getcwd())
+# if os.getcwd().endswith('src'):
+#     os.chdir(os.path.abspath(os.path.join(os.path.dirname(__file__), '../')))
+#     print('changed dir to ', os.getcwd())
 
 
 print('current working dir : ', os.getcwd())
+# %%
+from src import preproc_utils, visu_utils, qc_utils
+import src.glm_utils as utils
 
-import preproc_utils
-import visu_utils 
-import glm_utils as utils
-import qc_utils
 from sklearn.utils import Bunch
 from importlib import reload
 from nilearn import datasets

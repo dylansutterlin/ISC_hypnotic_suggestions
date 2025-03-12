@@ -3,34 +3,11 @@
 # %%
 import sys
 import os
-
-# append project dir to python paths
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-if project_root not in sys.path:
-    sys.path.insert(0, project_root)
-script_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '../scripts'))
-sys.path.append(script_dir)
-#     os.chdir('/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions')
-
-
-# if not os.getcwd().endswith('ISC_hypnotic_suggestions'):
-#     print('Appending scripts/ to python path')
-
-# if os.getcwd().endswith('ISC_hypnotic_suggestions'):
-#     print('Current directory is project root')
-#     script_dir = os.path.abspath(os.path.join(os.getcwd(), 'scripts'))
-#     print(f'Appending {script_dir} to python path')
-#     sys.path.append(script_dir)
-
-    # sys.path.append('/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/setups')
-
-# print(sys.path[-1])    
-# print(os.getcwd())
-
 import time
 import json
 import glob
 from datetime import datetime
+import importlib
 from importlib import reload
 
 import numpy as np
@@ -45,13 +22,12 @@ from nilearn.plotting import plot_carpet, plot_roi, plot_stat_map
 
 from brainiak.isc import isc, bootstrap_isc, permutation_isc, compute_summary_statistic, phaseshift_isc
 
-import isc_utils
-import visu_utils
-import qc_utils
+import src.isc_utils as isc_utils
+import src.visu_utils as visu_utils
+import src.qc_utils as qc_utils
 
 reload(isc_utils)
 
-import importlib
 # %%
 # Detect if running in an interactive environment (VSCode, Jupyter, etc.)
 def is_interactive():
@@ -785,9 +761,10 @@ if do_isc_analyses:
     # %%
 if do_rsa :
     # Load existing ISC results
-    task_to_test = [conditions, conditions[0:2], conditions[2:4]]
-    combined_conditions = ['all_sugg', 'modulation', 'neutral']
-    all_conditions = ['HYPER', 'ANA', 'NHYPER', 'NANA', 'all_sugg', 'modulation', 'neutral']
+    task_to_test = setup.combined_task_to_test # [conditions, conditions[0:2], conditions[2:4]]
+    combined_conditions = setup.combined_conditions #['all_sugg', 'modulation', 'neutral']
+    all_conditions = setup.all_conditions # ['Hyper', 'Ana', 'NHyper', 'NAna', 'all_sugg', 'modulation', 'neutral']
+
     isc_results = {}
     
     for cond in all_conditions:
