@@ -787,8 +787,10 @@ if do_rsa :
     # Load existing ISC results
     task_to_test = [conditions, conditions[0:2], conditions[2:4]]
     combined_conditions = ['all_sugg', 'modulation', 'neutral']
+    all_conditions = ['HYPER', 'ANA', 'NHYPER', 'NANA', 'all_sugg', 'modulation', 'neutral']
     isc_results = {}
-    for cond in conditions:
+    
+    for cond in all_conditions:
         if cond in ['HYPER', 'ANA', 'NHYPER', 'NANA']:
             f = os.path.join(results_dir, cond, f"isc_results_{cond}_{n_boot}boot_pairWise{do_pairwise}.pkl")
             isc_results[cond] = isc_utils.load_pickle(f)
@@ -805,7 +807,6 @@ if do_rsa :
     # reload(utils)
     print('============================')
     print('ISC-RSA for each condition')
-    all_conditions = ['HYPER', 'ANA', 'NHYPER', 'NANA', 'all_sugg', 'modulation', 'neutral']
     subjectwise_rsa_results = {} # to save a subject x ROI matrix of ISC-RSA values
 
     for sim_model in ['euclidean', 'annak']:
@@ -819,9 +820,9 @@ if do_rsa :
             result_paths['rsa_isc_results'][sim_model][cond] = {}
             subjectwise_rsa_results[cond] = {}
 
-            # check mkdirs ?
-            if cond == 'all_sugg':
-                breakpoint()
+            # # check mkdirs ?
+            # if cond == 'all_sugg':
+            #     breakpoint()
             save_cond_rsa = os.path.join(rsa_save_dir, f'rsa-isc_{cond}') # make condition folder
             os.makedirs(save_cond_rsa, exist_ok=True)
 

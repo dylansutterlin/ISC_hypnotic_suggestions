@@ -450,9 +450,6 @@ def remove_subjects(data_per_cond,fitted_maskers, subjects, subjects_to_remove):
 
 
 
-
-
-
 def isc_1sample(data_3d, pairwise, n_boot=5000, side = 'two-sided', summary_statistic=None):
     
     isc_result = isc(data_3d, pairwise=pairwise, summary_statistic=None)
@@ -834,3 +831,27 @@ def r_to_z(r_values):
     z_values = np.arctanh(r_values)
     return z_values
 
+
+import visu_utils
+
+def check_confounfs_isc(confounds_ls, subjects, conditions, show=True):
+
+    isc_conf = {}
+
+    for cond in conditions:
+        arr_ls = []
+        for sub in range(len(subjects)):
+            sub_arr = confounds_ls[sub][cond]
+            arr_ls.append(sub_arr)
+        arrays = np.stack(arr_ls, axis=-1)[:,0:6,:] 
+        
+        print(f'Confounds ISC in cond {cond} wih {arrays.shape}')
+
+        isc_conf[cond] = isc_1sample(arrays, pairwise=True, n_boot=5000, summary_statistic=None)
+        
+        median = np.median(isc_conf[cond]['isc'], axis=0)
+        p_val = isc_conf[cond]['p_values']
+        conf_names = ['reg'+ str(i) for i in range(1,7)]
+        visu_utils.plot_isc_median_with_significance(median,p_val,conf_names, show=show)
+
+    return isc_conf
