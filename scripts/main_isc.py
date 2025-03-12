@@ -43,7 +43,7 @@ if not is_interactive():
     # setup_name = 'setups.debug_setup'
     # breakpoint()
 else:
-    print("Running in interactive mode. Using default setup: `atlas_setup`")
+    print("Running in interactive mode. Using default setup: `debug_setup`")
     setup_name = "setups.debug_setup"  # Default setup when running cells manually
 
 print("Current Working Directory:", os.getcwd())
@@ -73,12 +73,15 @@ conditions = setup.conditions
 transform_imgs = setup.transform_imgs
 do_isc_analyses = setup.do_isc_analyses
 do_rsa = setup.do_rsa
+
 n_boot = setup.n_boot
 do_pairwise = setup.do_pairwise
 n_perm = setup.n_perm
 n_perm_rsa = setup.n_perm_rsa
-n_rois = setup.n_rois
+
 atlas_name = setup.atlas_name
+apply_mask = setup.apply_mask
+
 model_name = setup.model_name
 results_dir = setup.results_dir
 
@@ -156,7 +159,7 @@ ref_img = index_img(nib.load(subject_file_dict[conditions[0]][subjects[0]]), 0)
 data_shape = ref_img.shape[0:3] #3D
 data_affine = ref_img.affine
 
-if atlas_name=='voxelWise' or atlas_name == f'schafer{n_rois}_2mm':
+if atlas_name =='voxelWise' or 'schafer' in atlas_name: # == f'schafer-{n_rois}-2mm':
     mask = nib.load('/data/rainville/Hypnosis_ISC/masks/brainmask_91-109-91.nii')
     # resamp_mask_cont = resample_to_img(mask, ref_img)
     resamp_mask = qc_utils.resamp_to_img_mask(mask, ref_img)
@@ -167,7 +170,7 @@ if atlas_name=='voxelWise' or atlas_name == f'schafer{n_rois}_2mm':
 
 elif atlas_name=='voxelWise_lanA800':
     full_mask = nib.load(os.path.join(project_dir, 'masks/lipkin2022_lanA800', 'LanA_n806.nii'))
-    at_thresh = 0.30
+    at_thresh = setup.prob_threshold
     mask_native = binarize_img(full_mask, threshold=at_thresh)
     mask = qc_utils.resamp_to_img_mask(mask_native, ref_img)
     # mask = resample_to_img(mask_native, ref_img)
@@ -210,8 +213,12 @@ if  'voxelWise' in atlas_name or atlas_name == 'Difumo256':
     # atlas_df = pd.read_csv(atlas_dict_path)
     atlas_labels = None
 
-elif atlas_name == f'schafer{n_rois}_2mm':
-    atlas_data = fetch_atlas_schaefer_2018(n_rois = n_rois, resolution_mm=2)
+elif 'schafer' in atlas_name : #atlas_name == f'schafer-{n_rois}-2mm':
+
+    n_rois = int(atlas_name.split('-')[1])
+    resolution = int(atlas_name.split('-')[2].replace('mm', ''))
+    atlas_data = fetch_atlas_schaefer_2018(n_rois = n_rois, resolution_mm=resolution)
+
     atlas_native = nib.load(atlas_data['maps'])
     atlas = qc_utils.resamp_to_img_mask(atlas_native, ref_img)
     atlas_path = atlas_data['maps'] #os.path.join(project_dir,os.path.join(project_dir, 'masks', 'k50_2mm', '*.nii*'))
@@ -265,7 +272,7 @@ if transform_imgs == True:
         masker = voxel_masker.obj
     elif atlas_name == 'Difumo256':
         masker = MultiNiftiMapsMasker(maps_img=atlas, standardize=False, memory='nilearn_cache', verbose=5, n_jobs= 1)
-    elif atlas_name == f'schafer{n_rois}_2mm':
+    elif 'schafer' in atlas_name : # == f'schafer{n_rois}_2mm':
         masker = NiftiLabelsMasker(labels_img=atlas, labels = atlas_labels, mask_img=resamp_mask,resampling_target='data', standardize=True,high_variance_confounds=False, memory='nilearn_cache', verbose=5, n_jobs= 1)
 
     #masker = MultiNiftiMapsMasker(maps_img=atlas, standardize=False, memory='nilearn_cache', verbose=5, n_jobs= 1)
@@ -282,7 +289,7 @@ if transform_imgs == True:
         #qc_utils.assert_same_affine(concatenated_subjects)
 
 	    #print(f'fitting images for condition : {cond} with shape {concatenated_subjects[subjects[0]][0].shape}')
-        if 'voxelWise' in atlas_name or atlas_name == f'schafer{n_rois}_2mm':
+        if 'voxelWise' in atlas_name or 'schafer' in atlas_name: # == f'schafer{n_rois}_2mm':
             # ls_voxel_wise = [masker.fit_transform(concatenated_subjects[sub],
             #                                        confounds= confounds_ls[i][cond])
             #                                          for i, sub in enumerate(subjects)
@@ -779,7 +786,7 @@ if do_rsa :
             isc_results[cond] = isc_utils.load_pickle(f) 
 
     # check if all cond are in isc_results
-    breakpoint()
+
     # ISC-RSA
     # reload(utils)
     print('============================')

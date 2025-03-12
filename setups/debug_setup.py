@@ -11,9 +11,8 @@ def init():
     setup.exclude_sub = []
     setup.keep_n_sub = 6  # Set to None to include all subjects
 
-    setup.atlas_name = "schafer100_2mm"
-    setup.n_rois = 100
-
+    setup.atlas_name = "schafer-200-2mm"
+    
     setup.model_is = 'sugg'
     setup.conditions = ['HYPER', 'ANA', 'NHYPER', 'NANA']
 
@@ -27,8 +26,6 @@ def init():
     setup.n_perm_rsa = 50  # Default, but can be overridden
     setup.reg_conf = True  # Whether to regress out movement confounds
 
-    # Save setup
-    setup.save_to_json()
 
     return setup
 

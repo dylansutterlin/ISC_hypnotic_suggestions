@@ -27,6 +27,9 @@ class ExperimentSetup():
         self.combined_task_to_test = [self.conditions, self.conditions[0:2], self.conditions[2:4]]
         self.all_conditions = ['HYPER', 'ANA', 'NHYPER', 'NANA', 'all_sugg', 'modulation', 'neutral']
 
+        self.transform_imgs = True #False
+        self.do_isc_analyses = True
+        self.do_rsa = True
         self.n_boot = 5000
         self.do_pairwise = True
         self.n_perm = 5000
@@ -35,11 +38,14 @@ class ExperimentSetup():
         self.keep_n_conf = 6 # only movement params *
 
         # Atlas selection
-        self.n_rois = 200
-        self.atlas_name = f'schafer{self.n_rois}_2mm'
+        # self.n_rois = 200
+        self.atlas_name = f'schafer-200-2mm' 
+        self.apply_mask = 'whole-brain'
+        self.prob_threshold = 0.30 # only used in 'voxelWise_lanA800'
 
         # Model naming
-        self.model_name = f'model5_{self.model_is}_{self.n_rois}ROIs_{self.atlas_name}_preproc_reg-mvmnt-{self.reg_conf}'
+        self.model_id = 'model5'
+        self.model_name = f'{self.model_id}_{self.model_is}_{self.atlas_name}_mask-{self.apply_mask}_preproc_reg-mvmnt-{self.reg_conf}-{self.keep_n_conf}'
         self.results_dir = os.path.join(self.project_dir, f'results/imaging/ISC/{self.model_name}')
 
         # Ensure results directory exists
@@ -61,19 +67,6 @@ class ExperimentSetup():
         """Return the items of the setup dictionary"""
         return self.to_dict().items()
     
-    def save_to_json(self):
-        """Save setup parameters to a JSON file for reproducibility."""
-        save_path = os.path.join(self.results_dir, "setup_parameters.json")
-        
-        import numpy as np
-        # Convert NumPy arrays before saving
-        setup_dict = {key: (value.tolist() if isinstance(value, np.ndarray) else value)
-                    for key, value in self.__dict__.items()}
-        
-        with open(save_path, 'w') as fp:
-            json.dump(setup_dict, fp, indent=4)
-
-        print(f"Setup parameters saved to {save_path}")
 
 
     def check_and_create_results_dir(self):
@@ -95,3 +88,29 @@ class ExperimentSetup():
                     exit()
                 else:
                     print("Invalid input. Please enter 'y' or 'n'.")
+
+    def save_to_json(self):
+        """Save setup parameters to a JSON file for reproducibility."""
+        save_path = os.path.join(self.results_dir, "setup_parameters.json")
+        
+        import numpy as np
+        # Convert NumPy arrays before saving
+        setup_dict = {key: (value.tolist() if isinstance(value, np.ndarray) else value)
+                    for key, value in self.__dict__.items()}
+        
+        with open(save_path, 'w') as fp:
+            json.dump(setup_dict, fp, indent=4)
+
+        print(f"Setup parameters saved to {save_path}")
+
+
+
+
+
+
+
+
+
+
+
+
