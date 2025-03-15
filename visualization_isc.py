@@ -5,7 +5,7 @@ import os
 import seaborn as sns
 from nilearn import plotting
 from nilearn.plotting import view_img 
-import scripts.isc_utils as isc_utils
+
 import time
 from importlib import reload
 import nibabel as nib
@@ -17,8 +17,10 @@ from brainiak.isc import isc, bootstrap_isc, permutation_isc, compute_summary_st
 from nilearn.maskers import MultiNiftiMapsMasker, MultiNiftiMasker
 from nilearn.datasets import fetch_atlas_schaefer_2018
 from sklearn.utils import Bunch
-import scripts.visu_utils as visu_utils
 from nilearn.plotting import view_img_on_surf
+
+import src.isc_utils as isc_utils
+import src.visu_utils as visu_utils
 reload(visu_utils)
 reload(isc_utils)
 # %% Load the data
@@ -26,32 +28,41 @@ model_names = {
     'model1': 'model2_0202preproc_mvmnt-reg_high-variance-False_23sub_schafer100_2mm',
     'model2': 'model2_0202preproc_NO-mvmnt-reg_high-variance-False_23sub_schafer100_2mm',
     'model3': 'model4_sugg_0602_preproc_reg-mvmnt-False_high-variance-False_23sub_voxelWise_lanA800',
-    'model4': 'model4_sugg_0602_preproc_reg-mvmnt-True_high-variance-False_23sub_voxelWise_lanA800'
+    'model4': 'model4_sugg_0602_preproc_reg-mvmnt-True_high-variance-False_23sub_voxelWise_lanA800',
+    'model5': 'model5_sugg_schafer-200-2mm_mask-whole-brain_pairWise-True_preproc_reg-mvmnt-True-8',
+    'modelt': 'model5_sugg_schafer-200-2mm_mask-whole-brain_preproc_reg-mvmnt-True-6',
+    'model7': 'model4_shock_0602_preproc_reg-mvmnt-True_high-variance-False_23sub_schafer200_2mm'
 }
 parcel_names = {
     'model1' : 'schafer100_2mm',
     'model2': 'schafer100_2mm',
     'model3': 'voxelWise_lanA800',
-    'model4': 'voxelWise_lanA800'
+    'model4': 'voxelWise_lanA800',
+    'model5': 'schafer-200-2mm',
+    'modelt': 'schafer-200-2mm',
+    'model7': 'schafer200_2mm'
 }
+model_is = 'modelt'
+
 project_dir = "/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions"
 # base_path = "/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/data/test_data_sugg_3sub"
 preproc_model_data = '23subjects_zscore_sample_detrend_FWHM6_low-pass428_10-12-24/suggestion_blocks_concat_4D_23sub'
 
 base_path = os.path.join(project_dir, 'results/imaging/preproc_data', preproc_model_data)
 
-model_name = model_names['model4']
-parcel_name = parcel_names['model4']
+model_name = model_names[model_is]
+parcel_name = parcel_names[model_is]
 
 results_dir = os.path.join(project_dir, f'results/imaging/ISC/{model_name}')
 setup = isc_utils.load_json(os.path.join(results_dir, "setup_parameters.json"))
 
+n_boot = 5000 #setup['n_boot']
 # %% 
 # all_results_paths = utils.load_json(os.path.join(results_dir, "result_paths.json"))
 atlas_name = 'Difumo256' # change to setup['atlas_name']
 n_sub = setup['n_sub']
 
-atlas_data = fetch_atlas_schaefer_2018(n_rois = 100, resolution_mm=2)
+atlas_data = fetch_atlas_schaefer_2018(n_rois = 200, resolution_mm=2)
 atlas = nib.load(atlas_data['maps'])
 atlas_path = atlas_data['maps'] #os.path.join(project_dir,os.path.join(project_dir, 'masks', 'k50_2mm', '*.nii*'))
 labels = list(atlas_data['labels'])
@@ -69,6 +80,7 @@ conditions = ['HYPER', 'ANA', 'NHYPER', 'NANA']
 views = {}
 interactive_views = []
 for cond in conditions:
+    print('----------------------------------------------------')
     #masker =utils.load_pickle(os.path.join(results_dir, cond, f'maskers_{atlas_name}_{cond}_{n_sub}sub.pkl'))
     #isc_bootstrap = utils.load_pickle(all_results_paths[result_key][cond])
     masker = isc_utils.load_pickle(f'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/ISC/{model_name}/{cond}/maskers_{parcel_name}_{cond}_23sub.pkl')
@@ -94,7 +106,7 @@ for cond in conditions:
         isc_median=isc_median,
         atlas_labels=labels,
         p_values=p_values,
-        p_threshold=0.01,
+        p_threshold=fdr_p,
         title = f"ISC Median per ROI for {cond}",
         save_path=None,
         show=True
@@ -135,14 +147,15 @@ reload(isc_utils)
 result_key = 'isc_results'
 interactive_views = []
 all_conditions = ['all_sugg', 'modulation', 'neutral']
-n_scans = [468, 200, 268] #[438, 188, 250]
+# n_scans = [468, 200, 268] #[438, 188, 250]
 views = {}
 for i, cond in enumerate(all_conditions):
-    scans = n_scans[i]
+    print('----------------------------------------------------')
+    # scans = n_scans[i]
     #masker =utils.load_pickle(os.path.join(results_dir, cond, f'maskers_{atlas_name}_{cond}_{n_sub}sub.pkl'))
     #isc_bootstrap = utils.load_pickle(all_results_paths[result_key][cond])
     # masker = utils.load_pickle(f'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/ISC/{model_name}/HYPER/maskers_schafer100_2mm_HYPER_23sub.pkl')
-    isc_bootstrap = isc_utils.load_pickle(f'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/ISC/{model_name}/concat_suggs_1samp_boot/isc_results_{cond}_{scans}TRs_5000boot_pairWiseTrue.pkl')
+    isc_bootstrap = isc_utils.load_pickle(f'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/ISC/{model_name}/concat_suggs_1samp_boot/isc_results_{cond}_{n_boot}boot_pairWiseTrue.pkl')
     isc_rois = pd.DataFrame(isc_bootstrap['isc'], columns=labels)
     isc_median = isc_bootstrap['observed']
     ci = isc_bootstrap['confidence_intervals']
@@ -251,7 +264,7 @@ conditions = ['Hyper', 'Ana', 'NHyper', 'NAna']
 contrasts = ['Hyper-Ana', 'Ana-Hyper', 'NHyper-NAna']
 
 reload(visu_utils)
-n_scans = [100, 100, 134] #[94, 94, 125]
+# n_scans = [100, 100, 134] #[94, 94, 125]
 views = {}
 sig_rois = {}
 interactive_views=[]
@@ -260,7 +273,7 @@ for i, cont in enumerate(contrasts):
     # masker =utils.load_pickle(os.path.join(results_dir, cond, f'maskers_{atlas_name}_{cond}_{n_sub}sub.pkl'))
     # file = f"isc_results_{contrast}_{n_scans}TRs_{setup['n_perm']}perm_pairWiseTrue.pkl"
     #isc_bootstrap = utils.load_pickle(all_results_paths[result_key][cond])
-    file = f'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/ISC/{model_name}/cond_contrast_permutation/isc_results_{cont}_{scans}TRs_5000perm_pairWiseTrue.pkl'
+    file = f'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/ISC/{model_name}/cond_contrast_permutation/isc_results_{cont}_5000perm_pairWiseTrue.pkl'
     # isc_contrast = utils.load_pickle(os.path.join(results_dir, result_key, file))
     isc_contrast = isc_utils.load_pickle(file)
 
@@ -379,7 +392,7 @@ plot_stat_map(
 result_key = 'group_permutation_results'
 conditions = ['Hyper', 'Ana', 'NHyper', 'NAna']
 conditions = [ 'all_sugg', 'neutral', 'modulation', 'HYPER', 'ANA']
-behav_ls = 'total_chge_pain_hypAna' #['SHSS_score', 'Abs_diff_automaticity', 'total_chge_pain_hypAna']
+# behav_ls = 'Abs_diff_automaticity' #'total_chge_pain_hypAna' #['SHSS_score', 'Abs_diff_automaticity', 'total_chge_pain_hypAna']
 sig_rois_cond = {}
 views = {}
 for cond in conditions:
@@ -494,6 +507,8 @@ for y_name in behav_ls:
             print(f'No significant difference between {models[0]} and {models[1]} in {cond}')
             print(f"t({t_dict['df']}) = {t_dict['t']:.2f}, p = {t_dict['p']:.4f}")
 
+# %%
+
 # %% 
 y_name = 'SHSS_score'
 best_model = 'euclidean' #'annak' #'euclidean'
@@ -532,6 +547,8 @@ for cond in conditions:
     fdr_correction=False
 )
 # Take home is that annak is better in Hyper related conditions while NN in Ana
+
+# %%
 
 #%%
 reload(visu_utils)

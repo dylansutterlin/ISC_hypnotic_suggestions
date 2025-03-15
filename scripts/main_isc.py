@@ -60,7 +60,6 @@ print(f"Results will be saved in: {setup.results_dir}")
 
 # %%
 project_dir = setup.project_dir
-preproc_model_data = setup.preproc_model_data
 base_path = setup.base_path
 behav_path = setup.behav_path
 exclude_sub = setup.exclude_sub
@@ -106,12 +105,14 @@ if keep_n_sub is not None:
     isc_data_df = isc_data_df[isc_data_df['subject'].isin(isc_data_df['subject'].unique()[:keep_n_sub])]
     subjects = isc_data_df['subject'].unique()
     n_sub = len(subjects)
-
-# initialize results dir
 setup.subjects = subjects
-setup.check_and_create_results_dir()
+setup.n_sub = n_sub
+
+breakpoint()
+# create save dir and save params
+setup.check_and_create_results_dir() 
 setup.save_to_json()
-print('Results directory at :' , setup.results_dir)
+print('Results directory at :' , results_dir)
 
 # save_setup = os.path.join(setup.results_dir, "setup_parameters.json")
 # with open(save_setup, 'w') as fp:
@@ -125,6 +126,8 @@ result_paths = {
     "rsa_isc_results": {},
     "setup_parameters": os.path.join(setup.results_dir, 'setup_parameters.json')
 }
+
+
 
 # %%
 # get dict will all cond files from all subjects
@@ -337,7 +340,7 @@ if transform_imgs == True:
     if atlas_name =='voxelWise':
         carpet_mask = resamp_mask    
         carpet_lab = None
-    elif atlas_name == f'schafer{n_rois}_2mm':
+    elif 'schafer' in atlas_name : # == f'schafer{n_rois}_2mm':
         carpet_mask = atlas
         carpet_lab = None
     elif atlas_name =='voxelWise_lanA800':
@@ -374,10 +377,13 @@ if transform_imgs == True:
 
 	# save transformed data and masker
     for cond in conditions:
+
         data = transformed_data_per_cond[cond]
         cond_folder = os.path.join(results_dir, cond)
+
         if not os.path.exists(cond_folder):
             os.makedirs(cond_folder)
+
         save_path = os.path.join(cond_folder, f'transformed_data_{atlas_name}_{cond}_{n_sub}sub.npz')
         data_3d = np.stack(data, axis=-1) # ensure TRs x ROI x subjs
         np.savez_compressed(save_path, data_3d)
@@ -422,7 +428,18 @@ if transform_imgs == True:
 #         utils.save_data(os.path.join(save_cond_rsa, f'{behav_y}_rsa_isc_{n_perm}perm_distribution.pkl'), distribution_rsa_perm)
 
 
-else:
+else:   
+    # account for case we load data from diff directory
+    if setup.pre_computed != False:
+        pre_computed_ts_dir = os.path.join(setup.project_dir, setup.results_branch, setup.pre_computed)
+
+        if not os.path.isdir(pre_computed_ts_dir):
+            raise OSError(f"Pre-computed directory {pre_computed_ts_dir} does not exist.")
+        print(f'!! Loading existing data and fitted maskers from : {pre_computed_ts_dir}')
+
+    else : 
+        pre_computed_ts_dir = setup.results_dir
+    
 # Loading data
     print(f'Loading existing data and fitted maskers')
     transformed_data_per_cond = {}
@@ -430,7 +447,9 @@ else:
     transformed_sphere_per_roi = {}
 
     for cond in setup.conditions:
-        load_path = os.path.join(setup.results_dir, cond)
+        
+        load_path = os.path.join(pre_computed_ts_dir, cond)
+
         transformed_path =  os.path.join(load_path, f'transformed_data_{atlas_name}_{cond}_{n_sub}sub.npz')
         transformed_data_per_cond[cond] = np.load(transformed_path)['arr_0'] #utils.load_pickle(os.path.join(load_path, transformed_path))
         fitted_mask_file = f'maskers_{atlas_name}_{cond}_{n_sub}sub.pkl'
@@ -468,7 +487,7 @@ else:
 #     utils.save_data(save_path, isc_dict)
 #     print(f"ISC results saved for {cond} at {save_path}")
 
-if atlas_name != f'schafer{n_rois}_2mm':
+if 'schafer' not in atlas_name: # != f'schafer{n_rois}_2mm':
     # Assess 0 variance subjects
     sub_to_remove = isc_utils.identify_zero_variance_subjects(transformed_data_per_cond, subjects)
     print(f"Subjects with 0 variance will be removed : {sub_to_remove}")
@@ -498,14 +517,15 @@ if do_isc_analyses:
         transformed_formated[cond] = data_3d
 
     transformed_data_per_cond = transformed_formated # replace with 3d arrays
-
+    # breakpoint()    
+    
     for cond, data in transformed_data_per_cond.items():
         print(f'Performing ISC for condition: {cond}')
         start_cond_time = time.time()
         # Convert list of 2D arrays to 3D array (n_TRs, n_voxels, n_subjects)
-        print(data_3d.shape)
+        print(data.shape)
 
-        isc_results[cond] = isc_utils.isc_1sample(data_3d, pairwise=do_pairwise,n_boot = n_boot, summary_statistic=None)
+        isc_results[cond] = isc_utils.isc_1sample(data, pairwise=do_pairwise,n_boot = n_boot, summary_statistic=None)
 
         # save results
         save_path = os.path.join(results_dir, cond, f"isc_results_{cond}_{n_boot}boot_pairWise{do_pairwise}.pkl")
@@ -540,7 +560,7 @@ if do_isc_analyses:
         isc_results[comb_cond] = isc_utils.isc_1sample(combined_data, pairwise=do_pairwise,n_boot = n_boot, summary_statistic=None)
 
         # save results
-        save_path = os.path.join(concat_cond_save, f"isc_results_{comb_cond}_{n_scans}TRs_{n_boot}boot_pairWise{do_pairwise}.pkl")
+        save_path = os.path.join(concat_cond_save, f"isc_results_{comb_cond}_{n_boot}boot_pairWise{do_pairwise}.pkl")
         isc_utils.save_data(save_path, isc_results[comb_cond])
         result_paths["isc_combined_results"][comb_cond] = save_path
 
@@ -675,20 +695,24 @@ if do_isc_analyses:
     contrast_perm_save = os.path.join(results_dir, 'cond_contrast_permutation')
     os.makedirs(contrast_perm_save, exist_ok=True)
 
-    reload(isc_utils)
     for i, contrast in enumerate(contrast_conditions):
         print(f'Performing 2 group permutation ISC : {contrast}')
-        start_cond_time = time.time()
-        combined_data_ls = [transformed_data_per_cond[task] for task in contrast_to_test[i]]
 
+        start_cond_time = time.time()
+        # here we need to comcat the data along the subject axis, like repeated measures
+        # and this subjects is taken into account in the permutation. See brainIAK.
+        combined_data_ls = [transformed_data_per_cond[task] for task in contrast_to_test[i]]
         combined_data = np.concatenate(combined_data_ls, axis=2)
-        n_scans = combined_data.shape[0]
 
         isc_grouped = isc(combined_data, pairwise=do_pairwise, summary_statistic=None)
+        n_scans = combined_data.shape[0]
+
+        # if do_pairwise:
         group_ids = np.array([0] * n_sub + [1] * n_sub)
+
         isc_permutation_cond_contrast[contrast] = isc_utils.group_permutation(isc_grouped, group_ids, n_perm, do_pairwise, side = 'two-sided', summary_statistic='median')
 
-        save_path = os.path.join(contrast_perm_save, f"isc_results_{contrast}_{n_scans}TRs_{n_perm}perm_pairWise{do_pairwise}.pkl")
+        save_path = os.path.join(contrast_perm_save, f"isc_results_{contrast}_{n_perm}perm_pairWise{do_pairwise}.pkl")
         isc_utils.save_data(save_path, isc_permutation_cond_contrast[contrast])
         result_paths["condition_contrast_results"][contrast] = save_path
         
@@ -715,8 +739,11 @@ if do_isc_analyses:
             keep_n = len(shss_idx[shss_idx == True])
 
         shss_idx_concat = np.concatenate([shss_idx, shss_idx])
-        group_ids_selected = np.array([0] * keep_n + [1] * keep_n)
 
+        group_ids_selected = np.array([0] * keep_n + [1] * keep_n)
+        # else:
+        #     group_ids_selected = np.array([1] * keep_n)
+ 
         print(f'-----{shss_grp} grp with {keep_n} subjects')
         for i, contrast in enumerate(contrast_conditions):
 
@@ -734,6 +761,8 @@ if do_isc_analyses:
             isc_utils.save_data(save_path, isc_permutation_cond_contrast[contrast])
             result_paths["condition_contrast_results"][contrast] = save_path
         print(f'Contrasts for {shss_grp} done in {time.time() - start_grp_time:.2f} sec')    
+
+# %%
 
     # %%
     # ------------
@@ -782,7 +811,7 @@ if do_rsa :
             i = combined_conditions.index(cond)
             combined_data = np.concatenate([transformed_data_per_cond[task] for task in task_to_test[i]], axis=0)
             n_scans = combined_data.shape[0]
-            f = os.path.join(concat_cond_save, f"isc_results_{cond}_{n_scans}TRs_{n_boot}boot_pairWise{do_pairwise}.pkl")
+            f = os.path.join(concat_cond_save, f"isc_results_{cond}_{n_boot}boot_pairWise{do_pairwise}.pkl")
             isc_results[cond] = isc_utils.load_pickle(f) 
 
     # check if all cond are in isc_results
@@ -962,6 +991,7 @@ with open(result_paths_save_path, 'w') as f:
     json.dump(result_paths, f, indent=4)
 
 print(f"Result paths saved at {result_paths_save_path}")
+print('MODEL RAN : ', model_name)
 print('Done with all!!')
 
     # %%

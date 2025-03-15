@@ -14,14 +14,15 @@ def init():
     setup.atlas_name = "schafer-200-2mm"
     
     setup.model_is = 'sugg'
-    setup.conditions = ['HYPER', 'ANA', 'NHYPER', 'NANA']
+    setup.model_id = 'model6'
 
-    setup.transform_imgs = True #False
+    setup.transform_imgs = False #False
+    setup.pre_computed = 'model5_sugg_schafer-200-2mm_mask-whole-brain_preproc_reg-mvmnt-True-6'
     setup.do_isc_analyses = True 
-    setup.do_rsa = True   
+    setup.do_rsa = False  
 
     setup.n_boot = 100
-    setup.do_pairwise = True
+    setup.do_pairwise = False # !!
     setup.n_perm = 100
     setup.n_perm_rsa = 50  # Default, but can be overridden
     setup.reg_conf = True  # Whether to regress out movement confounds

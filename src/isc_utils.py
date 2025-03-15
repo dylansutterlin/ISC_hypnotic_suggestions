@@ -457,7 +457,7 @@ def isc_1sample(data_3d, pairwise, n_boot=5000, side = 'two-sided', summary_stat
     
     isc_result = isc(data_3d, pairwise=pairwise, summary_statistic=None)
     print(f"ISC shape: {isc_result.shape}")
-    print('--bootstrap')
+    print(f'--bootstrap {n_boot}--')
     observed, ci, p, distribution = bootstrap_isc(
     isc_result,
     pairwise=pairwise,
