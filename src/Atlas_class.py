@@ -1,21 +1,36 @@
-import pandas as pd
 import sys
-from nilearn import datasets, input_data, plotting
+import nibabel as nib
+import pandas as pd
+from nilearn import datasets, maskers, plotting
 
 sys.path.append("../masks")
 
-atlas_options = ["yeo2011", "schaefer2018", "difumo2020", "ajd2021", "harvox2006", "sensaas"]
+atlas_options = [
+    "yeo2011",
+    "schaefer2018",
+    "difumo2020",
+    "ajd2021",
+    "harvox2006",
+    "sensaas",
+    "voxelWise_lanA800"
+]
 
 class Atlas:
-    def __init__(self, atlas):
-
+    def __init__(self, atlas, masker_params=None, mask_img=None):
+        """
+        :param atlas: str, name of the atlas (e.g., "sensaas", "voxelWise_lanA800", etc.)
+        :param masker_params: dict, overrides for NiftiMapsMasker/NiftiLabelsMasker parameters
+        :param mask_img: nibabel.Nifti1Image or file path, optional mask to restrict extraction
+        """
         self.title = atlas
+        self.mask_img = mask_img
+        self.masker_params = masker_params or {}
         self.maps, self.df, self.probabilistic = self.get_data()
         self.df[["x", "y", "z"]] = self.get_coords()
         self.fig = self.get_fig()
 
     def get_data(self):
-
+        """Load atlas maps and corresponding labels/DF based on self.title."""
         if self.title == "yeo2011":
             fetcher = datasets.fetch_atlas_yeo_2011()
             maps = fetcher.thick_7
@@ -34,9 +49,7 @@ class Atlas:
         elif self.title == "difumo2020":
             fetcher = datasets.fetch_atlas_difumo(dimension=64)
             maps = fetcher.maps
-            df = pd.DataFrame(
-                [label[1] for label in fetcher.labels], columns=["labels"]
-            )
+            df = pd.DataFrame([lbl[1] for lbl in fetcher.labels], columns=["labels"])
             probabilistic = True
 
         elif self.title == "ajd2021":
@@ -49,19 +62,34 @@ class Atlas:
                 "cort-maxprob-thr25-2mm", symmetric_split=True
             )
             maps = fetcher.maps
+            # The first label is "Background," so we skip it
             df = pd.DataFrame(fetcher.labels[1:], columns=["labels"])
             probabilistic = False
 
-        elif self.title == 'sensaas':
-            path = 
-            
+        elif self.title == "sensaas":
+            folder = "sensaas"
+
+            df = pd.read_csv(f"{folder}/SENSAAS_description.csv")
+            maps = nib.load(f"{folder}/SENSAAS_MNI_ICBM_152_2mm.nii")
+            probabilistic = False
+
+        # elif self.title == "voxelWise_lanA800":
+        #     # Lipkin et al. 2022
+        #     maps = nib.load('lipkin2022_lanA800', 'LanA_n806.nii')
+        #     df = pd.DataFrame(
+        #         {"labels": [f"voxel_{i}" for i in range(1, maps.shape[-1] + 1)]}
+        #     )
+        #     probabilistic = False
+
+        else:
+            raise ValueError(f"Atlas '{self.title}' not recognized or not yet supported.")
+
         return maps, df, probabilistic
 
     def get_coords(self):
 
         if self.probabilistic:
             return plotting.find_probabilistic_atlas_cut_coords(maps_img=self.maps)
-
         else:
             return plotting.find_parcellation_cut_coords(labels_img=self.maps)
 
@@ -71,24 +99,26 @@ class Atlas:
 
         if self.probabilistic:
             return plotting.plot_prob_atlas(self.maps, **kwargs)
-
         else:
             return plotting.plot_roi(self.maps, **kwargs)
 
-    def get_masker(self, maps, probabilistic, derivatives, smooth_fwhm):
+    def get_masker(self, smooth_fwhm=None, memory_path="wb-ppi-cache"):
 
-        kwargs = {
+        default_kwargs = {
             "smoothing_fwhm": smooth_fwhm,
             "standardize": True,
             "standardize_confounds": True,
-            "memory": str(derivatives / "wb-ppi-cache"),
+            "memory": str(memory_path),
             "memory_level": 3,
         }
+        # Merge user-supplied parameters:
+        default_kwargs.update(self.masker_params)
+        
+        # If user provided a separate mask to restrict analysis, include it:
+        if self.mask_img is not None:
+            default_kwargs["mask_img"] = self.mask_img
 
-        if probabilistic:
-            return input_data.NiftiMapsMasker(maps_img=maps, **kwargs)
-
+        if self.probabilistic:
+            return maskers.NiftiMapsMasker(maps_img=self.maps, **default_kwargs)
         else:
-            return input_data.NiftiLabelsMasker(
-                labels_img=maps, strategy="mean", **kwargs
-            )
+            return maskers.NiftiLabelsMasker(labels_img=self.maps, **default_kwargs)
