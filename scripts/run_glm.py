@@ -47,8 +47,13 @@ from datetime import datetime
 ## load data
 preproc_model_name = r'model2_23subjects_zscore_sample_detrend_25-02-25' #r'model2_3subjects_zscore_sample_detrend_25-02-25'
 model_dir = rf'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/preproc_data/{preproc_model_name}'
-model_name = "model3_23subjects_allnuis_nodrift_{}".format(datetime.today().strftime("%d-%m-%y"))
+model_name = "model3_23subjects_nuis_nodrift_{}".format(datetime.today().strftime("%d-%m-%y"))
 
+model_name = 'model3_23subjects_nuis_nodrift_31-03-25'
+#load manually
+# model_name = r'model3_23subjects_allnuis_nodrift_10-03-25'
+
+#%%
 setup_dct = preproc_utils.load_json(os.path.join(model_dir, 'setup_parameters.json'))
 data_info_dct = preproc_utils.load_pickle(os.path.join(model_dir, 'data_info_regressors.pkl'))
 masker_params = preproc_utils.load_json(os.path.join(model_dir, 'preproc_params.json'))
@@ -122,12 +127,10 @@ for sub, subject in enumerate(subjects):
     nscans_hyper = data.nscans["Hyper"][subject]
     
     # remove columns from design matrix
+    rm_cols = []
     rm_cols = [col for col in dm_combined.columns if col.startswith('drift')]
     dm_combined = dm_combined.drop(rm_cols, axis=1)
    
-    # dm_combined["Run_Intercept_Ana"] = np.concatenate([np.ones(nscans_ana), np.zeros(nscans_hyper)])
-    # dm_combined["Run_Intercept_Hyper"] = np.concatenate([np.zeros(nscans_ana), np.ones(nscans_hyper)])
-
     # plot design matrix but only for subject 1
     if sub == 0:
         plot_design_matrix(dm_combined, output_file=os.path.join(save_glm, 'sub1_design_matrix.png'))
@@ -183,18 +186,19 @@ glm_info.contrast_files_1level = first_lev_files
 # }
 
 # %%
-cond = 'all_sugg'
-first_lev_files = glm_info.contrast_files_1level
-for subject in subjects:
-    img = first_lev_files[subject][cond]
-    display = plotting.plot_stat_map(
-        img,
-        title=f"first level stats unc. {cond}",
-        threshold=3.0,            
-        display_mode='ortho')     
 
-    plt.show()
-    plt.close()
+# cond = 'all_sugg'
+# first_lev_files = glm_info.contrast_files_1level
+# for subject in subjects:
+#     img = first_lev_files[subject][cond]
+#     display = plotting.plot_stat_map(
+#         img,
+#         title=f"first level stats unc. {cond}",
+#         threshold=3.0,            
+#         display_mode='ortho')     
+
+#     plt.show()
+#     plt.close()
 # %% [markdown]
 ## Second level localizer
 # %%
@@ -302,19 +306,20 @@ print("Done with all GLM processing!")
 
 def prep_visu_glm(results_p):
 
-    dot_p = os.path.join(results_p, 'GLM_results', 'NPS_dot_pain.pkl')
-    dot = utils.load_pickle(dot_p)
+    # dot_p = os.path.join(results_p, 'GLM_results', 'NPS_dot_pain.pkl')
+    # dot = utils.load_pickle(dot_p)
 
     res_p = os.path.join(results_p, 'GLM_results', 'second_level', 'results_paths.pkl')
     res = utils.load_pickle(res_p)
 
-    return dot, res
+    return res
 
+res = utils.load_pickle('/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/GLM/model3_23subjects_nuis_nodrift_31-03-25/second_level/results_paths.pkl')
 # res_model = 'model2_23subjects_zscore_sample_detrend_25-02-25'
 # res_model = 'model2_23subjects_nodrift_10-03-25'
 
 # res_dir = r'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/GLM/model2_23subjects_allnuis78_drift_25-02-25'
-dot, res = prep_visu_glm(setup.save_dir)
+# dot, res = prep_visu_glm(setup.save_dir)
 
 model_first = res['first_level_models']
 file_firstlev = res['contrast_files_1level']
@@ -323,7 +328,8 @@ model_second = res['second_level_models']
 
 all_regs = list(file_firstlev[subjects[0]].keys())
 sugg_reg = [reg for reg in all_regs if 'sugg' in reg] 
-pain_reg = all_regs[8:]
+pain_reg = [reg for reg in all_regs if 'shock' in reg] 
+ 
 
 # # Generate reports
 # reports = {}
@@ -338,7 +344,7 @@ pain_reg = all_regs[8:]
 #     # group_report.save_as_html("group_level_report.html")
 
 # %%
-visu_on = False
+visu_on = True
 
 if visu_on:
     # VISU 1st
@@ -369,7 +375,7 @@ if visu_on:
             title = f"Second level stats corr. {condition}"
             print(f'thresh for {condition} is {thresh}')
         else: 
-            thresh = 3.0
+            thresh = 3.0  
             img = file_group[condition]
             title = f"Second level stats unc. {condition}"
 
@@ -383,6 +389,38 @@ if visu_on:
         view = plotting.view_img(img, threshold=3.0, title=f"Second level stats unc. {condition}")
         cuts_second[condition] = display
         views_second[condition] = view
+
+# %%
+# all regressors 
+apply_thresh = True
+stats_imgs = {}
+views_second = {}
+cuts_second = {}
+for condition in all_regs:
+    
+    if apply_thresh:
+        img, thresh = threshold_stats_img(
+            file_group[condition], alpha=0.05, height_control='fdr', cluster_threshold=0
+            )   
+        title = f"Second level stats corr. {condition}"
+        print(f'thresh for {condition} is {thresh}')
+    else: 
+        thresh = 3.0  
+        img = file_group[condition]
+        title = f"Second level stats unc. {condition}"
+
+    stats_imgs[condition] = img
+    display = plotting.plot_stat_map(
+        img,
+        title=f"second level stats cor {condition}",
+        threshold=thresh,            
+        display_mode='ortho')   
+    
+    view = plotting.view_img(img, threshold=3.0, title=f"Second level stats unc. {condition}")
+    cuts_second[condition] = display
+    views_second[condition] = view
+
+
         #plt.show()
     # corr_maps = {}
     # for condition in all_regs:
