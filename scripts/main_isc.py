@@ -188,7 +188,7 @@ masker_params_dict = {
     "target_affine": None,
     "detrend": False,
     "low_pass": None,
-    "high_pass": 0.01,  # 1/428 sec.
+    "high_pass": None,  # 1/428 sec.
     "t_r": 3,
     "smoothing_fwhm": None,
     "standardize_confounds": True,
@@ -276,7 +276,7 @@ if transform_imgs == True:
     elif atlas_name == 'Difumo256':
         masker = MultiNiftiMapsMasker(maps_img=atlas, standardize=False, memory='nilearn_cache', verbose=5, n_jobs= 1)
     elif 'schafer' in atlas_name : # == f'schafer{n_rois}_2mm':
-        masker = NiftiLabelsMasker(labels_img=atlas, labels = atlas_labels, mask_img=resamp_mask,resampling_target='data', standardize=True,high_variance_confounds=False, memory='nilearn_cache', verbose=5, n_jobs= 1)
+        masker = NiftiLabelsMasker(labels_img=atlas, labels = atlas_labels, mask_img=resamp_mask,resampling_target='data', standardize=True,high_variance_confounds=False,standardize_confounds=True, memory='nilearn_cache', verbose=5, n_jobs= 1)
 
     #masker = MultiNiftiMapsMasker(maps_img=atlas, standardize=False, memory='nilearn_cache', verbose=5, n_jobs= 1)
     #masker = NiftiMasker(verbose=5)
@@ -304,7 +304,7 @@ if transform_imgs == True:
             for i, sub in enumerate(subjects):
 
                 if reg_conf == True:
-                    conf = confounds_ls[i][cond]
+                    conf = confounds_ls[i][cond][:keep_n_confouds]
                 else: conf = None
 
                 transformed_data = masker.fit_transform(concatenated_subjects[sub], confounds= conf)

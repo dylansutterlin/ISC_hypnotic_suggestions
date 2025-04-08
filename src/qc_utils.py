@@ -370,92 +370,97 @@ def dot(path_to_img, path_output, to_dot_with = 'nps', dot_id = None, resample_t
 
     return dot_array, subj_array
 
-
+import os
 import numpy as np
 import nibabel as nib
 import pandas as pd
 from nilearn import image
+from scipy.stats import ttest_1samp
 
-def compute_similarity(data_files, signature_folder, pattern='NPS', metric='dot_product', resample_to_mask=True):
+def compute_similarity(data_files, signature_folder, pattern='NPS', metric='dot_product', 
+                       resample_to_pattern=True, summary=False):
     """
-    Compute similarity between a single signature image and multiple subject images.
+    Compute similarity between a brain signature and a set of subject images.
     
     Parameters
     ----------
     data_files : dict
-        Dictionary mapping subject names to the file path of their data image.
-    signature_file : str
-        File path of the signature image.
-    metric : str, default='dot_product'
-        Similarity metric to use. Supported options:
-         - 'dot_product': Raw dot product of the flattened images.
-         - 'cosine': Cosine similarity between the flattened images.
-    resample_to_mask : bool, default=True
-        If True, resample the data image to the signature's space.
-        Otherwise, resample the signature image to the data image's space.
-        
+        Dictionary mapping subject IDs to NIfTI paths or loaded nibabel images.
+    signature_folder : str
+        Folder containing MVPA signature patterns.
+    pattern : str
+        Pattern name to load from signature_folder (e.g., 'NPS', 'SIIPS').
+    metric : str
+        Similarity metric ('dot_product' or 'cosine').
+    resample_to_mask : bool
+        Whether to resample subject image to match signature image space.
+    summary : bool
+        Whether to return summary statistics (mean, std, t-test).
+    
     Returns
     -------
-    results_df : pandas.DataFrame
-        DataFrame with subject names as the index and a column 'similarity'
-        containing the computed similarity values.
+    results_df : pd.DataFrame
+        If summary=False: subject-wise similarity values.
+        If summary=True: dict with mean, std, t-stat, p-value, n.
     """
-    # Load the signature image
+
     if pattern == 'NPS':
         signature_file = os.path.join(signature_folder, 'weights_NSF_grouppred_cvpcr.img')
     elif pattern == 'SIIPS':
         signature_file = os.path.join(signature_folder, 'nonnoc_v11_4_137subjmap_weighted_mean.nii')
+    else:
+        signature_file = os.path.join(signature_folder, pattern)  
+
     signature_img = nib.load(signature_file)
-    
-    # Get signature data and affine
     sig_data = signature_img.get_fdata()
     sig_affine = signature_img.affine
-    
+
     results = []
-    
+
     for subj, data_path in data_files.items():
- 
-        data_img = nib.load(data_path)
+        data_img = data_path if isinstance(data_path, nib.Nifti1Image) else nib.load(data_path)
         data_data = data_img.get_fdata()
         data_affine = data_img.affine
-        
-        # Check if shape and affine match
-        same_shape = data_data.shape == sig_data.shape
-        same_affine = np.allclose(data_affine, sig_affine)
-        
-        if not (same_shape and same_affine):
-            if resample_to_mask:
-                # Resample subject image to signature image space
-                data_img = image.resample_to_img(data_img, signature_img, interpolation='continuous', force_resample=True, copy_header=True)
+
+        # Resample if needed
+        if data_data.shape != sig_data.shape or not np.allclose(data_affine, sig_affine):
+            if resample_to_pattern:
+                data_img = image.resample_to_img(data_img, signature_img, interpolation='continuous', 
+                                                 force_resample=True, copy_header=True)
                 data_data = data_img.get_fdata()
             else:
-                # Resample signature image to subject image space
-                signature_img_res = image.resample_to_img(signature_img, data_img, interpolation='continuous', force_resample=True, copy_header=True)
+                signature_img_res = image.resample_to_img(signature_img, data_img, interpolation='continuous', 
+                                                          force_resample=True, copy_header=True)
                 sig_data = signature_img_res.get_fdata()
-                sig_affine = signature_img_res.affine
-        
-        # Flatten the images to vectors
+
         data_vector = data_data.ravel()
         sig_vector = sig_data.ravel()
-        
+
         # Compute similarity
         if metric == 'dot_product':
             sim_value = np.dot(data_vector, sig_vector)
         elif metric == 'cosine':
-            # Compute cosine similarity (avoid division by zero)
             norm_data = np.linalg.norm(data_vector)
             norm_sig = np.linalg.norm(sig_vector)
-            if norm_data == 0 or norm_sig == 0:
-                sim_value = np.nan
-            else:
-                sim_value = np.dot(data_vector, sig_vector) / (norm_data * norm_sig)
+            sim_value = np.dot(data_vector, sig_vector) / (norm_data * norm_sig) if norm_data and norm_sig else np.nan
         else:
             raise ValueError("Unsupported metric. Use 'dot_product' or 'cosine'.")
-        
+
         results.append({'subject': subj, 'similarity': sim_value})
-    
-    # Return as a DataFrame with subject names as index
+
     results_df = pd.DataFrame(results).set_index('subject')
 
+    if summary:
+        sims = results_df['similarity'].values
+        mean_sim = np.mean(sims)
+        std_sim = np.std(sims)
+        t_stat, p_val = ttest_1samp(sims, 0)
+        return {
+            'mean': mean_sim,
+            'std': std_sim,
+            't_stat': t_stat,
+            'p_value': p_val,
+            'n': len(sims)
+        }
 
     return results_df

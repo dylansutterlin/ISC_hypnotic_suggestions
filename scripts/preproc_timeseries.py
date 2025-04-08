@@ -14,6 +14,7 @@ import pickle as pkl
 import seaborn as sns
 import json
 from datetime import datetime
+
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 from nilearn.plotting import plot_stat_map
@@ -42,13 +43,17 @@ from nilearn.glm.first_level import FirstLevelModel
 
 from importlib import reload
 
-if os.getcwd().endswith('ISC_hypnotic_suggestions'):
-    from scripts import preproc_utils as utils
-else:
-    script_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '../scripts'))
-    sys.path.append(script_dir)
-    import preproc_utils as utils
-    import visu_utils 
+# if os.getcwd().endswith('ISC_hypnotic_suggestions'):
+#     from scripts import preproc_utils as utils
+# else:
+#     script_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '../scripts'))
+#     sys.path.append(script_dir)
+#     import preproc_utils as utils
+#     import visu_utils 
+
+import src.isc_utils as isc_utils
+import src.visu_utils as visu_utils
+import src.preproc_utils as utils
 
 import gc
 
@@ -64,7 +69,7 @@ import gc
 data_dir = '/data/rainville/Hypnosis_ISC/4D_data/full_run'
 ana_run = glob.glob(os.path.join(data_dir, 'sub*', '*analgesia*.nii.gz'))
 subjects = [os.path.basename(os.path.dirname(path)) for path in ana_run]
-nsub = 3 #len(subjects)
+nsub = len(subjects) #all
 do_carptet_plot = False
 
 setup = Bunch(
@@ -111,7 +116,7 @@ masker_params_dict = {
     "mask_img": mask,
     "detrend": False,
     "low_pass": None,
-    "high_pass": None,  # 1/428 sec.
+    "high_pass": 0.00234, # 1/428 sec. from desmarteaux 2021
     "t_r": setup.tr,
     "smoothing_fwhm": None,
     "standardize_confounds": True,
@@ -120,9 +125,11 @@ masker_params_dict = {
     "mask_strategy": "whole-brain-template", 
     "memory" : "nilearn_cache"
 }
+HRF_MODEL = 'spm'
+DRIFT_MODEL = None
 
 # initialize preproc model and save dirs
-preproc_model_name = "model2_{}subjects_{}_detrend-{}_{}".format(
+preproc_model_name = "model3_single-blocks_extraction-vols_{}subjects_{}_detrend-{}_{}".format(
     len(setup.subjects),masker_params_dict['standardize'],masker_params_dict['detrend'], datetime.today().strftime("%d-%m-%y")
 )
 save_dir = os.path.join(setup.results_dir, preproc_model_name)
@@ -256,83 +263,6 @@ data.confounds_Ana = ana_confounds
 data.confounds_Hyper = hyper_confounds
 
 # %% [markdown]
-# #### Process voxel-wise utils images/timeseries
-
-# %%
-# create folders for voxel wise model : e.g. /model/voxel_wise
-# voxel_masker.obj = NiftiMasker(**masker_params_dict)
-# voxel_masker.save = os.path.join(setup.save_dir, voxel_masker.name)
-
-# ana_masked_timeseries, fitted_masks_ana = (
-#     utils.extract_timeseries_and_generate_individual_reports(
-#         setup.subjects,
-#         setup.ana_run,
-#         voxel_masker.obj,
-#         voxel_masker.name,
-#         voxel_masker.save,
-#         confounds=setup.confounds_Ana,
-#         confounf_files=confound_files,
-#         condition_name="Analgesia",
-#         do_heatmap=False,
-#     )
-# )
-
-# hyper_masked_timeseries, fitted_masks_hyper = (
-#     utils.extract_timeseries_and_generate_individual_reports(
-#         setup.subjects,
-#         setup.hyper_run,
-#         voxel_masker.obj,
-#         voxel_masker.name,
-#         voxel_masker.save,
-#         confounds=setup.confounds_Hyper,
-#         confounf_files=confound_files,
-#         condition_name="Hyperalgesia",
-#         do_heatmap=False,
-#     )
-# )
-
-# # store 2D timeseries in subject's dict.
-# voxel_masker.preproc_2d_Ana = ana_masked_timeseries  # {sub : ts for sub, ts in zip(subjects, ana_masked_timeseries)}
-# voxel_masker.preproc_2d_Hyper = hyper_masked_timeseries  # {sub : ts for sub, ts in zip(subjects, hyper_masked_timeseries)}
-
-# voxel_masker.fitted_mask_Ana = (
-#     fitted_masks_ana  # {sub : mask for sub, mask in zip(subjects, fitted_masks_ana)}
-# )
-# voxel_masker.fitted_mask_Hyper = fitted_masks_hyper  # {sub : mask for sub, mask in zip(subjects, fitted_masks_hyper)}
-
-# voxel_masker.preproc_2d_cond_Descrip = "preproc 2d timeseries for ANA and HYPER conditions and fitted masks for all volumes : 372-377 TRs/subject"
-
-# # Combine the timeseries for both runs
-# all_run_2d_timeseries = [
-#     np.vstack([ts1, ts2])
-#     for ts1, ts2 in zip(voxel_masker.preproc_2d_Ana, voxel_masker.preproc_2d_Hyper)
-# ]
-# print(len(all_run_2d_timeseries), all_run_2d_timeseries[0].shape)
-
-# ana_filename = os.path.join(voxel_masker.save, '{}_2d_timeseries_{}sub_Ana.npz'.format(voxel_masker.name, len(subjects)))
-# hyper_filename = os.path.join(voxel_masker.save, '{}_2d_timeseries_{}sub_Hyper.npz'.format(voxel_masker.name, len(subjects)))
-
-# #unpack dict in npz file
-# np.savez_compressed(ana_filename, **voxel_masker.preproc_2d_Ana )
-# np.savez_compressed(hyper_filename, **voxel_masker.preproc_2d_Hyper)
-
-# print(f"Saved ANA timeseries to: {ana_filename}")
-# print(f"Saved HYPER timeseries to: {hyper_filename}")
-
-# ana_fitted_mask_path = os.path.join(results_dir, 'firstLevel/Ana_fittedMaskers_{}_{}-subjects.pkl'.format(parcel_name, len(subjects)))
-# hyper_fitted_mask_path = os.path.join(results_dir, 'firstLevel/Hyper_fittedMaskers_{}_{}-subjects.pkl'.format(parcel_name,len(subjects)))
-
-# with open(ana_fitted_mask_path, 'wb') as f:
-#     pkl.dump(fitted_mask_ana, f)
-
-# with open(hyper_fitted_mask_path, 'wb') as f:
-#     pkl.dump(fitted_mask_hyper, f)
-
-# print(f"Saved ANA fitted maskers to: {ana_fitted_mask_path}")
-# print(f"Saved HYPER fitted maskers to: {hyper_fitted_mask_path}")
-
-
-# %% [markdown]
 # ### Check TRs per condition
 
 # %% [markdown]
@@ -397,6 +327,7 @@ dm_hyper_files = []
 save_path = os.path.join(setup.save_dir, "design_matrices_TxT")
 os.makedirs(save_path, exist_ok=True)
 
+
 for i, sub in enumerate(setup.subjects):
 
     tr = masker_params_dict["t_r"]
@@ -417,24 +348,24 @@ for i, sub in enumerate(setup.subjects):
     dm_ana = make_first_level_design_matrix(
         frame_time_ana,
         data.events_dfs["Ana"][i],
-        hrf_model="spm",
-        drift_model="cosine",
+        hrf_model= HRF_MODEL,
+        drift_model=DRIFT_MODEL,
         high_pass=masker_params_dict["high_pass"],
         add_regs=data.confounds_Ana[i],
         min_onset=0,
-        oversampling=3
+        oversampling=50 #default
     )
 
     dm_hyper = make_first_level_design_matrix(
         frame_time_hyper,
         data.events_dfs["Hyper"][i],
-        hrf_model="spm",
-        drift_model="cosine",
+        hrf_model=HRF_MODEL,
+        drift_model=DRIFT_MODEL,
         high_pass=masker_params_dict["high_pass"],
         add_regs=data.confounds_Hyper[i],
         min_onset=0,
-        oversampling=3
-    )
+        oversampling=50 #default
+     )
     
     #rename movement reg 
     dm_ana.columns = [f"Ana_{col}" if col.startswith("nuis") else col for col in dm_ana.columns]
@@ -513,6 +444,10 @@ data.hyper_design_mat_files = dm_hyper_files
 # conditions = ['ANA', 'N_ANA', 'HYPER', 'N_HYPER']
 condition_names = ['ANA_sugg', 'N_ANA_sugg', 'HYPER_sugg', 'N_HYPER_sugg',
                     'ANA_shock', 'N_ANA_shock', 'HYPER_shock', 'N_HYPER_shock']
+
+# Trial wise model 8 AVRIL
+condition_names = [trial_cond for trial_cond in list(dm_combined.columns) if 'instrbk' in trial_cond]          
+
 data.condition_names = condition_names
 indices_all_cond = []
 kept_columns = []
@@ -535,6 +470,10 @@ for sub in setup.subjects:
         elif 'shock' in cond:
             cond_indices[cond], kept_col[cond] = utils.create_tr_masks_for_shock(
                 dm_combined, regressor=cond
+            )
+        elif 'instrbk' in cond:
+            cond_indices[cond], kept_col[cond] = utils.create_tr_mask_for_single_trial(
+                dm_combined, trial_regressor=cond
             )
 
         indices_all_cond.append(cond_indices) # list of dict per sub
@@ -700,12 +639,14 @@ if mean_img:
 # ========================
 # %% [markdown]
 # QC check
+from src import qc_utils
 
+do_carptet_plot = True
 if do_carptet_plot:
 
     # Atlas and mask resample  reports
     from nilearn.image import index_img
-    import qc_utils
+    
     # reload(qc_utils)
 
     # assert afine of data
@@ -722,8 +663,12 @@ if do_carptet_plot:
     from nilearn.image import resample_to_img, binarize_img
     from nilearn.plotting import plot_roi
     from nilearn.datasets import fetch_atlas_schaefer_2018
+    from nilearn import datasets
+   
 
     data_mask = nib.load('/data/rainville/Hypnosis_ISC/masks/brainmask_91-109-91.nii')
+    data_mask = datasets.load_mni152_brain_mask()
+
     _ = qc_utils.assert_same_affine(func_cond, setup.subjects, data_mask)
     plot_roi(data_mask, title='data_mask', display_mode='ortho', draw_cross=False)
 
@@ -745,10 +690,68 @@ if do_carptet_plot:
     _ = qc_utils.assert_same_affine(func_cond, setup.subjects, atlas)
 
     #%%
+    #==================
+    # plot ROI timserie 
+
+    from nilearn.maskers import NiftiLabelsMasker
+
+    labels = atlas_data['labels']
+    labels = [label.decode('utf-8') if isinstance(label, bytes) else label for label in labels]
+    
+    roi_name = '7Networks_LH_SomMot_2' # L STG, high ISC
+    roi_idx = labels.index(roi_name) 
+    roi_ts_filenames = []
+
+    masker = NiftiLabelsMasker(
+        labels_img=atlas,
+        standardize=True,
+        detrend=False,
+        t_r=3,
+        standardize_confounds = True,
+        memory_level=0,
+        verbose=0,
+    )
+    # masker.fit(atlas)
+
+    ts_path = os.path.join(setup.save_dir, 'roi_timecourse')
+    os.makedirs(ts_path, exist_ok=True)
+
+    for cond in condition_names:
+
+        plt.figure(figsize=(12, 6))
+        plt.title(f"Time series for {roi_name} - {cond}")
+        
+        for sub_idx, sub in enumerate(setup.subjects):
+
+            # Get time series for this subject and condition
+            ts = masker.fit_transform(
+                extracted_volumes_per_cond[sub_idx][cond],
+                confounds=nuis_reg_per_cond[sub_idx][cond]
+            )
+            roi_ts = ts[:, roi_idx]
+            plt.plot(roi_ts, label=f"sub-{sub}")
+
+        plt.xlabel("Time (TRs)")
+        plt.ylabel("Signal (a.u.)")
+        plt.legend()
+        plt.tight_layout()
+        file_path = os.path.join(ts_path, f"{roi_name}_{cond}_time_series.png")
+        plt.savefig(file_path)
+        roi_ts_filenames.append(file_path)
+        plt.show()
+    
+   #save grid images for all conditions
+    n_subs = len(setup.subjects)
+    visu_utils.plot_images_grid(roi_ts_filenames, f'STG {n_subs} timecourse', save_to=os.path.join(ts_path, f"grid_view_roi_timecourse_{n_subs}subs.png"))
+
+        
+    # %%
+    #==================================
     # Carpet plot unprocessed timseries
     from nilearn.plotting import plot_carpet
 
     MAX_ITER = len(condition_names)
+    MASK = resamp_lan800
 
     qc_path = os.path.join(setup.save_dir, 'QC_carpet')
     carpet_files_per_cond = {}
@@ -767,7 +770,7 @@ if do_carptet_plot:
             imgs = extracted_volumes_per_cond[sub][cond]
             display = plot_carpet(
                 imgs,
-                mask_img=resamp_mask,
+                mask_img=MASK,
                 detrend=True,
                 t_r=3,
                 standardize=True,
@@ -777,22 +780,24 @@ if do_carptet_plot:
             carpet_files_per_cond[cond].append(file_path)
             display.show()
 
-    # %%
     for cond in condition_names[:MAX_ITER]:
         n_subs = len(setup.subjects)
         visu_utils.plot_images_grid(carpet_files_per_cond[cond], f'Carpet plot {cond}, {n_subs} subj.', save_to=os.path.join(qc_path, f"grid_view_carpet_{cond}_{n_subs}subs.png"))
 
     # %% [markdown]
     # ======================
-    # Fit transform images
+    # Fit transform images to get residuals (rm confounds)
     regress_mvmnt_carpet = True
+    MAX_ITER = 2
+    MASK = resamp_lan800
 
     if regress_mvmnt_carpet:
         transformed_dir = os.path.join(setup.save_dir, "transformed_2d_imgs")
         os.makedirs(transformed_dir, exist_ok=True)
+
         # exclude_subject = 'sub-02'
-        masker_params_dict.update({'mask_img': resamp_mask})
-        masker = NiftiMasker(**masker_params_dict, dtype='float64', memory_level = 0)
+        masker_params_dict.update({'mask_img': MASK})
+        masker = NiftiMasker( **masker_params_dict, dtype='float64', memory_level = 0)
 
         sub_timeseries_all_cond = {}
         fitted_maskers = {}
@@ -849,8 +854,8 @@ if do_carptet_plot:
                 imgs = masker_i.inverse_transform(sub_timeseries_all_cond[cond][sub]) #[:,:,i])
                 display = plot_carpet(
                     imgs,
-                    mask_img=resamp_mask,
-                    detrend=True,
+                    mask_img=MASK,
+                    detrend=False,
                     t_r=3,
                     standardize=True,
                     title=f"global patterns {subject} in cond {cond}",
@@ -929,472 +934,3 @@ print('Done with all!!')
 
 # %% [markdown]
 # #### Apply group label masker and generate report
-
-# %%
-'''
-#%%
-importlib.reload(func)
-
-ROI_timseries_dct = {}
-fitted_ROImasks = []
-for condition, img_paths in condition_concat_imgs.items():
-    print(f"\nComputing mean image for condition: {condition}")
-
-    ROI_timeseries, fitted_ROImasks = utils.extract_timeseries_and_generate_individual_reports(
-        setup.subjects,
-        img_paths,
-        atlas['MultiMasker'],
-        atlas['name'],
-        atlas['save'],
-        confounds=None, #already preprocessed
-        condition_name="Analgesia",
-        do_heatmap=False,
-    )
-
-    ROI_timseries_dct[condition] = ROI_timeseries
-    fitted_ROImasks.append(fitted_ROImasks)
-    
-    mean_condition_img = mean_img(fitter_ROImasks.inverse_transform(ROI_timeseries))
-
-    # Plot and save the mean image
-    display = plot_stat_map(
-        mean_condition_img,
-        title=f"{atlas['name']} {condition} mean image",
-        display_mode="mosaic",
-        threshold=1e-3,
-        dim=0.8,
-    )
-
-    # html_view = view_img(mean_condition_img, threshold='98%', cut_coords=[-42, -16, 52])
-
-    mean_image_path = os.path.join(
-        atlas['save'],
-        f"{atlas['name']}-mean_img_{condition}_{len(img_paths)}-subjects.png",
-    )
-    display.savefig(mean_image_path)
-    plt.show()
-    plt.close()
-
-
-
-
-
-
-# %%
-importlib.reload(func)
-
-# Create directory for reports
-
-
-utils.generate_multinifti_report(
-    setup.ana_run, atlas["img"], atlas["name"], report_dir, condition_name="Analgesia"
-)
-utils.generate_multinifti_report(
-    setup.hyper_run, atlas["img"], atlas["name"], report_dir, condition_name="Hyperalgesia"
-)
-
-
-# %% [markdown]
-# #### 2) Individual atlas report (label masker)
-# -->Save ROI x TRs heatmap + individual LabelMasker report in /results/cond/
-
-# %% [markdown]
-# #### Generate and save individual report and heatmaps for two runs
-
-# %%
-
-label_masker = NiftiLabelsMasker(mask_nifti, standardize=True, detrend=True)
-masker_params = label_masker.get_params()
-
-parcel_name = "k50-2mm-parcel"
-
-ana_masked_timeseries, fitted_mask_ana = (
-    utils.extract_timeseries_and_generate_individual_reports(
-        setup.subjects,
-        ana_run,
-        label_masker,
-        parcel_name,
-        project_dir,
-        condition_name="Analgesia",
-    )
-)
-
-hyper_masked_timeseries, fitted_mask_hyper = (
-    utils.extract_timeseries_and_generate_individual_reports(
-        setup.subjects,
-        hyper_run,
-        label_masker,
-        parcel_name,
-        project_dir,
-        condition_name="Hyperalgesia",
-    )
-)
-
-
-# %% [markdown]
-# ### Save masked timeseries and fitted masker
-
-# %%
-from importlib import reload
-
-reload(func)
-
-results_dir = os.path.join(project_dir, "results/imaging")
-ana_ts_dict = {sub: ts for sub, ts in zip(setup.subjects, ana_masked_timeseries)}
-hyper_ts_dict = {sub: ts for sub, ts in zip(setup.subjects, hyper_masked_timeseries)}
-
-ana_filename = os.path.join(
-    results_dir, "firstLevel/ana_masked_{}sub.npz".format(len(setup.subjects))
-)
-hyper_filename = os.path.join(
-    results_dir, "firstLevel/hyper_masked_{}sub.npz".format(len(setup.subjects))
-)
-
-np.savez_compressed(ana_filename, **ana_ts_dict)
-np.savez_compressed(hyper_filename, **hyper_ts_dict)
-
-print(f"Saved ANA timeseries to: {ana_filename}")
-print(f"Saved HYPER timeseries to: {hyper_filename}")
-
-ana_fitted_mask_path = os.path.join(
-    results_dir,
-    "firstLevel/Ana_fittedMaskers_{}_{}-subjects.pkl".format(
-        parcel_name, len(setup.subjects)
-    ),
-)
-hyper_fitted_mask_path = os.path.join(
-    results_dir,
-    "firstLevel/Hyper_fittedMaskers_{}_{}-subjects.pkl".format(
-        parcel_name, len(setup.subjects)
-    ),
-)
-
-with open(ana_fitted_mask_path, "wb") as f:
-    pkl.dump(fitted_mask_ana, f)
-
-with open(hyper_fitted_mask_path, "wb") as f:
-    pkl.dump(fitted_mask_hyper, f)
-
-print(f"Saved ANA fitted maskers to: {ana_fitted_mask_path}")
-print(f"Saved HYPER fitted maskers to: {hyper_fitted_mask_path}")
-
-
-# %% [markdown]
-# create a list containing all run timeseries 2d arrays for all subjects [sub_1(total TRs X ROi)...]
-
-# %%
-all_sugg_timeseries_per_sub = []
-for i in range(len(setup.subjects)):
-    ts1, ts2, ts3, ts4 = [extracted_timeseries_per_cond[i][cond] for cond in cond_names]
-    all_sugg_timeseries_per_sub.append(np.vstack([ts1, ts2, ts3, ts4]))
-
-
-# %%
-importlib.reload(func)
-import json
-
-n_rois = all_run_2d_timeseries[0].shape[-1]
-roi_names = [f"ROI-{idx}" for idx in range(n_rois)]
-
-param_id = np.random.randint(0, 10000)
-print(f"Parameter ID: {param_id}")
-save_to = os.path.join(
-    quality_check_save,
-    "mean_timecourses-ROIs",
-    f"{parcel_name}_mean_timecourses-paramId-{param_id}",
-)
-os.makedirs(save_to, exist_ok=True)
-
-save_name = "mean_timecourses-ROIs_allSubj.png"
-utils.plot_timecourses_from_ls(
-    all_sugg_timeseries_per_sub, roi_names, save_to=False, n_rows=16, n_cols=3
-)
-
-# save masker params
-masker_params_path = os.path.join(
-    quality_check_save, f"{parcel_name}_masker_paramId-{param_id}.txt"
-)
-utils.write_masker_params(masker_params, masker_params_path)
-
-
-# %% [markdown]
-# Mean images
-
-# %%
-voxel_masker.save, voxel_masker.name  # keys()
-
-# %%
-# extract TRs for each condition
-condition_keys = ["ANA", "N_ANA", "HYPER", "N_HYPER"]
-condition = "N_ANA"
-
-
-# %%
-import pandas as pd
-import matplotlib.pyplot as plt
-from nilearn.glm.first_level import make_first_level_design_matrix
-from nilearn.plotting import plot_design_matrix
-import numpy as np
-
-
-def create_design_matrix(events, confounds_file, TR, n_scans, title):
-    """
-    Create and plot a design matrix for one run.
-
-    Parameters:
-    -----------
-    events : pd.DataFrame
-        DataFrame containing onset, duration, and trial_type columns for the run.
-
-    confounds_file : str
-        Path to the confounds file for the run.
-
-    TR : int
-        Repetition time (TR) in seconds.
-
-    n_scans : int
-        Number of scans in the fMRI run.
-
-    title : str
-        Title for the design matrix plot.
-
-    Returns:
-    --------
-    design_matrix : pd.DataFrame
-        The design matrix for the run.
-
-    fig : matplotlib.figure.Figure
-        The figure object of the design matrix plot.
-    """
-    # Frame times for each TR
-    frame_times = np.arange(n_scans) * TR
-
-    # Create the design matrix
-    design_matrix = make_first_level_design_matrix(
-        frame_times=frame_times,
-        events=events,
-        add_regs=confounds.values,
-        add_reg_names=confounds.columns,
-    )
-
-    # Plot the design matrix
-    fig, ax = plt.subplots(figsize=(12, 6))
-    plot_design_matrix(design_matrix, ax=ax)
-    ax.set_title(title)
-    plt.tight_layout()
-
-    return design_matrix, fig
-
-
-# Parameters for one subject
-TR = 3  # Adjust based on your fMRI TR
-n_scans_hyper = 200  # Adjust based on the number of scans in the hyper run
-n_scans_ana = 180  # Adjust based on the number of scans in the analgesia run
-
-subject_index = 0  # Replace with the desired subject index
-
-# Paths to confounds
-confounds_hyper = hyper_run[subject_index]
-confounds_ana = ana_run[subject_index]
-
-# Events for hyper and analgesia runs
-events_hyper_subject = events_hyper[subject_index]
-events_ana_subject = events_ana[subject_index]
-
-# Create and plot the design matrix for the hyper run
-dm_hyper, fig_hyper = create_design_matrix(
-    events_hyper_subject,
-    confounds_hyper,
-    TR,
-    n_scans_hyper,
-    "Design Matrix for Hyper Run",
-)
-
-# Create and plot the design matrix for the analgesia run
-dm_ana, fig_ana = create_design_matrix(
-    events_ana_subject,
-    confounds_ana,
-    TR,
-    n_scans_ana,
-    "Design Matrix for Analgesia Run",
-)
-
-# Save figures
-fig_hyper.savefig(f"design_matrix_hyper_subject_{subject_index + 1}.png", dpi=300)
-fig_ana.savefig(f"design_matrix_ana_subject_{subject_index + 1}.png", dpi=300)
-
-
-# %%
-from nilearn.plotting import plot_prob_atlas
-
-mask_nifti = mask_x.to_nifti()
-view = plot_prob_atlas(
-    mask_nifti, threshold=None
-)  # Use threshold=None to display the whole mask
-view
-
-# %% [markdown]
-# **Extract data in ROI**
-
-# %%
-# func_ana = Brain_Data(ana_files)
-n_subj = 6
-# limit computation time
-
-roi = 4
-roi_mask = mask_x[roi]
-
-# file_list = glob.glob(os.path.join(data_dir, 'fmriprep', '*', 'func', f'*crop*{scan}*nii.gz'))
-ana_data = []
-for count, (sub, f) in enumerate(zip(setup.subjects, ana_files)):
-    if count > n_subj:
-        break
-    else:
-        print(sub)
-        data = Brain_Data(f)
-        ana_data.append(data.apply_mask(roi_mask))
-
-# %% [markdown]
-# **Hyper align**
-
-# %%
-ana_data
-
-# %%
-hyperalign = align(ana_data[:6], method="procrustes")
-
-# %%
-hyperalign
-
-# %%
-voxel_index = 50
-
-voxel_unaligned = pd.DataFrame(
-    [x.data[:, voxel_index] for x in ana_data]
-).T  # x is subject i
-voxel_aligned = pd.DataFrame(
-    [x.data[:, voxel_index] for x in hyperalign["transformed"]]
-).T
-
-f, a = plt.subplots(nrows=2, figsize=(15, 5), sharex=True)
-a[0].plot(voxel_unaligned, linestyle="-", alpha=0.2)
-a[0].plot(np.mean(voxel_unaligned, axis=1), linestyle="-", color="navy")
-a[0].set_ylabel("Unaligned Voxel", fontsize=16)
-a[0].yaxis.set_ticks([])
-
-a[1].plot(voxel_aligned, linestyle="-", alpha=0.2)
-a[1].plot(np.mean(voxel_aligned, axis=1), linestyle="-", color="navy")
-a[1].set_ylabel("Aligned Voxel", fontsize=16)
-a[1].yaxis.set_ticks([])
-
-plt.xlabel("Voxel Time Course (TRs)", fontsize=16)
-a[0].set_title(
-    f"Unaligned Voxel ISC: r={Adjacency(voxel_unaligned.corr(), matrix_type='similarity').mean():.02}",
-    fontsize=18,
-)
-a[1].set_title(
-    f"Aligned Voxel ISC: r={Adjacency(voxel_aligned.corr(), matrix_type='similarity').mean():.02}",
-    fontsize=18,
-)
-
-
-# %% [markdown]
-# **ISC distribution : N voxel pair-wise correlation, meaned**
-
-# %% [markdown]
-# Unaligned voxel ISC
-
-# %%
-ana_data[0].data.flatten().shape
-
-# %%
-ana_data[0].data.shape[1]
-
-# %%
-import numpy as np
-from nltools.data import Adjacency
-
-unaligned_isc = {}
-
-# compute mean ISC for each unaligned voxel to plot distribution
-for voxel_index in range(
-    ana_data[0].data.shape[1]
-):  # Assuming all_data is a list of Brain_Data objects
-    # Extract the time series for this voxel across all subjects
-    voxel_time_series = np.array(
-        [x.data[:372, voxel_index] for x in ana_data]
-    )  # shape (n_subjects, n_timepoints)
-    voxel_corr = np.corrcoef(voxel_time_series)  # matrix shape (n_subjects, n_subjects)
-    triu_indices = np.triu_indices_from(voxel_corr, k=1)  # mean of triangle
-    unaligned_isc[voxel_index] = voxel_corr[triu_indices].mean()
-
-plt.hist(unaligned_isc.values(), label="Unaligned ISC")
-plt.axvline(
-    x=np.mean(list(unaligned_isc.values())),
-    linestyle="--",
-    color="red",
-    linewidth=2,
-    label=f"Mean Unaligned ISC: {np.mean(list(unaligned_isc.values())):.2f}",
-)
-plt.ylabel("Frequency", fontsize=16)
-plt.xlabel("Voxel ISC Values", fontsize=16)
-plt.title("Unaligned ISC Distribution", fontsize=18)
-plt.legend()
-plt.show()
-
-# Print the mean ISC value for unaligned data
-print(f"Mean Unaligned ISC (voxel-wise): {np.mean(list(unaligned_isc.values())):.2f}")
-
-
-# %%
-plt.hist(hyperalign["isc"].values(), label="Aligned ISC")
-plt.axvline(
-    x=np.mean(list(hyperalign["isc"].values())),
-    linestyle="--",
-    color="red",
-    linewidth=2,
-)
-plt.ylabel("Frequency", fontsize=16)
-plt.xlabel("Voxel ISC Values", fontsize=16)
-plt.legend()
-plt.title("Hyperalignment ISC", fontsize=18)
-
-print(f"Mean ISC: {np.mean(list(hyperalign['isc'].values())):.2}")
-
-# %% [markdown]
-# **Compare a slice of ROI**
-
-# %%
-tr_index = 100
-
-f, a = plt.subplots(ncols=5, nrows=2, figsize=(15, 6), sharex=True, sharey=True)
-for i in range(5):
-    sns.heatmap(
-        np.rot90(ana_data[i][tr_index].to_nifti().dataobj[30:60, 10:28, 37]),
-        cbar=False,
-        cmap="RdBu_r",
-        ax=a[0, i],
-    )
-    a[0, i].set_title(f"Subject: {i+1}", fontsize=18)
-    a[0, i].axes.get_xaxis().set_visible(False)
-    a[0, i].yaxis.set_ticks([])
-    sns.heatmap(
-        np.rot90(
-            hyperalign["transformed"][i][tr_index].to_nifti().dataobj[30:60, 10:28, 37]
-        ),
-        cbar=False,
-        cmap="RdBu_r",
-        ax=a[1, i],
-    )
-    a[1, i].axes.get_xaxis().set_visible(False)
-    a[1, i].yaxis.set_ticks([])
-
-a[0, 0].set_ylabel("Unaligned Voxels", fontsize=16)
-a[1, 0].set_ylabel("Aligned Voxels", fontsize=16)
-
-plt.tight_layout()
-
-# %%
-data_dir = "/data/rainville/Hypnosis_ISC/4D_data/segmented"
-
-'''
