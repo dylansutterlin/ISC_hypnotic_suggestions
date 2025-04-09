@@ -682,15 +682,70 @@ if do_isc_analyses:
     #     save_path = os.path.join(results_dir, cond, roi_folder, f"isc_{n_perm}permutation_results_{cond}_pairwise{do_pairwise}.pkl")
     #     utils.save_data(save_path, cond_results)
     #     print(f"sphere Permutation ISC results saved for {cond} at {save_path}")
+    #%%
+    import numpy as np
 
-    #%% 
+    def prepare_contrast_data_with_trimmed_TRs(cond_trials1, cond_trials2, tr_trim1=None, tr_trim2=None, transformed_data=None):
+        """
+        Prepares and concatenates data across trials for two condition groups,
+        trimming the number of TRs per trial as needed.
+
+        Parameters
+        ----------
+        cond_trials1 : list of str
+            Trial names for condition 1 (e.g., Ana).
+        cond_trials2 : list of str
+            Trial names for condition 2 (e.g., N_Ana).
+        tr_trim1 : list of int or None
+            List of number of TRs to keep per trial for cond1.
+        tr_trim2 : list of int or None
+            List of number of TRs to keep per trial for cond2.
+        transformed_data : dict
+            Condition name → list of arrays (TRs x ROIs x subjects).
+
+        Returns
+        -------
+        task1_data : ndarray
+            (TRs x ROIs x subjects), concatenated across trimmed trials of cond1.
+        task2_data : ndarray
+            Same for cond2.
+        """
+
+        def trim_trials(trial_list, tr_trim, label):
+            trimmed = []
+            for i, trial in enumerate(trial_list):
+                data = transformed_data[trial]
+                # Assume data is list of subjects: [sub1_data, sub2_data, ...]
+                trimmed_trial = [sub[:tr_trim[i], :] for sub in data]
+                trimmed_array = np.stack(trimmed_trial, axis=-1)  # (TRs x ROIs x subjects)
+                trimmed.append(trimmed_array)
+            return np.concatenate(trimmed, axis=0)  # concatenate TRs
+
+        if tr_trim1 is None:
+            tr_trim1 = [transformed_data[trial][0].shape[0] for trial in cond_trials1]
+        if tr_trim2 is None:
+            tr_trim2 = [transformed_data[trial][0].shape[0] for trial in cond_trials2]
+
+        task1_data = trim_trials(cond_trials1, tr_trim1, "task1")
+        task2_data = trim_trials(cond_trials2, tr_trim2, "task2")
+
+        assert task1_data.shape == task2_data.shape, f"Trimmed task shapes don't match: {task1_data.shape} vs {task2_data.shape}"
+        return task1_data, task2_data
+
+#%% 
     # Paired sample permutation test
     contrast_conditions = ['Hyper-Ana', 'Ana-Hyper', 'NHyper-NAna']
     contrast_to_test = [conditions[0:2], conditions[0:2][::-1], conditions[2:4]]
     
     if 'single-trial' in setup.model_id:
-        contrast_conditions = ['N_ANA1_instrbk_1-N_HYPER1_instrbk_1'] #, 'Ana-N_Ana', 'Hyper-N_HYPER']
-        contrast_to_test = [['N_ANA1_instrbk_1', 'N_HYPER1_instrbk_1'], ['N_HYPER1_instrbk_1','N_ANA1_instrbk_1']]
+        contrast_conditions = ['N_ANA1_instrbk_1-N_HYPER1_instrbk_1', 'Ana-N_Ana', 'Hyper-N_Hyper'] #, 'Ana-N_Ana', 'Hyper-N_HYPER']
+
+        Ana_trials = ['ANA1_instrbk_1', 'ANA2_instrbk_1']
+        N_Ana_trials = ['N_ANA1_instrbk_1', 'N_ANA2_instrbk_1', 'N_ANA3_instrbk_1']
+        Hyper_trials = ['HYPER1_instrbk_1', 'HYPER2_instrbk_1']
+        N_Hyper_trials = ['N_HYPER1_instrbk_1', 'N_HYPER2_instrbk_1', 'N_HYPER3_instrbk_1']
+        
+        contrast_to_test = [['N_ANA1_instrbk_1', 'N_HYPER1_instrbk_1'], [Ana_trials, N_Ana_trials], [Hyper_trials, N_Hyper_trials]]
                             
     isc_permutation_cond_contrast = {}
     contrast_perm_save = os.path.join(results_dir, 'cond_contrast_permutation')
@@ -706,8 +761,50 @@ if do_isc_analyses:
             task1 = transformed_data_per_cond[to_test[0]]
             task2 = transformed_data_per_cond[to_test[1]]
             assert task1.shape == task2.shape, f"Data shape {task1.shape} does not match {task2.shape}"
-
             combined_data = np.concatenate([task1, task2], axis=2) 
+
+        elif 'single-trial' in setup.model_id:
+            
+            if contrast == 'Ana-N_Ana':  # cont idx 1
+                tr_trim1 = [50, 50]
+                tr_trim2 = [34, 33, 33]
+
+                all_trials_trimed1 = []
+                for i, trial in enumerate(Ana_trials):  # modulation trials
+                    trial_data = transformed_data_per_cond[trial] # shape: TRs x ROI x subjects
+                    all_trials_trimed1.append(trial_data[:tr_trim1[i], :, :])
+                task1_data = np.concatenate(all_trials_trimed1, axis=0)  # shape: (total_TRs x ROI x subjects)
+
+                all_trials_trimmed2 = []
+                for i, trial in enumerate(N_Ana_trials):  # neutral trials
+                    trial_data = transformed_data_per_cond[trial]
+                    all_trials_trimmed2.append(trial_data[:tr_trim2[i], :, :])
+                task2_data = np.concatenate(all_trials_trimmed2, axis=0)
+
+                transformed_data_per_cond['Ana_trimmed100'] = task1_data
+                transformed_data_per_cond['N_Ana_trimmed100'] = task2_data
+
+            elif contrast == 'Hyper-N_Hyper':  # cont idx 2
+                tr_trim1 = [51, 49]
+                tr_trim2 = [34, 33, 33]
+
+                all_trials_trimmed1 = []
+                for i, trial in enumerate(Hyper_trials):  # modulation trials
+                    trial_data = transformed_data_per_cond[trial]
+                    all_trials_trimmed1.append(trial_data[:tr_trim1[i], :, :])
+                task1_data = np.concatenate(all_trials_trimmed1, axis=0)
+
+                all_trials_trimmed2 = []
+                for i, trial in enumerate(N_Hyper_trials):  # neutral trials
+                    trial_data = transformed_data_per_cond[trial]
+                    all_trials_trimmed2.append(trial_data[:tr_trim2[i], :, :])
+                task2_data = np.concatenate(all_trials_trimmed2, axis=0)
+                
+                transformed_data_per_cond['Hyper_trimmed100'] = task1_data
+                transformed_data_per_cond['N_Hyper_trimmed100'] = task2_data
+                
+            combined_data = np.concatenate([task1_data, task2_data], axis=2)
+
         else: 
             # here we need to comcat the data along the subject axis, like repeated measures
             # and this subjects is taken into account in the permutation. See brainIAK.
@@ -721,93 +818,100 @@ if do_isc_analyses:
         group_ids = np.array([0] * n_sub + [1] * n_sub)
 
         isc_permutation_cond_contrast[contrast] = isc_utils.group_permutation(isc_grouped, group_ids, n_perm, do_pairwise, side = 'two-sided', summary_statistic='median')
-
+        diff_vector = isc_permutation_cond_contrast[contrast]['observed_diff']
+        print(f'{contrast} : Max & min ISC diff : {np.max(diff_vector)}, {np.min(diff_vector)}')
         save_path = os.path.join(contrast_perm_save, f"isc_results_{contrast}_{n_perm}perm_pairWise{do_pairwise}.pkl")
         isc_utils.save_data(save_path, isc_permutation_cond_contrast[contrast])
         result_paths["condition_contrast_results"][contrast] = save_path
         
         print(f'contrast {contrast} done in {time.time() - start_cond_time:.2f} sec')
 
-        #%%
-    do_shss_permutation = False
-    
-    if do_shss_permutation:
-        shss_grps = ['low_shss', 'high_shss']
-        contrast_conditions = ['Hyper-Ana', 'Ana-Hyper', 'NHyper-NAna']
-        contrast_to_test = [conditions[0:2], conditions[0:2][::-1], conditions[2:4]]
+#%%
+do_shss_permutation = False
 
-        isc_permutation_cond_contrast = {}
+if 'single-trial' in setup.model_id:
+    contrast_conditions = ['N_ANA1_instrbk_1-N_HYPER1_instrbk_1', 'Ana-N_Ana', 'Hyper-N_Hyper'] #, 'Ana-N_Ana', 'Hyper-N_HYPER']
+    contrast_to_test = [['N_ANA1_instrbk_1', 'N_HYPER1_instrbk_1'], ['Ana_trimmed100', 'N_Ana_trimmed100'], ['Hyper_trimmed100', 'N_Hyper_trimmed100']]
+    do_shss_permutation = True
 
-        for g, shss_grp in enumerate(shss_grps):
-            start_grp_time = time.time()
-            # print(f'==== Doing {shss_grp}, suppose to have 12 if low and 11 if high ====')
-            contrast_perm_shss = os.path.join(results_dir, f'group_perm_{shss_grp}')
-            os.makedirs(contrast_perm_shss, exist_ok=True)
+else: 
+    contrast_conditions = ['Hyper-Ana', 'Ana-Hyper', 'NHyper-NAna']
+    contrast_to_test = [conditions[0:2], conditions[0:2][::-1], conditions[2:4]]
 
-            if shss_grp == 'low_shss':
-                shss_idx = np.array(group_labels_df['SHSS_score_median_grp'] == 0)
-                keep_n = len(shss_idx[shss_idx == True]) # inverse!
-            elif shss_grp == 'high_shss':
-                shss_idx = np.array(group_labels_df['SHSS_score_median_grp'] == 1)
-                keep_n = len(shss_idx[shss_idx == True])
+if do_shss_permutation:
 
-            shss_idx_concat = np.concatenate([shss_idx, shss_idx])
+    shss_grps = ['low_shss', 'high_shss']
+    isc_permutation_cond_contrast = {}
 
-            group_ids_selected = np.array([0] * keep_n + [1] * keep_n)
-            # else:
-            #     group_ids_selected = np.array([1] * keep_n)
-    
-            print(f'-----{shss_grp} grp with {keep_n} subjects')
-            for i, contrast in enumerate(contrast_conditions):
+    for g, shss_grp in enumerate(shss_grps):
+        start_grp_time = time.time()
+        # print(f'==== Doing {shss_grp}, suppose to have 12 if low and 11 if high ====')
+        contrast_perm_shss = os.path.join(results_dir, f'group_perm_{shss_grp}')
+        os.makedirs(contrast_perm_shss, exist_ok=True)
 
-                combined_data_ls = [transformed_data_per_cond[task] for task in contrast_to_test[i]]
-                combined_data = np.concatenate(combined_data_ls, axis=2)
-                combined_data_selected = combined_data[:, :, shss_idx_concat]
-                print(f'{contrast} : Repeated mesaure isc having shape : ', combined_data_selected.shape)
-            # print('group id unique : ', np.unique(group_ids_selected, return_counts=True))  
-            
-                isc_grouped_selected = isc(combined_data_selected, pairwise=do_pairwise, summary_statistic=None)
-                group_ids = np.array([0] * n_sub + [1] * n_sub)
-                isc_permutation_cond_contrast[contrast] = isc_utils.group_permutation(isc_grouped_selected, group_ids_selected, n_perm, do_pairwise, side = 'two-sided', summary_statistic='median')
+        if shss_grp == 'low_shss':
+            shss_idx = np.array(group_labels_df['SHSS_score_median_grp'] == 0)
+            keep_n = len(shss_idx[shss_idx == True]) # inverse!
+        elif shss_grp == 'high_shss':
+            shss_idx = np.array(group_labels_df['SHSS_score_median_grp'] == 1)
+            keep_n = len(shss_idx[shss_idx == True])
 
-                save_path = os.path.join(contrast_perm_shss, f"isc_results_{keep_n}sub_{contrast}_{n_perm}perm_pairWise{do_pairwise}.pkl")
-                isc_utils.save_data(save_path, isc_permutation_cond_contrast[contrast])
-                result_paths["condition_contrast_results"][contrast] = save_path
-            print(f'Contrasts for {shss_grp} done in {time.time() - start_grp_time:.2f} sec')    
+        shss_idx_concat = np.concatenate([shss_idx, shss_idx])
+        group_ids_selected = np.array([0] * keep_n + [1] * keep_n)
+        # else:
+        #     group_ids_selected = np.array([1] * keep_n)
 
-    # %%
+        print(f'-----{shss_grp} grp with {keep_n} subjects')
+        for i, contrast in enumerate(contrast_conditions):
 
-        # %%
-        # ------------
-        # Perform permutation based on group labels
-        reload(isc_utils)
+            combined_data_ls = [transformed_data_per_cond[task] for task in contrast_to_test[i]]
+            combined_data = np.concatenate(combined_data_ls, axis=2)
+            combined_data_selected = combined_data[:, :, shss_idx_concat]
+            print(f'{contrast} : Repeated mesaure isc having shape : ', combined_data_selected.shape)
+        # print('group id unique : ', np.unique(group_ids_selected, return_counts=True))  
+        
+            isc_grouped_selected = isc(combined_data_selected, pairwise=do_pairwise, summary_statistic=None)
+            group_ids = np.array([0] * n_sub + [1] * n_sub)
+            isc_permutation_cond_contrast[contrast] = isc_utils.group_permutation(isc_grouped_selected, group_ids_selected, n_perm, do_pairwise, side = 'two-sided', summary_statistic='median')
 
-        isc_permutation_group_results = {}
-        for cond, isc_dict in isc_results.items():  # `isc_results` should already contain ISC values
-            print(f"Performing permutation ISC for condition: {cond}")
-            var_isc_results = {}
-            isc_values = isc_dict['isc']
-            isc_permutation_group_results[cond] = {}
-
-            for var in group_labels_df.columns:
-                group_assignment = group_labels_df[var].values  # Get group labels for this variable
-                isc_permutation_group_results[cond][var] = isc_utils.group_permutation(isc_values, group_assignment, n_perm, do_pairwise, side = 'two-sided', summary_statistic='median')
-            
-            print(f"Completed permutation ISC for {group_labels_df.columns}")
-
-        results_save_dir = os.path.join(results_dir, 'behavioral_group_permutation')
-        os.makedirs(results_save_dir, exist_ok=True)
-
-        for cond, cond_results in isc_permutation_group_results.items():
-            save_path = os.path.join(results_save_dir, f'{cond}_group_permutation_results_{n_perm}perm.pkl')
-            isc_utils.save_data(save_path, cond_results)
-            result_paths["group_permutation_results"][cond] = save_path
-
-            # print(f"Saved ISC permutation results for condition: {cond} at {save_path}")
+            save_path = os.path.join(contrast_perm_shss, f"isc_results_{keep_n}sub_{contrast}_{n_perm}perm_pairWise{do_pairwise}.pkl")
+            isc_utils.save_data(save_path, isc_permutation_cond_contrast[contrast])
+            result_paths["condition_contrast_results"][contrast] = save_path
+        print(f'Contrasts for {shss_grp} done in {time.time() - start_grp_time:.2f} sec')    
 
 # %%
 
     # %%
+    # ------------
+    # Perform permutation based on group labels
+    reload(isc_utils)
+
+    isc_permutation_group_results = {}
+    for cond, isc_dict in isc_results.items():  # `isc_results` should already contain ISC values
+        print(f"Performing permutation ISC for condition: {cond}")
+        var_isc_results = {}
+        isc_values = isc_dict['isc']
+        isc_permutation_group_results[cond] = {}
+
+        for var in group_labels_df.columns:
+            group_assignment = group_labels_df[var].values  # Get group labels for this variable
+            isc_permutation_group_results[cond][var] = isc_utils.group_permutation(isc_values, group_assignment, n_perm, do_pairwise, side = 'two-sided', summary_statistic='median')
+        
+        print(f"Completed permutation ISC for {group_labels_df.columns}")
+
+    results_save_dir = os.path.join(results_dir, 'behavioral_group_permutation')
+    os.makedirs(results_save_dir, exist_ok=True)
+
+    for cond, cond_results in isc_permutation_group_results.items():
+        save_path = os.path.join(results_save_dir, f'{cond}_group_permutation_results_{n_perm}perm.pkl')
+        isc_utils.save_data(save_path, cond_results)
+        result_paths["group_permutation_results"][cond] = save_path
+
+        # print(f"Saved ISC permutation results for condition: {cond} at {save_path}")
+
+# %%
+
+# %%
 if do_rsa :
     # Load existing ISC results
     task_to_test = setup.combined_task_to_test # [conditions, conditions[0:2], conditions[2:4]]

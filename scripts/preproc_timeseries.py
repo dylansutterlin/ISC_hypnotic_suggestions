@@ -788,7 +788,7 @@ if do_carptet_plot:
     # ======================
     # Fit transform images to get residuals (rm confounds)
     regress_mvmnt_carpet = True
-    MAX_ITER = 2
+    MAX_ITER = len(condition_names) 
     MASK = resamp_lan800
 
     if regress_mvmnt_carpet:
