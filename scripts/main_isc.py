@@ -19,6 +19,10 @@ from nilearn.maskers import MultiNiftiMapsMasker, MultiNiftiMasker, NiftiMasker,
 from nilearn.datasets import fetch_atlas_schaefer_2018
 from nilearn import plotting
 from nilearn.plotting import plot_carpet, plot_roi, plot_stat_map
+from nilearn import datasets
+from nilearn.image import math_img, binarize_img
+from nilearn.plotting import plot_roi
+
 
 from brainiak.isc import isc, bootstrap_isc, permutation_isc, compute_summary_statistic, phaseshift_isc
 
@@ -52,6 +56,7 @@ if "setups" not in sys.modules:
     sys.path.append(os.path.abspath("setups"))
 
 setup_module = importlib.import_module(f"{setup_name}")
+importlib.reload(setup_module)
 setup = setup_module.init()
 
 print(f"Loaded setup: {setup_name}")
@@ -85,7 +90,13 @@ model_name = setup.model_name
 results_dir = setup.results_dir
 
 # behav data
+reload(isc_utils)
 isc_data_df = isc_utils.load_isc_data(base_path, folder_is='subject', model = model_is) # !! change params if change base_dir
+if 'single-trial' in setup.model_id:
+    print('Loading single trial data')
+    model_is = 'instrbk'
+    isc_data_df = isc_utils.load_single_trial_isc_data(base_path)
+
 isc_data_df = isc_data_df.sort_values(by='subject')
 
 # exclude subjects
@@ -108,7 +119,6 @@ if keep_n_sub is not None:
 setup.subjects = subjects
 setup.n_sub = n_sub
 
-breakpoint()
 # create save dir and save params
 setup.check_and_create_results_dir() 
 setup.save_to_json()
@@ -127,9 +137,8 @@ result_paths = {
     "setup_parameters": os.path.join(setup.results_dir, 'setup_parameters.json')
 }
 
-
-
 # %%
+reload(isc_utils)
 # get dict will all cond files from all subjects
 print("Subjects:", subjects)
 sub_check['init'] = subjects
@@ -157,29 +166,37 @@ for cond in conditions:
     isc_utils.save_data(os.path.join(cond_folder, f'setup_func_path_{cond}.pkl'), subject_file_dict[cond])
 
 # %%
+# ======
+# Init masks
 voxel_masker = Bunch(name="voxel_wise")
 ref_img = index_img(nib.load(subject_file_dict[conditions[0]][subjects[0]]), 0)
 data_shape = ref_img.shape[0:3] #3D
 data_affine = ref_img.affine
+prob_threshold = setup.prob_threshold
 
-if atlas_name =='voxelWise' or 'schafer' in atlas_name: # == f'schafer-{n_rois}-2mm':
-    mask = nib.load('/data/rainville/Hypnosis_ISC/masks/brainmask_91-109-91.nii')
-    # resamp_mask_cont = resample_to_img(mask, ref_img)
-    resamp_mask = qc_utils.resamp_to_img_mask(mask, ref_img)
-    mask_path = os.path.join(results_dir, 'resamp_mask_mni.nii.gz')
-    mask.to_filename(mask_path)
-    # resamp_mask = binarize_img(resamp_mask_cont,mask_img=mask, threshold=0)
-    plot_roi(resamp_mask, title='resampled_mask', display_mode='ortho', draw_cross=False, output_file=os.path.join(results_dir, 'resampled_mask.png'))
-
-elif atlas_name=='voxelWise_lanA800':
+if apply_mask == 'lanA800':
+    print(f'Loading language mask lan800 prob={prob_threshold}')
     full_mask = nib.load(os.path.join(project_dir, 'masks/lipkin2022_lanA800', 'LanA_n806.nii'))
-    at_thresh = setup.prob_threshold
-    mask_native = binarize_img(full_mask, threshold=at_thresh)
-    mask = qc_utils.resamp_to_img_mask(mask_native, ref_img)
-    # mask = resample_to_img(mask_native, ref_img)
-    mask_path = os.path.join(results_dir, f'bin_lanA800_{at_thresh}thresh.nii.gz')
-    mask.to_filename(mask_path)
-    plot_roi(mask, title='resampled_mask', display_mode='ortho', draw_cross=False, output_file=os.path.join(results_dir, 'resampled_mask.png'))
+    mask_native = binarize_img(full_mask, threshold=prob_threshold)
+    mask_path = os.path.join(results_dir, f'bin_lanA800_{prob_threshold}thresh.nii.gz')
+
+elif apply_mask == 'outside_lanA800':
+    print(f'Creating inverse mask: regions outside LanA800 with prob threshold = {prob_threshold}')
+    full_mask = nib.load(os.path.join(project_dir, 'masks/lipkin2022_lanA800', 'LanA_n806.nii'))
+    mask_native = math_img('img < @thresh', img=full_mask, thresh=prob_threshold)
+    mask_path = os.path.join(results_dir, f'outside_lanA800_{prob_threshold}thresh.nii.gz')
+
+elif apply_mask == None or apply_mask == 'whole-brain':
+    print('Loading whole brain MNI template as mask')
+    mask_native = datasets.load_mni152_brain_mask()
+    mask_path = os.path.join(results_dir, 'mni_mask.nii.gz')
+
+else:
+    raise ValueError(f"Unknown apply_mask setting: {apply_mask}")
+
+resamp_mask = qc_utils.resamp_to_img_mask(mask_native, ref_img)
+resamp_mask.to_filename(mask_path)
+plot_roi(resamp_mask, title='mask', display_mode='ortho', draw_cross=False, output_file=os.path.join(results_dir, 'resamp_mask_used_isc.png'))
 
 masker_params_dict = {
     "standardize": 'zscore_sample',
@@ -230,7 +247,6 @@ elif 'schafer' in atlas_name : #atlas_name == f'schafer-{n_rois}-2mm':
     atlas_labels = [str(label, 'utf-8') if isinstance(label, bytes) else str(label) for label in atlas_data['labels']]
     atlas_labels.insert(0, 'background')
 
-
 # elif atlas_name == 'lanA800':
 #     atlas = nib.load(os.path.join(project_dir, 'masks/lipkin2022_lanA800', 'LanA_n806.nii'))
 #     atlas_labels = None
@@ -276,7 +292,7 @@ if transform_imgs == True:
     elif atlas_name == 'Difumo256':
         masker = MultiNiftiMapsMasker(maps_img=atlas, standardize=False, memory='nilearn_cache', verbose=5, n_jobs= 1)
     elif 'schafer' in atlas_name : # == f'schafer{n_rois}_2mm':
-        masker = NiftiLabelsMasker(labels_img=atlas, labels = atlas_labels, mask_img=resamp_mask,resampling_target='data', standardize=True,high_variance_confounds=False,standardize_confounds=True, memory='nilearn_cache', verbose=5, n_jobs= 1)
+        masker = NiftiLabelsMasker(labels_img=atlas, labels = atlas_labels, mask_img=resamp_mask,resampling_target='data', standardize=True,high_variance_confounds=False,standardize_confounds=True,keep_masked_labels=False, memory='nilearn_cache', verbose=5, n_jobs= 1)
 
     #masker = MultiNiftiMapsMasker(maps_img=atlas, standardize=False, memory='nilearn_cache', verbose=5, n_jobs= 1)
     #masker = NiftiMasker(verbose=5)
@@ -304,7 +320,7 @@ if transform_imgs == True:
             for i, sub in enumerate(subjects):
 
                 if reg_conf == True:
-                    conf = confounds_ls[i][cond][:keep_n_confouds]
+                    conf = confounds_ls[i][cond][:, :keep_n_confouds]
                 else: conf = None
 
                 transformed_data = masker.fit_transform(concatenated_subjects[sub], confounds= conf)
@@ -333,47 +349,47 @@ if transform_imgs == True:
     # resmap_mask = resample_img(mask_img, target_affine=data_affine, target_shape=data_shape)
     # cond= 'Ana'
     
-    qc_path = os.path.join(setup.results_dir, 'QC')
-    os.makedirs(qc_path, exist_ok=True)
-    print('==Carpet plots==')
+    # qc_path = os.path.join(setup.results_dir, 'QC')
+    # os.makedirs(qc_path, exist_ok=True)
+    # print('==Carpet plots==')
 
-    if atlas_name =='voxelWise':
-        carpet_mask = resamp_mask    
-        carpet_lab = None
-    elif 'schafer' in atlas_name : # == f'schafer{n_rois}_2mm':
-        carpet_mask = atlas
-        carpet_lab = None
-    elif atlas_name =='voxelWise_lanA800':
-        carpet_mask = resamp_mask
-        carpet_lab = None
+    # if atlas_name =='voxelWise':
+    #     carpet_mask = resamp_mask    
+    #     carpet_lab = None
+    # elif 'schafer' in atlas_name : # == f'schafer{n_rois}_2mm':
+    #     carpet_mask = atlas
+    #     carpet_lab = None
+    # elif atlas_name =='voxelWise_lanA800':
+    #     carpet_mask = resamp_mask
+    #     carpet_lab = None
 
-    for sub in range(n_sub):
-        subject = subjects[sub]
-        shapes = []
-        for cond in conditions:
-            file_path = os.path.join(qc_path, f'{subject}_{cond}_carpet_detrend.png')
-            inv_img = fitted_maskers[cond][sub].inverse_transform(transformed_data_per_cond[cond][sub])
-            shapes.append(inv_img.shape)
-            display = plot_carpet(
-                inv_img,
-                mask_img=carpet_mask,
-                mask_labels=carpet_lab,
-                detrend=True,
-                t_r=3,
-                standardize=True,
-                output_file=file_path,
-                title=f"global patterns {subject} in cond {cond}",
-            )
+    # for sub in range(n_sub):
+    #     subject = subjects[sub]
+    #     shapes = []
+    #     for cond in conditions:
+    #         file_path = os.path.join(qc_path, f'{subject}_{cond}_carpet_detrend.png')
+    #         inv_img = fitted_maskers[cond][sub].inverse_transform(transformed_data_per_cond[cond][sub])
+    #         shapes.append(inv_img.shape)
+    #         display = plot_carpet(
+    #             inv_img,
+    #             mask_img=carpet_mask,
+    #             mask_labels=carpet_lab,
+    #             detrend=True,
+    #             t_r=3,
+    #             standardize=True,
+    #             output_file=file_path,
+    #             title=f"global patterns {subject} in cond {cond}",
+    #         )
 
     # combined carpet plot
-    for cond in conditions:
-        carpet_files = glob.glob(os.path.join(results_dir, 'QC', f'sub-*_{cond}_carpet_*.png'))
-        carpet_files = sorted(carpet_files)
-        save_cond= os.path.join(results_dir,'QC', f'combined_sub_{cond}_carpet.png')
-        title = f'{cond} for model : {model_name}'
-        visu_utils.plot_images_grid(carpet_files, title, save_to=save_cond, show=True)
+    # for cond in conditions:
+    #     carpet_files = glob.glob(os.path.join(results_dir, 'QC', f'sub-*_{cond}_carpet_*.png'))
+    #     carpet_files = sorted(carpet_files)
+    #     save_cond= os.path.join(results_dir,'QC', f'combined_sub_{cond}_carpet.png')
+    #     title = f'{cond} for model : {model_name}'
+    #     visu_utils.plot_images_grid(carpet_files, title, save_to=save_cond, show=True)
 
-        print('Subject : ', subject, 'imgs shapes : ', shapes)
+    #     print('Subject : ', subject, 'imgs shapes : ', shapes)
 
 	# save transformed data and masker
     for cond in conditions:
@@ -394,40 +410,7 @@ if transform_imgs == True:
         print(f'Transformed timseries and maskers saved to {cond_folder}')
 
     print('====Done with data extraction====')
-    
-# sim_model= 'annak'
-# rsa_save_dir = os.path.join(results_dir, f'rsa_isc_results_{sim_model}simil')
-# os.makedirs(rsa_save_dir, exist_ok=True)
-
-# for cond in conditions:
-#     save_cond_rsa = os.path.join(rsa_save_dir, f'rsa-isc_{cond}') # make condition folder
-#     os.makedirs(save_cond_rsa, exist_ok=True)
-
-#     isc_pairwise = isc_results[cond]['isc']
-#     values_rsa_perm = {}
-#     distribution_rsa_perm = {}>
-
-#     for behav_y in y_interest: # repeated for each Yi
-#         y = np.array(X_pheno[behav_y])
-#         sim_behav_annak = utils.compute_behav_similarity(y, metric = sim_model)
-
-#         for col_j in range(isc_pairwise.shape[0]):
-#             if atlas_name == 'voxelWise':
-#                 roi_name = f'voxel_{col_j}'
-#             else:
-#                 roi_name = atlas_labels[col_j]
-
-#             isc_roi_vec = isc_pairwise[:, col_j]
-#             rsa_results = utils.matrix_permutation(sim_behav_annak, isc_roi_vec, n_permute=n_perm_rsa, metric="spearman", how="upper", return_perms = True)
-#             values_rsa_perm[roi_name] = {'correlation': rsa_results['correlation'], 'p_value': rsa_results['p']}
-#             distribution_rsa_perm[roi_name] = rsa_results['perm_dist']
-
-#         #save
-#         df_rsa = pd.DataFrame.from_dict(values_rsa_perm, orient='index')
-#         df_rsa.to_csv(os.path.join(save_cond_rsa, f'{behav_y}_rsa_isc_{sim_model}simil_{n_perm}perm_pvalues.csv'))
-#         utils.save_data(os.path.join(save_cond_rsa, f'{behav_y}_rsa_isc_{n_perm}perm_distribution.pkl'), distribution_rsa_perm)
-
-
+ 
 else:   
     # account for case we load data from diff directory
     if setup.pre_computed != False:
@@ -487,13 +470,23 @@ else:
 #     utils.save_data(save_path, isc_dict)
 #     print(f"ISC results saved for {cond} at {save_path}")
 
-if 'schafer' not in atlas_name: # != f'schafer{n_rois}_2mm':
+# if 'schafer' not in atlas_name: # != f'schafer{n_rois}_2mm':
     # Assess 0 variance subjects
-    sub_to_remove = isc_utils.identify_zero_variance_subjects(transformed_data_per_cond, subjects)
-    print(f"Subjects with 0 variance will be removed : {sub_to_remove}")
-    transformed_data_per_cond, fitted_masker, subjects = isc_utils.remove_subjects(transformed_data_per_cond, fitted_maskers, subjects, sub_to_remove)
-    setup.kept_subjects = subjects
-    n_sub= len(subjects)
+
+sub_to_remove = isc_utils.identify_zero_variance_subjects(transformed_data_per_cond, subjects)
+print(f"Subjects with 0 variance will be removed : {sub_to_remove}")
+# transformed_data_per_cond, fitted_masker, subjects = isc_utils.remove_subjects(transformed_data_per_cond, fitted_maskers, subjects, sub_to_remove)
+setup.kept_subjects = subjects
+n_sub= len(subjects)
+
+isc_utils.plot_flat_rois(
+    transformed_data_per_cond=transformed_data_per_cond,
+    subjects=setup.kept_subjects,
+    roi_names=atlas_labels,  # make sure they're decoded if needed
+    condition_names=setup.conditions,
+    save_dir=os.path.join(setup.results_dir, "QC_flat_rois")
+)
+
 
 #%%
 
@@ -545,6 +538,11 @@ if do_isc_analyses:
     # code conditions for all_sugg, (ANA+Hyper), (Neutral_H + Neutral_A)
     combined_conditions = ['all_sugg', 'modulation', 'neutral']
     task_to_test = [conditions, conditions[0:2], conditions[2:4]]
+
+    if 'instrbk' in setup.model_id:
+        task_to_test = [conditions]
+        combined_conditions = ['all_sugg']
+
     concat_cond_save = os.path.join(results_dir, 'concat_suggs_1samp_boot')
     os.makedirs(concat_cond_save, exist_ok=True)
 
@@ -689,9 +687,12 @@ if do_isc_analyses:
     # Paired sample permutation test
     contrast_conditions = ['Hyper-Ana', 'Ana-Hyper', 'NHyper-NAna']
     contrast_to_test = [conditions[0:2], conditions[0:2][::-1], conditions[2:4]]
-
+    
+    if 'single-trial' in setup.model_id:
+        contrast_conditions = ['N_ANA1_instrbk_1-N_HYPER1_instrbk_1'] #, 'Ana-N_Ana', 'Hyper-N_HYPER']
+        contrast_to_test = [['N_ANA1_instrbk_1', 'N_HYPER1_instrbk_1'], ['N_HYPER1_instrbk_1','N_ANA1_instrbk_1']]
+                            
     isc_permutation_cond_contrast = {}
-
     contrast_perm_save = os.path.join(results_dir, 'cond_contrast_permutation')
     os.makedirs(contrast_perm_save, exist_ok=True)
 
@@ -699,10 +700,19 @@ if do_isc_analyses:
         print(f'Performing 2 group permutation ISC : {contrast}')
 
         start_cond_time = time.time()
-        # here we need to comcat the data along the subject axis, like repeated measures
-        # and this subjects is taken into account in the permutation. See brainIAK.
-        combined_data_ls = [transformed_data_per_cond[task] for task in contrast_to_test[i]]
-        combined_data = np.concatenate(combined_data_ls, axis=2)
+
+        if 'instrbk' in contrast: #single trial model
+            to_test = contrast_to_test[i]            
+            task1 = transformed_data_per_cond[to_test[0]]
+            task2 = transformed_data_per_cond[to_test[1]]
+            assert task1.shape == task2.shape, f"Data shape {task1.shape} does not match {task2.shape}"
+
+            combined_data = np.concatenate([task1, task2], axis=2) 
+        else: 
+            # here we need to comcat the data along the subject axis, like repeated measures
+            # and this subjects is taken into account in the permutation. See brainIAK.
+            combined_data_ls = [transformed_data_per_cond[task] for task in contrast_to_test[i]]
+            combined_data = np.concatenate(combined_data_ls, axis=2)
 
         isc_grouped = isc(combined_data, pairwise=do_pairwise, summary_statistic=None)
         n_scans = combined_data.shape[0]
@@ -718,79 +728,82 @@ if do_isc_analyses:
         
         print(f'contrast {contrast} done in {time.time() - start_cond_time:.2f} sec')
 
-    #%%
-    shss_grps = ['low_shss', 'high_shss']
-    contrast_conditions = ['Hyper-Ana', 'Ana-Hyper', 'NHyper-NAna']
-    contrast_to_test = [conditions[0:2], conditions[0:2][::-1], conditions[2:4]]
+        #%%
+    do_shss_permutation = False
+    
+    if do_shss_permutation:
+        shss_grps = ['low_shss', 'high_shss']
+        contrast_conditions = ['Hyper-Ana', 'Ana-Hyper', 'NHyper-NAna']
+        contrast_to_test = [conditions[0:2], conditions[0:2][::-1], conditions[2:4]]
 
-    isc_permutation_cond_contrast = {}
+        isc_permutation_cond_contrast = {}
 
-    for g, shss_grp in enumerate(shss_grps):
-        start_grp_time = time.time()
-        # print(f'==== Doing {shss_grp}, suppose to have 12 if low and 11 if high ====')
-        contrast_perm_shss = os.path.join(results_dir, f'group_perm_{shss_grp}')
-        os.makedirs(contrast_perm_shss, exist_ok=True)
+        for g, shss_grp in enumerate(shss_grps):
+            start_grp_time = time.time()
+            # print(f'==== Doing {shss_grp}, suppose to have 12 if low and 11 if high ====')
+            contrast_perm_shss = os.path.join(results_dir, f'group_perm_{shss_grp}')
+            os.makedirs(contrast_perm_shss, exist_ok=True)
 
-        if shss_grp == 'low_shss':
-            shss_idx = np.array(group_labels_df['SHSS_score_median_grp'] == 0)
-            keep_n = len(shss_idx[shss_idx == True]) # inverse!
-        elif shss_grp == 'high_shss':
-            shss_idx = np.array(group_labels_df['SHSS_score_median_grp'] == 1)
-            keep_n = len(shss_idx[shss_idx == True])
+            if shss_grp == 'low_shss':
+                shss_idx = np.array(group_labels_df['SHSS_score_median_grp'] == 0)
+                keep_n = len(shss_idx[shss_idx == True]) # inverse!
+            elif shss_grp == 'high_shss':
+                shss_idx = np.array(group_labels_df['SHSS_score_median_grp'] == 1)
+                keep_n = len(shss_idx[shss_idx == True])
 
-        shss_idx_concat = np.concatenate([shss_idx, shss_idx])
+            shss_idx_concat = np.concatenate([shss_idx, shss_idx])
 
-        group_ids_selected = np.array([0] * keep_n + [1] * keep_n)
-        # else:
-        #     group_ids_selected = np.array([1] * keep_n)
- 
-        print(f'-----{shss_grp} grp with {keep_n} subjects')
-        for i, contrast in enumerate(contrast_conditions):
+            group_ids_selected = np.array([0] * keep_n + [1] * keep_n)
+            # else:
+            #     group_ids_selected = np.array([1] * keep_n)
+    
+            print(f'-----{shss_grp} grp with {keep_n} subjects')
+            for i, contrast in enumerate(contrast_conditions):
 
-            combined_data_ls = [transformed_data_per_cond[task] for task in contrast_to_test[i]]
-            combined_data = np.concatenate(combined_data_ls, axis=2)
-            combined_data_selected = combined_data[:, :, shss_idx_concat]
-            print(f'{contrast} : Repeated mesaure isc having shape : ', combined_data_selected.shape)
-        # print('group id unique : ', np.unique(group_ids_selected, return_counts=True))  
-        
-            isc_grouped_selected = isc(combined_data_selected, pairwise=do_pairwise, summary_statistic=None)
-            group_ids = np.array([0] * n_sub + [1] * n_sub)
-            isc_permutation_cond_contrast[contrast] = isc_utils.group_permutation(isc_grouped_selected, group_ids_selected, n_perm, do_pairwise, side = 'two-sided', summary_statistic='median')
+                combined_data_ls = [transformed_data_per_cond[task] for task in contrast_to_test[i]]
+                combined_data = np.concatenate(combined_data_ls, axis=2)
+                combined_data_selected = combined_data[:, :, shss_idx_concat]
+                print(f'{contrast} : Repeated mesaure isc having shape : ', combined_data_selected.shape)
+            # print('group id unique : ', np.unique(group_ids_selected, return_counts=True))  
+            
+                isc_grouped_selected = isc(combined_data_selected, pairwise=do_pairwise, summary_statistic=None)
+                group_ids = np.array([0] * n_sub + [1] * n_sub)
+                isc_permutation_cond_contrast[contrast] = isc_utils.group_permutation(isc_grouped_selected, group_ids_selected, n_perm, do_pairwise, side = 'two-sided', summary_statistic='median')
 
-            save_path = os.path.join(contrast_perm_shss, f"isc_results_{keep_n}sub_{contrast}_{n_perm}perm_pairWise{do_pairwise}.pkl")
-            isc_utils.save_data(save_path, isc_permutation_cond_contrast[contrast])
-            result_paths["condition_contrast_results"][contrast] = save_path
-        print(f'Contrasts for {shss_grp} done in {time.time() - start_grp_time:.2f} sec')    
-
-# %%
+                save_path = os.path.join(contrast_perm_shss, f"isc_results_{keep_n}sub_{contrast}_{n_perm}perm_pairWise{do_pairwise}.pkl")
+                isc_utils.save_data(save_path, isc_permutation_cond_contrast[contrast])
+                result_paths["condition_contrast_results"][contrast] = save_path
+            print(f'Contrasts for {shss_grp} done in {time.time() - start_grp_time:.2f} sec')    
 
     # %%
-    # ------------
-    # Perform permutation based on group labels
-    reload(isc_utils)
 
-    isc_permutation_group_results = {}
-    for cond, isc_dict in isc_results.items():  # `isc_results` should already contain ISC values
-        print(f"Performing permutation ISC for condition: {cond}")
-        var_isc_results = {}
-        isc_values = isc_dict['isc']
-        isc_permutation_group_results[cond] = {}
+        # %%
+        # ------------
+        # Perform permutation based on group labels
+        reload(isc_utils)
 
-        for var in group_labels_df.columns:
-            group_assignment = group_labels_df[var].values  # Get group labels for this variable
-            isc_permutation_group_results[cond][var] = isc_utils.group_permutation(isc_values, group_assignment, n_perm, do_pairwise, side = 'two-sided', summary_statistic='median')
-        
-        print(f"Completed permutation ISC for {group_labels_df.columns}")
+        isc_permutation_group_results = {}
+        for cond, isc_dict in isc_results.items():  # `isc_results` should already contain ISC values
+            print(f"Performing permutation ISC for condition: {cond}")
+            var_isc_results = {}
+            isc_values = isc_dict['isc']
+            isc_permutation_group_results[cond] = {}
 
-    results_save_dir = os.path.join(results_dir, 'behavioral_group_permutation')
-    os.makedirs(results_save_dir, exist_ok=True)
+            for var in group_labels_df.columns:
+                group_assignment = group_labels_df[var].values  # Get group labels for this variable
+                isc_permutation_group_results[cond][var] = isc_utils.group_permutation(isc_values, group_assignment, n_perm, do_pairwise, side = 'two-sided', summary_statistic='median')
+            
+            print(f"Completed permutation ISC for {group_labels_df.columns}")
 
-    for cond, cond_results in isc_permutation_group_results.items():
-        save_path = os.path.join(results_save_dir, f'{cond}_group_permutation_results_{n_perm}perm.pkl')
-        isc_utils.save_data(save_path, cond_results)
-        result_paths["group_permutation_results"][cond] = save_path
+        results_save_dir = os.path.join(results_dir, 'behavioral_group_permutation')
+        os.makedirs(results_save_dir, exist_ok=True)
 
-        # print(f"Saved ISC permutation results for condition: {cond} at {save_path}")
+        for cond, cond_results in isc_permutation_group_results.items():
+            save_path = os.path.join(results_save_dir, f'{cond}_group_permutation_results_{n_perm}perm.pkl')
+            isc_utils.save_data(save_path, cond_results)
+            result_paths["group_permutation_results"][cond] = save_path
+
+            # print(f"Saved ISC permutation results for condition: {cond} at {save_path}")
 
 # %%
 

@@ -175,6 +175,53 @@ def load_isc_data(base_path, folder_is='task', model = 'sugg'):
 
     return df
 
+# modif 8 avril 25 for single trial model (compare 1st neutral blocks)
+def load_single_trial_isc_data(base_path):
+    """
+    Load single-trial ISC data from folders named by subject (e.g., sub-01, sub-02),
+    where each folder contains individual condition volumes like 'ANA1_instrbk_1_53-vol.nii.gz'.
+
+    Parameters
+    ----------
+    base_path : str
+        The base directory containing the subject folders.
+
+    Returns
+    -------
+    pd.DataFrame
+        A DataFrame with columns: 'subject', 'condition', 'file_path'.
+    """
+    data_list = []
+
+    for subject_folder in os.listdir(base_path):
+        subject_path = os.path.join(base_path, subject_folder)
+        if not os.path.isdir(subject_path):
+            continue
+
+        for file in os.listdir(subject_path):   
+            if file.endswith(".nii.gz"):
+                file_path = os.path.join(subject_path, file)
+                core_name = file.replace("-vol.nii.gz", "")
+                parts = core_name.split('_')
+
+                if core_name.startswith("N_") and len(parts) >= 5:
+                    condition_name = '_'.join(parts[:4])  # e.g. 'N_HYPER3_instrbk_1'
+                elif len(parts) >= 4:
+                    condition_name = '_'.join(parts[:3])  # e.g. 'ANA1_instrbk_1'
+
+                else:
+                    continue
+
+                data_list.append({
+                    'subject': subject_folder,
+                    'task': condition_name,
+                    'file_path': file_path
+                })
+
+    df = pd.DataFrame(data_list)
+    return df
+
+#----
 def load_confounds(base_path):
     sub_conf = {}
     for folder in os.listdir(base_path):
@@ -217,11 +264,14 @@ def filter_and_rename_confounds(dct_conf_unsorted, subjects, model_is):
 
         for cond_key in list(sub_dct.keys()):
             if model_is in cond_key:
-                parts = cond_key.split('_')
-                if parts[0] == 'N':
-                    novel_key = parts[0] + parts[1]  # Merge "N_" into "NANA", "NHYPER", etc.
+                if 'instrbk' in cond_key:
+                    novel_key = cond_key
                 else:
-                    novel_key = parts[0]
+                    parts = cond_key.split('_')
+                    if parts[0] == 'N':
+                        novel_key = parts[0] + parts[1]  # Merge "N_" into "NANA", "NHYPER", etc.
+                    else:
+                        novel_key = parts[0]
                 filtered_dct[novel_key] = sub_dct[cond_key]
 
         ls_dct_conf.append(filtered_dct)
@@ -229,23 +279,28 @@ def filter_and_rename_confounds(dct_conf_unsorted, subjects, model_is):
     return ls_dct_conf
 
 
-
 def get_files_for_condition_combination(subjects, task_combinations, sub_task_files):
-    '''
-    Assumes that sub_task_files is a DataFrame with columns 'subject', 'task', and 'file_path'
-    '''
     func_file_dict = {}
+
     for sub in subjects:
-        # get file paths for each task
         sub_data = sub_task_files[sub_task_files['subject'] == sub]
-        task_data = sub_data.set_index('task').loc[task_combinations]
+        task_data = sub_data.set_index('task')
+        
+
         if isinstance(task_combinations, str):
-            func_file_dict[sub] = task_data['file_path']
+            if task_combinations in task_data.index:
+                func_file_dict[sub] = task_data.loc[task_combinations, 'file_path']
+            else:
+                print(f"{task_combinations} missing for {sub}")
+                print(task_data)
         else:
-            func_file_dict[sub] = task_data['file_path'].tolist()
+            available_tasks = [t for t in task_combinations if t in task_data.index]
+            if available_tasks:
+                func_file_dict[sub] = task_data.loc[available_tasks, 'file_path'].tolist()
+            else:
+                print(f"[] No tasks from {task_combinations} found for {sub}")
 
-    return func_file_dict # sub : : [file1, file2, file3]
-
+    return func_file_dict
 def save_data(save_path, data):
     with open(save_path, 'wb') as f:
         pkl.dump(data, f)
@@ -348,17 +403,23 @@ def extract_save_sphere(concatenated_imgs, condition, results_dir, roi_coords, s
 
 def identify_zero_variance_subjects(data_per_cond, subjects):
     """
-    Identifies subjects who have zero variance in any condition and should be removed across all conditions.
+    Identifies subjects who have zero variance in any condition and prints which conditions are affected.
 
-    Parameters:
-    - transformed_data_per_cond (dict): Dictionary where keys are condition names and values are 3D arrays (TRs, voxels, subjects).
-    - subjects (list): List of subject IDs.
+    Parameters
+    ----------
+    data_per_cond : dict
+        Dictionary where keys are condition names and values are arrays of shape (TRs, voxels, subjects).
+    subjects : list
+        List of subject IDs.
 
-    Returns:
-    - subjects_to_remove (list): List of subjects to remove across all conditions.
+    Returns
+    -------
+    subjects_to_remove : list
+        List of subject IDs with zero variance in any condition.
     """
     n_subjects = len(subjects)
-    zero_variance_subjects = np.zeros(n_subjects, dtype=bool)  # Track subjects with zero variance
+    zero_variance_subjects = np.zeros(n_subjects, dtype=bool)
+    subject_condition_log = {sub: [] for sub in subjects}
 
     for cond, data in data_per_cond.items():
         print(f"Checking zero variance for condition: {cond}")
@@ -369,17 +430,28 @@ def identify_zero_variance_subjects(data_per_cond, subjects):
             data_3d = data
         else:
             raise ValueError("Unexpected data format.")
-        assert data_3d.shape[-1] == n_subjects, f"Data shape {data_3d.shape} does not match subjects {n_subjects}"
 
-        # Identify subjects with zero-variance voxels (across all voxels)
-        no_variance_sub_bool = np.any(np.var(data_3d, axis=0) == 0, axis=0)
-        
-        zero_variance_subjects |= no_variance_sub_bool  # Accumulate subjects to remove
+        assert data_3d.shape[-1] == n_subjects, f"Data shape {data_3d.shape} does not match subject count {n_subjects}"
+
+        # Identify which subjects have zero variance across all voxels
+        subject_has_zero_variance = np.any(np.var(data_3d, axis=0) == 0, axis=0)
+
+        for idx, has_zero in enumerate(subject_has_zero_variance):
+            if has_zero:
+                subject_condition_log[subjects[idx]].append(cond)
+
+        zero_variance_subjects |= subject_has_zero_variance  # Mark for removal
+
+    # Print condition-specific warnings
+    for sub in subjects:
+        if subject_condition_log[sub]:
+            print(f"{sub} has zero variance in: {subject_condition_log[sub]}")
 
     subjects_to_remove = list(np.array(subjects)[zero_variance_subjects])
-
-    print(f"Subjects to be removed due to zero-variance voxels in any condition: {subjects_to_remove}")
+    print(f"\nSubjects to remove due to zero-variance in any condition: {subjects_to_remove}")
+    
     return subjects_to_remove
+
 
 
 def remove_subjects(data_per_cond,fitted_maskers, subjects, subjects_to_remove):
@@ -426,6 +498,37 @@ def remove_subjects(data_per_cond,fitted_maskers, subjects, subjects_to_remove):
     print(f"Removed: {subjects_to_remove}")
 
     return updated_data_per_cond, updated_maskers, updated_subjects
+
+
+from matplotlib import pyplot as plt
+def plot_flat_rois(transformed_data_per_cond, subjects, roi_names, condition_names, save_dir):
+
+    for cond in condition_names:
+        cond_dir = os.path.join(save_dir, cond)
+        os.makedirs(cond_dir, exist_ok=True)
+
+        for i, sub in enumerate(subjects):
+            ts = transformed_data_per_cond[cond][i]  # (TRs x ROIs)
+            variances = np.var(ts, axis=0)
+            flat_idx = np.where(variances == 0)[0]
+
+            if len(flat_idx) == 0:
+                continue  # nothing to plot
+
+            print(f"{sub} – {cond}: {len(flat_idx)} flat ROI(s): {[roi_names[idx] for idx in flat_idx if idx < len(roi_names)]}")
+
+            plt.figure(figsize=(10, 4))
+            for idx in flat_idx:
+                label = roi_names[idx] if idx < len(roi_names) else f"ROI-{idx}"
+                plt.plot(ts[:, idx], label=label)
+
+            plt.title(f"Zero-variance ROIs – {sub} | {cond}")
+            plt.xlabel("Time (TRs)")
+            plt.ylabel("Signal")
+            plt.legend(fontsize=8, loc='upper right')
+            plt.tight_layout()
+            plt.savefig(os.path.join(cond_dir, f"{sub}_{cond}_flat_rois.png"))
+            plt.close()
 
 
 # def assert_zero_variance_sub(data_3d, subjects):
@@ -559,6 +662,46 @@ def compute_behav_similarity(behavior, metric='euclidean'):
                 sim_matrix[i, j] = sim_matrix[j, i] = sim_ij
 
     return sim_matrix
+
+
+def compute_behav_similarity_LOO(behavior, metric='euclidean'):
+    """
+    Compute leave-one-out (LOO) behavioral similarity for each subject,
+    comparing each subject to the rest of the group.
+
+    Parameters
+    ----------
+    behavior : array-like, shape (n_subjects,)
+        Behavioral scores for each subject.
+    metric : str, optional
+        Similarity metric ('euclidean' or 'annak'), default is 'euclidean'.
+
+    Returns
+    -------
+    sim_loo : np.ndarray, shape (n_subjects,)
+        LOO similarity value for each subject.
+    """
+    behavior = behavior.reshape(-1, 1)
+    n_subs = len(behavior)
+    sim_loo = np.zeros(n_subs)
+
+    if metric == 'euclidean':
+        for i in range(n_subs):
+            other_subs = np.delete(behavior, i)
+            mean_other = np.mean(other_subs)
+            dist = np.abs(behavior[i] - mean_other)
+            max_dist = np.max(np.abs(behavior - mean_other))
+            sim_loo[i] = 1 - (dist / max_dist) if max_dist != 0 else 1
+
+    elif metric == 'annak':
+        max_behavior = np.max(behavior)
+        for i in range(n_subs):
+            other_subs = np.delete(behavior, i)
+            mean_other = np.mean(other_subs)
+            sim_loo[i] = np.mean([behavior[i], mean_other]) / max_behavior if max_behavior != 0 else 1
+
+    return sim_loo
+
 
 from scipy.stats import spearmanr
 from sklearn.utils import check_random_state
