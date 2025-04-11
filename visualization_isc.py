@@ -34,25 +34,29 @@ model_names = {
     'model4': 'model4_sugg_0602_preproc_reg-mvmnt-True_high-variance-False_23sub_voxelWise_lanA800',
     'model5': 'model5_sugg_schafer-200-2mm_mask-whole-brain_pairWise-True_preproc_reg-mvmnt-True-8',
     'modelt': 'model5_sugg_schafer-200-2mm_mask-whole-brain_preproc_reg-mvmnt-True-6',
-    'model7': 'model4_shock_0602_preproc_reg-mvmnt-True_high-variance-False_23sub_schafer200_2mm'
+    'model7': 'model4_shock_0602_preproc_reg-mvmnt-True_high-variance-False_23sub_schafer200_2mm',
+    '9 avril ...' : ' ',
+    'single_trial' : 'model_single-trial_sugg_23-sub_schafer-200-2mm_mask-lanA800_pairWise-True_preproc_reg-mvmnt-True-8',
+    'single_trial_wb' : 'model_single-trial-wb_sugg_23-sub_schafer-200-2mm_mask-whole-brain_pairWise-True_preproc_reg-mvmnt-True-8'
 }
 
 ref_preproc_models = { 'model2' : model_names['model1']}
 
 model_is = 'model1'
-model_is = 'model3_shock'
+model_is = 'single_trial_wb'
 ref_model_name = ref_preproc_models['model2']
 
 project_dir = "/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions"
-clean_save_to = os.path.join(project_dir, 'results/imaging/visualization/shock_pairwise')
+clean_save_to = os.path.join(project_dir, f'results/imaging/visualization/{model_is}')
+os.makedirs(clean_save_to, exist_ok=True)
 
 # base_path = "/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/data/test_data_sugg_3sub"
 preproc_model_data = '23subjects_zscore_sample_detrend_FWHM6_low-pass428_10-12-24/suggestion_blocks_concat_4D_23sub'
 
 base_path = os.path.join(project_dir, 'results/imaging/preproc_data', preproc_model_data)
 
-# model_name = model_names[model_is]
-model_name = 'model3_shock_23-sub_schafer-200-2mm_mask-whole-brain_pairWise-True_preproc_reg-mvmnt-True-8'
+model_name = model_names[model_is]
+# model_name = 'model3_shock_23-sub_schafer-200-2mm_mask-whole-brain_pairWise-True_preproc_reg-mvmnt-True-8'
 
 results_dir = os.path.join(project_dir, f'results/imaging/ISC/{model_name}')
 setup = isc_utils.load_json(os.path.join(results_dir, "setup_parameters.json"))
@@ -93,6 +97,8 @@ reload(visu_utils)
 reload(isc_utils)
 result_key = 'isc_results'
 conditions = ['HYPER', 'ANA', 'NHYPER', 'NANA']
+conditions = setup['conditions']
+conditions = ['N_ANA1_instrbk_1', 'N_HYPER1_instrbk_1']
     # cond = conditions[0]
 views = {}
 surf = {}
@@ -102,7 +108,10 @@ for cond in conditions:
     print('----------------------------------------------------')
     #masker =utils.load_pickle(os.path.join(results_dir, cond, f'maskers_{atlas_name}_{cond}_{n_sub}sub.pkl'))
     #isc_bootstrap = utils.load_pickle(all_results_paths[result_key][cond])
-    masker = isc_utils.load_pickle(f'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/ISC/{ref_model_name}/{cond}/maskers_{parcel_name}_{cond}_23sub.pkl')
+    maskers = isc_utils.load_pickle(f'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/ISC/{model_name}/{cond}/maskers_{parcel_name}_{cond}_23sub.pkl')
+    labels = list(maskers[0].region_names_.values())
+   
+
     isc_bootstrap = isc_utils.load_pickle(f'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/ISC/{model_name}/{cond}/isc_results_{cond}_5000boot_pairWise{do_pairWise}.pkl')
     isc_rois = pd.DataFrame(isc_bootstrap['isc'], columns=labels)
     isc_results_roi[cond] = isc_rois
@@ -116,7 +125,7 @@ for cond in conditions:
     fdr_p = isc_utils.fdr(p_values, q=0.05)
     bonf_p = isc_utils.bonferroni(p_values, alpha=0.05)
     print(f'FDR thresh : {fdr_p}')
-    unc_p = 0.01
+    unc_p = 0.5
     # to brain plot 
     reload(visu_utils)
     if labels == None:
@@ -144,7 +153,7 @@ for cond in conditions:
     sig_labels = [labels[i] for i in range(len(labels)) if p_mask[i]]
     print('Sig ROIs :', sig_labels)
     
-    views[cond] = plotting.view_img(isc_img, threshold=isc_thresh, title=title_view)
+    # views[cond] = plotting.view_img(isc_img, threshold=0,symmetric_cmap=False, title=title_view)
     surf[cond] = view_img_on_surf(isc_img, threshold=None, surf_mesh='fsaverage')
 
     # bar plots 
@@ -160,7 +169,8 @@ for cond in conditions:
     # )
     interactive_view = view_img(
         isc_img,
-        threshold=isc_thresh,
+        threshold=0,
+        symmetric_cmap=False,
         title=title_view,
         cmap = 'Reds'
     )
@@ -319,19 +329,22 @@ plt.show()
 # ===========================
 # Difference (Permutation) per condition visualization
 result_key = 'cond_contrast_permutation'
-conditions = ['Hyper', 'Ana', 'NHyper', 'NAna']
+# conditions = ['Hyper', 'Ana', 'NHyper', 'NAna']
 contrasts = ['Ana-Hyper', 'NHyper-NAna']
+
+contrasts = ['Ana-N_Ana', 'Hyper-N_Hyper', 'N_ANA1_instrbk_1-N_HYPER1_instrbk_1']
 
 reload(visu_utils)
 # n_scans = [100, 100, 134] #[94, 94, 125]
 views = {}
 sig_rois = {}
 interactive_views=[]
-for i, cont in enumerate(contrasts):
+for i, cont in enumerate([contrasts[2]]):
     # scans = n_scans[i]
     # masker =utils.load_pickle(os.path.join(results_dir, cond, f'maskers_{atlas_name}_{cond}_{n_sub}sub.pkl'))
     # file = f"isc_results_{contrast}_{n_scans}TRs_{setup['n_perm']}perm_pairWiseTrue.pkl"
     #isc_bootstrap = utils.load_pickle(all_results_paths[result_key][cond])
+    
     file = f'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/ISC/{model_name}/cond_contrast_permutation/isc_results_{cont}_5000perm_pairWise{do_pairWise}.pkl'
     # isc_contrast = utils.load_pickle(os.path.join(results_dir, result_key, file))
     isc_contrast = isc_utils.load_pickle(file)
@@ -350,7 +363,7 @@ for i, cont in enumerate(contrasts):
         isc_median=observed_diff,
         atlas_labels=labels,
         p_values=p_values,
-        p_threshold=fdr_p,
+        p_threshold=unc_p,
         title = f"Difference in ISC between {cont}",
         save_path=None,
         show=True
@@ -410,16 +423,18 @@ for i in range(len(roi_focus)):
 #=======================
 # Difference for high vs low SHSS
 result_key = 'cond_contrast_permutation'
-conditions = ['Hyper', 'Ana', 'NHyper', 'NAna']
-contrasts = ['Hyper-Ana', 'Ana-Hyper', 'NHyper-NAna']
+# conditions = ['Hyper', 'Ana', 'NHyper', 'NAna']
+# contrasts = ['Hyper-Ana', 'Ana-Hyper', 'NHyper-NAna']
 
 reload(visu_utils)
 n_scans = [94, 94, 125]
 views = {}
 sig_rois = {}
 surf_views = {}
-
-for shss_grp, n_sub in zip(['high_shss', 'low_shss'], [11, 12]):
+cb_names =['counterbalance_H1', 'counterbalance_H2']
+group_names = ['high_shss', 'low_shss'] if 'single_trial' in model_name else ['high_shss', 'low_shss', 'counterbalance_H1', 'counterbalance_H2']
+# for shss_grp, n_sub in zip(group_names, [11, 12]):
+for shss_grp, n_sub in zip(cb_names, [11, 12]):
     print(f"Doing {shss_grp} with {n_sub} subjects")
     views[shss_grp] = []
     surf_views[shss_grp] = []
@@ -437,7 +452,8 @@ for shss_grp, n_sub in zip(['high_shss', 'low_shss'], [11, 12]):
         p_values = isc_contrast['p_value']               # P-values for the ISC contrasts
         distribution = isc_contrast['distribution']      
         fdr_p = isc_utils.fdr(p_values, q=0.05)
-        unc_p = 0.01
+        unc_p = 0.001
+        
         print('FDR thresh : ', fdr_p)
         # reload(visu_utils)
         diff_img, diff_thresh, sig_labels = visu_utils.project_isc_to_brain_perm(
