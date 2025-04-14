@@ -49,7 +49,8 @@ preproc_model_name = r'model2_23subjects_zscore_sample_detrend_25-02-25' #r'mode
 model_dir = rf'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/preproc_data/{preproc_model_name}'
 model_name = "model3_23subjects_nuis_nodrift_{}".format(datetime.today().strftime("%d-%m-%y"))
 
-model_name = 'model3_23subjects_nuis_nodrift_31-03-25'
+model_name = 'model3_23subjects_nuis_nodrift_31-03-25' #final model, reproduced Desmarteaux et al., 2019 !! 31 mars
+
 #load manually
 # model_name = r'model3_23subjects_allnuis_nodrift_10-03-25'
 
@@ -65,7 +66,7 @@ setup.run_id = ['ANA', 'HYPER']
 data = Bunch(**data_info_dct)
 masker_params = Bunch(**masker_params)
 glm_info = Bunch()
-subjects = setup.subjects
+subjects = setup.subjects.sort()
 
 if MAX_ITER == None :
     MAX_ITER= len(subjects) 
@@ -314,7 +315,8 @@ def prep_visu_glm(results_p):
 
     return res
 
-res = utils.load_pickle('/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/GLM/model3_23subjects_nuis_nodrift_31-03-25/second_level/results_paths.pkl')
+model_res = r'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/GLM/model3_23subjects_nuis_nodrift_31-03-25'
+res = utils.load_pickle(os.path.join(model_res, '/second_level/results_paths.pkl')
 # res_model = 'model2_23subjects_zscore_sample_detrend_25-02-25'
 # res_model = 'model2_23subjects_nodrift_10-03-25'
 
@@ -436,6 +438,276 @@ for condition in all_regs:
     #             threshold=thresh,            
     #             display_mode='ortho')   
     #         plt.show()
+
+# %%
+# Load 1st level maps for further analyses
+from glob import glob as glob
+from nilearn.maskers import NiftiLabelsMasker
+from nilearn.image import binarize_img
+from nilearn.datasets import fetch_atlas_schaefer_2018
+from src import qc_utils
+
+model_res = r'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/GLM/model3_23subjects_nuis_nodrift_31-03-25'
+project_dir = setup.project_dir
+results_dir = setup['save_dir']
+
+mvpa_save_to = os.path.join(results_dir, 'mvpa_similarity')
+os.makedirs(mvpa_save_to, exist_ok=True)
+
+# load maps 
+all_shock_maps = glob(os.path.join(model_res, 'all_shock', 'firstlev_localizer_*.nii.gz'))
+all_sugg = glob(os.path.join(model_res, 'all_sugg', 'firstlev_localizer_*.nii.gz'))
+
+def build_subject_dict(file_list):
+    """Build a dict: {subject_id: filepath} from a list of NIfTI file paths."""
+    subject_dict = {}
+    for path in file_list:
+        fname = os.path.basename(path)
+        subj_id = fname.split('_')[-1].replace('.nii.gz', '')  # expects '..._sub-01.nii.gz'
+        subject_dict[subj_id] = path
+    return subject_dict
+
+sugg_dict = build_subject_dict(all_sugg) # not sorted!!
+shock_dict = build_subject_dict(all_shock_maps)
+
+# Intersect 
+shared_subjects = sorted(set(sugg_dict) & set(shock_dict))
+
+# load atlas for ROI
+full_mask = nib.load(os.path.join(project_dir, 'masks/lipkin2022_lanA800', 'LanA_n806.nii'))
+mask_native = binarize_img(full_mask, threshold=0.20)
+mask_path = os.path.join(mvpa_save_to, f'bin_lanA800_{0.2}thresh.nii.gz')
+resamp_mask = qc_utils.resamp_to_img_mask(mask_native, ref_img)
+resamp_mask.to_filename(mask_path)
+
+# atlas_data = fetch_atlas_schaefer_2018(n_rois = 100, resolution_mm=2)
+# atlas_native = nib.load(atlas_data['maps'])
+atlas_native = nib.load('/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/masks/sensaas/SENSAAS_MNI_ICBM_152_2mm.nii')
+atlas_data = pd.read_csv('/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/masks/sensaas/SENSAAS_description.csv')
+atlas = qc_utils.resamp_to_img_mask(atlas_native, nib.load(all_sugg[0]))
+view_img(atlas, threshold=0.5, title='SENSAAS atlas')
+
+#sensaas ids and labels
+roi_index = atlas_data['Index'].values
+atlas_data['annot_abbreviation'] = atlas_data['Abbreviation'] + '_' + atlas_data['Hemisphere']
+labels = atlas_data['annot_abbreviation'].values
+
+
+print(atlas.shape, mask.shape, mask_native.shape)
+# %%
+
+from nilearn.image import load_img
+from sklearn.metrics.pairwise import cosine_similarity
+
+def extract_multivoxel_patterns_by_subject(sugg_dict, shock_dict, atlas_img, mask = None):
+    """
+    Extract voxelwise ROI patterns (by index) within language ROIs for each subject.
+
+    Parameters
+    ----------
+    sugg_dict : dict
+        Maps subject ID to suggestion GLM image path.
+    shock_dict : dict
+        Maps subject ID to shock/pain GLM image path.
+    atlas_img : Nifti1Image
+        Schaefer parcellation image.
+    lang_mask_img : Nifti1Image
+        Binary mask indicating language ROIs.
+
+    Returns
+    -------
+    pattern_dict : dict
+        pattern_dict[subject][roi_idx]['suggestion'] / ['pain'] = voxel vector
+    """
+
+    atlas_data = atlas_img.get_fdata()
+    # lang_mask = lang_mask_img.get_fdata()
+
+    pattern_dict = {}
+
+    shared_subjects = sorted(set(sugg_dict) & set(shock_dict))
+
+    # all_roi_indices = [int(r) for r in np.unique(atlas_data) if r != 0 and np.any((atlas_data == r) & (lang_mask > 0))]
+    all_roi_indices = [int(r) for r in np.unique(atlas_data) if r != 0]
+
+    similarity_matrix = np.full((len(shared_subjects), len(all_roi_indices)), np.nan)
+    subj_list = []
+
+    for subj_idx, subj in enumerate(shared_subjects):
+    
+        sugg_img = load_img(sugg_dict[subj])
+        shock_img = load_img(shock_dict[subj])
+
+        sugg_data = sugg_img.get_fdata()
+        shock_data = shock_img.get_fdata()
+
+        subj_list.append(subj)
+
+        for roi_pos, roi_idx in enumerate(all_roi_indices):
+            roi_mask = atlas_data == roi_idx
+            if not roi_mask.any():
+                continue
+
+            sugg_vec = sugg_data[roi_mask].flatten()
+            shock_vec = shock_data[roi_mask].flatten()
+
+            # Only compute if both vectors have nonzero norm
+            if np.linalg.norm(sugg_vec) > 0 and np.linalg.norm(shock_vec) > 0:
+                sim = cosine_similarity(sugg_vec.reshape(1, -1), shock_vec.reshape(1, -1))[0, 0]
+                similarity_matrix[subj_idx, roi_pos] = sim
+
+    similarity_df = pd.DataFrame(similarity_matrix, index=subj_list, columns=all_roi_indices)
+
+    return similarity_df
+
+
+similarity_df = extract_multivoxel_patterns_by_subject(
+    sugg_dict, shock_dict, atlas
+)
+
+#%%
+
+mean_sim = similarity_df.mean(axis=0)
+masker = NiftiLabelsMasker(labels_img=atlas, standardize=False)
+masker.fit()  
+
+similarity_img = masker.inverse_transform(mean_sim)
+
+view_img(similarity_img, threshold=0, title='Cosine Similarity Projection',
+              cmap='coolwarm',  colorbar=True)
+
+
+#%%
+similarity_img, _, _ = project_isc_to_brain(
+    atlas_path=atlas,
+    isc_median=similarity_full_vector,
+    atlas_labels=labels,  # should match index ordering
+    p_values=None,  # No thresholding
+    p_threshold=0.01,  # Irrelevant here
+    title='Mean Cosine Similarity (Suggestion vs Pain)',
+    color='coolwarm',
+    save_path=None,
+    show=True
+)
+
+# Step 2: Create full vector (1 value per atlas ROI label)
+all_atlas_vals = np.unique(atlas_img.get_fdata()).astype(int)
+all_atlas_vals = all_atlas_vals[all_atlas_vals != 0]
+
+# Build full-length vector: assign NaN or 0 to ROIs not in similarity_df
+similarity_full_vector = np.zeros(int(np.max(all_atlas_vals)))
+similarity_full_vector[:] = np.nan
+
+for roi_val, sim_val in zip(roi_indices, similarity_vec):
+    similarity_full_vector[roi_val - 1] = sim_val  # assuming 1-based indexing
+
+# Step 3: Fit masker to the atlas
+
+# Step 4: Inverse transform the full similarity vector to brain space
+# Get only the part of the vector that matches the unique ROI labels in atlas
+labels_in_atlas = np.unique(atlas_img.get_fdata()).astype(int)
+labels_in_atlas = labels_in_atlas[labels_in_atlas != 0]
+similarity_subset = [similarity_full_vector[i - 1] for i in labels_in_atlas]
+
+similarity_img = masker.inverse_transform(np.array(similarity_subset).reshape(1, -1))
+
+# Step 5: Plot
+plot_stat_map(similarity_img, threshold=None, title='Cosine Similarity Projection',
+              cmap='coolwarm', display_mode='z', cut_coords=7, colorbar=True)
+
+#%%
+
+
+#%%
+
+# Load Atlas regions
+# ------------------
+from nilearn import plotting
+from nilearn.plotting import view_img
+import nibabel as nib
+from nilearn.image import math_img
+ 
+
+coords = plotting.find_parcellation_cut_coords(labels_img=atlas)
+ 
+# Build DataFrame of region + coordinates
+df_labels_coords = pd.DataFrame({
+    'index': list(range(len(labels))),
+    'region': labels,
+    'x': [round(c[0], 2) for c in coords],
+    'y': [round(c[1], 2) for c in coords],
+    'z': [round(c[2], 2) for c in coords],
+})
+df_labels_coords
+# df_labels_coords[df_labels_coords['region'].str.contains('somMot', case=False, na=False)] # for only somatosensory areas
+ 
+# ------------------
+# plot only selected roi to validate the location aMCC _ SMA
+def plot_roi_by_label(label_name, atlas, df_labels_coords):
+    try:
+        row = df_labels_coords[df_labels_coords['region'] == label_name].iloc[0]
+        region_index = int(row['index'])
+        region_value = region_index + 1  # Atlas values start at 1
+ 
+        mask_img = math_img("img == %d" % region_value, img=atlas)
+ 
+        print(f"Found region: {label_name} (Index {region_index})")
+        print(f"Coordinates: x={row['x']}, y={row['y']}, z={row['z']}")
+ 
+        return view_img(mask_img, threshold=0.5, title=f"{label_name}")
+ 
+    
+    except IndexError:
+        print(f"Region label '{label_name}' not found in atlas.")
+   
+    
+amcc_name = labels[99]
+# sma_name =
+view_amcc = plot_roi_by_label(amcc_name, atlas, df_labels_coords)
+# view_sma = plot_roi_by_label(amcc_name, atlas, df_labels_coords)
+view_amcc
+
+#%%
+
+import numpy as np
+import nibabel as nib
+import pandas as pd
+
+def count_voxels_per_roi(atlas_img, lang_mask_img):
+    """
+    Count the number of voxels per ROI after applying a language mask.
+
+    Parameters
+    ----------
+    atlas_img : Nifti1Image
+        Schaefer parcellation image.
+    lang_mask_img : Nifti1Image
+        Binary language mask image.
+
+    Returns
+    -------
+    roi_voxel_counts : pd.DataFrame
+        DataFrame with ROI index and voxel count.
+    """
+    atlas_data = atlas_img.get_fdata()
+    lang_data = lang_mask_img.get_fdata()
+
+    unique_rois = np.unique(atlas_data)
+    voxel_counts = []
+
+    for roi in unique_rois:
+        if roi == 0:
+            continue  # skip background
+        roi_mask = (atlas_data == roi) & (lang_data > 0)
+        count = np.sum(roi_mask)
+        voxel_counts.append((int(roi), count))
+
+    df_counts = pd.DataFrame(voxel_counts, columns=['ROI_index', 'Voxel_count'])
+    return df_counts.sort_values('Voxel_count', ascending=False)
+
+roi_voxel_df = count_voxels_per_roi(atlas, resamp_mask)
+print(roi_voxel_df)
+
 
 # %% NPS
 '''
