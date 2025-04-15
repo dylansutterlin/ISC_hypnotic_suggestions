@@ -66,7 +66,8 @@ setup.run_id = ['ANA', 'HYPER']
 data = Bunch(**data_info_dct)
 masker_params = Bunch(**masker_params)
 glm_info = Bunch()
-subjects = setup.subjects.sort()
+subjects = setup.subjects
+subjects.sort()
 
 if MAX_ITER == None :
     MAX_ITER= len(subjects) 
@@ -304,6 +305,9 @@ signature_folder = os.path.join(setup.project_dir,'masks/mvpa_signatures')
 
 print("Done with all GLM processing!")
 # %%
+#============================
+# VISUALIZATION
+#============================
 
 def prep_visu_glm(results_p):
 
@@ -316,7 +320,7 @@ def prep_visu_glm(results_p):
     return res
 
 model_res = r'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/GLM/model3_23subjects_nuis_nodrift_31-03-25'
-res = utils.load_pickle(os.path.join(model_res, '/second_level/results_paths.pkl')
+res = utils.load_pickle(os.path.join(model_res, 'second_level/results_paths.pkl'))
 # res_model = 'model2_23subjects_zscore_sample_detrend_25-02-25'
 # res_model = 'model2_23subjects_nodrift_10-03-25'
 
@@ -331,7 +335,35 @@ model_second = res['second_level_models']
 all_regs = list(file_firstlev[subjects[0]].keys())
 sugg_reg = [reg for reg in all_regs if 'sugg' in reg] 
 pain_reg = [reg for reg in all_regs if 'shock' in reg] 
- 
+
+#%%
+#%% NPS
+from scipy.stats import ttest_1samp
+import seaborn as sns
+
+signature_folder = os.path.join(setup.project_dir,'masks/mvpa_signatures')
+conditions_nps = {}
+for cond in ['all_shock']:
+        
+    cond_files = {subj: contrasts[cond] for subj, contrasts in file_firstlev.items() if subj != 'sub-47'}
+
+    cond_dot = qc_utils.compute_similarity(cond_files, signature_folder, pattern = 'NPS', metric='dot_product')
+    conditions_nps[cond] = cond_dot
+
+    shock_similarity = np.array(cond_dot).ravel()
+    t_stat, p_val = ttest_1samp(shock_similarity, 0)
+    print(f"One-sample t-test for {cond}: t = {t_stat:.3f}, p = {p_val:.3f}")
+
+import matplotlib.pyplot as plt
+
+plt.figure(figsize=(8, 6))
+sns.violinplot(data=cond_dot, x='similarity', inner='point', color='skyblue')
+plt.title('Violin Plot of NPS Similarity (All Shock)')
+plt.xlabel('NPS Similarity')
+plt.tight_layout()
+plt.show()
+
+# %%
 
 # # Generate reports
 # reports = {}
@@ -362,13 +394,13 @@ if visu_on:
     #         display_mode='ortho')     
 
     #     plt.show()
-
+    reg_list = ['all_sugg', 'all_shock']
     # VISU 2nd
     apply_thresh = True
     stats_imgs = {}
     views_second = {}
     cuts_second = {}
-    for condition in sugg_reg:
+    for condition in reg_list:
         
         if apply_thresh:
             img, thresh = threshold_stats_img(
@@ -388,7 +420,7 @@ if visu_on:
             threshold=thresh,            
             display_mode='ortho')   
         
-        view = plotting.view_img(img, threshold=3.0, title=f"Second level stats unc. {condition}")
+        view = plotting.view_img(img, threshold=thresh, title=f"2d-lev FDR {condition}")
         cuts_second[condition] = display
         views_second[condition] = view
 
@@ -440,10 +472,13 @@ for condition in all_regs:
     #         plt.show()
 
 # %%
+#========================================
 # Load 1st level maps for further analyses
+#==========================================
 from glob import glob as glob
 from nilearn.maskers import NiftiLabelsMasker
 from nilearn.image import binarize_img
+from nilearn.plotting import view_img
 from nilearn.datasets import fetch_atlas_schaefer_2018
 from src import qc_utils
 
@@ -499,7 +534,7 @@ print(atlas.shape, mask.shape, mask_native.shape)
 from nilearn.image import load_img
 from sklearn.metrics.pairwise import cosine_similarity
 
-def extract_multivoxel_patterns_by_subject(sugg_dict, shock_dict, atlas_img, mask = None):
+def extract_multivoxel_patterns_by_subject(sugg_dict, shock_dict, atlas_img, all_roi_indices,mask = None):
     """
     Extract voxelwise ROI patterns (by index) within language ROIs for each subject.
 
@@ -526,12 +561,8 @@ def extract_multivoxel_patterns_by_subject(sugg_dict, shock_dict, atlas_img, mas
     pattern_dict = {}
 
     shared_subjects = sorted(set(sugg_dict) & set(shock_dict))
-
-    # all_roi_indices = [int(r) for r in np.unique(atlas_data) if r != 0 and np.any((atlas_data == r) & (lang_mask > 0))]
-    all_roi_indices = [int(r) for r in np.unique(atlas_data) if r != 0]
-
-    similarity_matrix = np.full((len(shared_subjects), len(all_roi_indices)), np.nan)
-    subj_list = []
+  
+    similarity_dict = {}
 
     for subj_idx, subj in enumerate(shared_subjects):
     
@@ -541,9 +572,10 @@ def extract_multivoxel_patterns_by_subject(sugg_dict, shock_dict, atlas_img, mas
         sugg_data = sugg_img.get_fdata()
         shock_data = shock_img.get_fdata()
 
-        subj_list.append(subj)
+        # subj_list.append(subj)
 
-        for roi_pos, roi_idx in enumerate(all_roi_indices):
+        subj_dict = {}
+        for roi_idx in all_roi_indices: # ROI idx != position !! hence go not in idx order, but idx as ids
             roi_mask = atlas_data == roi_idx
             if not roi_mask.any():
                 continue
@@ -551,164 +583,235 @@ def extract_multivoxel_patterns_by_subject(sugg_dict, shock_dict, atlas_img, mas
             sugg_vec = sugg_data[roi_mask].flatten()
             shock_vec = shock_data[roi_mask].flatten()
 
-            # Only compute if both vectors have nonzero norm
             if np.linalg.norm(sugg_vec) > 0 and np.linalg.norm(shock_vec) > 0:
                 sim = cosine_similarity(sugg_vec.reshape(1, -1), shock_vec.reshape(1, -1))[0, 0]
-                similarity_matrix[subj_idx, roi_pos] = sim
+                subj_dict[roi_idx] = sim
 
-    similarity_df = pd.DataFrame(similarity_matrix, index=subj_list, columns=all_roi_indices)
+        similarity_dict[subj] = subj_dict
+
+    similarity_df = pd.DataFrame.from_dict(similarity_dict, orient='index')
 
     return similarity_df
 
+def project_vector_to_atlas(vector, roi_index, atlas):
+    #will replace the label integer in vol with vector value
+    atlas_fdata = atlas.get_fdata()  # Always use this for consistency
+    sim_vol = np.zeros_like(atlas_fdata)
 
-similarity_df = extract_multivoxel_patterns_by_subject(
-    sugg_dict, shock_dict, atlas
+    for roi in roi_index:
+        if roi == 0:
+            continue
+        value = vector.get(roi, 0.0)
+        sim_vol[atlas_fdata == roi] = value  # <== Must use atlas_fdata here
+
+    sim_img = nib.Nifti1Image(sim_vol, affine=atlas.affine, header=atlas.header)
+
+    return sim_img
+
+similarity_df  = extract_multivoxel_patterns_by_subject(
+    sugg_dict, shock_dict, atlas, roi_index
 )
 
 #%%
 
 mean_sim = similarity_df.mean(axis=0)
-masker = NiftiLabelsMasker(labels_img=atlas, standardize=False)
-masker.fit()  
+mean_sim_df = pd.DataFrame(mean_sim, columns=['mean_similarity'])
+mean_sim_df.index = labels
 
-similarity_img = masker.inverse_transform(mean_sim)
+threshold = 0.30
+above_thresh = mean_sim_df[mean_sim_df['mean_similarity'] > threshold].copy()
+# get thresholded df!
+region_details = atlas_data.set_index('annot_abbreviation').loc[above_thresh.index]
+final_df = above_thresh.join(region_details[['Network', 'Region', 'Abbreviation', 'Xmm', 'Ymm', 'Zmm']])
+final_df['Full_Name'] = final_df['Region'] + " (" + final_df['Abbreviation'] + ")"
+final_df = final_df.sort_values('mean_similarity', ascending=False)
 
-view_img(similarity_img, threshold=0, title='Cosine Similarity Projection',
-              cmap='coolwarm',  colorbar=True)
 
+sim_img = project_vector_to_atlas(mean_sim, roi_index, atlas)
+view = view_img(sim_img, threshold=0.3,vmax=mean_sim.max(), cmap='coolwarm', title='Projected similarity')
+view
 
-#%%
-similarity_img, _, _ = project_isc_to_brain(
-    atlas_path=atlas,
-    isc_median=similarity_full_vector,
-    atlas_labels=labels,  # should match index ordering
-    p_values=None,  # No thresholding
-    p_threshold=0.01,  # Irrelevant here
-    title='Mean Cosine Similarity (Suggestion vs Pain)',
-    color='coolwarm',
-    save_path=None,
-    show=True
+plot_stat_map(sim_img, threshold=0, title='Cosine Similarity Projection',
+                  colorbar=True, display_mode='x', cut_coords=5,
+                  cmap='coolwarm', bg_img=mni_bg, black_bg=False, vmax = sim_img.get_fdata().max())
+# %%
+# =============
+# Interaction of cosine similarity with behavioral
+import seaborn as sns
+import matplotlib.pyplot as plt
+
+behav_df = pd.read_csv(
+    os.path.join(setup['project_dir'], f'results/behavioral_data_cleaned.csv'),
+    index_col=0
 )
+behav_df.index.name = 'subjects'
+behav_df = behav_df.sort_index()
+APM_subjects = ['APM' + sub[4:] for sub in subjects] # make APMXX format instead of subXX
 
-# Step 2: Create full vector (1 value per atlas ROI label)
-all_atlas_vals = np.unique(atlas_img.get_fdata()).astype(int)
-all_atlas_vals = all_atlas_vals[all_atlas_vals != 0]
+behav_vars = [
+    'Chge_hypnotic_depth', 'SHSS_score', 'raw_change_HYPER',
+    'raw_change_ANA', 'total_chge_pain_hypAna',
+    'Mental_relax_absChange', 'Abs_diff_automaticity'
+]
 
-# Build full-length vector: assign NaN or 0 to ROIs not in similarity_df
-similarity_full_vector = np.zeros(int(np.max(all_atlas_vals)))
-similarity_full_vector[:] = np.nan
+behav_corr_df = behav_df[behav_vars].copy()
+corr_matrix = behav_corr_df.corr()
 
-for roi_val, sim_val in zip(roi_indices, similarity_vec):
-    similarity_full_vector[roi_val - 1] = sim_val  # assuming 1-based indexing
+plt.figure(figsize=(10, 8))
+sns.heatmap(corr_matrix, annot=True, fmt='.2f', cmap='coolwarm', square=True,
+            linewidths=0.5, cbar_kws={'label': 'Pearson r'})
 
-# Step 3: Fit masker to the atlas
+plt.title('Correlation Matrix of Behavioral Variables', fontsize=14)
+plt.xticks(rotation=45, ha='right')
+plt.tight_layout()
+plt.show()
 
-# Step 4: Inverse transform the full similarity vector to brain space
-# Get only the part of the vector that matches the unique ROI labels in atlas
-labels_in_atlas = np.unique(atlas_img.get_fdata()).astype(int)
-labels_in_atlas = labels_in_atlas[labels_in_atlas != 0]
-similarity_subset = [similarity_full_vector[i - 1] for i in labels_in_atlas]
+behav_subset = behav_df[behav_vars].copy()
 
-similarity_img = masker.inverse_transform(np.array(similarity_subset).reshape(1, -1))
+sns.set(style='whitegrid', context='notebook')
+g = sns.pairplot(behav_subset, kind='scatter', diag_kind='kde', height=2.5,
+                 plot_kws={'alpha': 0.6, 's': 40, 'edgecolor': 'k'},
+                 diag_kws={'shade': True})
 
-# Step 5: Plot
-plot_stat_map(similarity_img, threshold=None, title='Cosine Similarity Projection',
-              cmap='coolwarm', display_mode='z', cut_coords=7, colorbar=True)
+g.fig.suptitle('Pairwise Distributions and Relationships of Behavioral Variables', y=1.02)
+plt.tight_layout()
+plt.show()
 
 #%%
 
+from scipy.stats import pearsonr
 
-#%%
+y_name = 'SHSS_score' #total_chge_pain_hypAna
+y = behav_df[y_name].values
+rois = similarity_df.columns
 
-# Load Atlas regions
-# ------------------
-from nilearn import plotting
-from nilearn.plotting import view_img
-import nibabel as nib
-from nilearn.image import math_img
- 
+r_vals = []
+p_vals = []
 
-coords = plotting.find_parcellation_cut_coords(labels_img=atlas)
- 
-# Build DataFrame of region + coordinates
-df_labels_coords = pd.DataFrame({
-    'index': list(range(len(labels))),
-    'region': labels,
-    'x': [round(c[0], 2) for c in coords],
-    'y': [round(c[1], 2) for c in coords],
-    'z': [round(c[2], 2) for c in coords],
+for roi in rois:
+    x = similarity_df[roi].values
+    mask = ~np.isnan(x) & ~np.isnan(y)
+    if mask.sum() > 2:
+        r, p = pearsonr(x[mask], y[mask])
+    else:
+        r, p = np.nan, np.nan
+    r_vals.append(r)
+    p_vals.append(p)
+
+corr_df = pd.DataFrame({
+    'ROI_index': rois.astype(int),
+    'correl': r_vals,
+    'p_value': p_vals
 })
-df_labels_coords
-# df_labels_coords[df_labels_coords['region'].str.contains('somMot', case=False, na=False)] # for only somatosensory areas
- 
-# ------------------
-# plot only selected roi to validate the location aMCC _ SMA
-def plot_roi_by_label(label_name, atlas, df_labels_coords):
-    try:
-        row = df_labels_coords[df_labels_coords['region'] == label_name].iloc[0]
-        region_index = int(row['index'])
-        region_value = region_index + 1  # Atlas values start at 1
- 
-        mask_img = math_img("img == %d" % region_value, img=atlas)
- 
-        print(f"Found region: {label_name} (Index {region_index})")
-        print(f"Coordinates: x={row['x']}, y={row['y']}, z={row['z']}")
- 
-        return view_img(mask_img, threshold=0.5, title=f"{label_name}")
- 
-    
-    except IndexError:
-        print(f"Region label '{label_name}' not found in atlas.")
-   
-    
-amcc_name = labels[99]
-# sma_name =
-view_amcc = plot_roi_by_label(amcc_name, atlas, df_labels_coords)
-# view_sma = plot_roi_by_label(amcc_name, atlas, df_labels_coords)
-view_amcc
+
+plt.figure(figsize=(7, 4))
+sns.histplot(corr_df['p_value'].dropna(), bins=20, color='skyblue')
+plt.axvline(0.05, color='red', linestyle='--', label='p = 0.05')
+plt.xlabel('p-value')
+plt.ylabel('Count')
+plt.title(f'Distribution of pearson p-values (Similarity × {y_name})')
+plt.legend()
+plt.tight_layout()
+plt.show()
+
+brain_r_pain = project_vector_to_atlas(corr_df['correl'], roi_index, atlas)
+view_interaction = view_img(brain_r_pain, threshold=0, title=f'Cosine x {y_name}',
+              cmap='coolwarm', colorbar=True)
+
+plot_stat_map(brain_r_pain, threshold=0, title=f'Cosine x {y_name} interaction',
+                  colorbar=True, display_mode='x', cut_coords=5,
+                  cmap='coolwarm', bg_img=mni_bg, black_bg=False)
+
+#%% 
+#====================================
+# Pairwise approach to pattern similarity
+#====================================
+
 
 #%%
+#======================================
+# REGRESSION
+#========================================
+from sklearn.linear_model import RidgeCV
+from sklearn.model_selection import ShuffleSplit
+from sklearn.metrics import r2_score
+from sklearn.linear_model import Ridge, Lasso
+from sklearn.model_selection import cross_val_score
+from sklearn.preprocessing import StandardScaler
+from sklearn.pipeline import make_pipeline
+from sklearn.decomposition import PCA
 
-import numpy as np
-import nibabel as nib
-import pandas as pd
-
-def count_voxels_per_roi(atlas_img, lang_mask_img):
-    """
-    Count the number of voxels per ROI after applying a language mask.
-
-    Parameters
-    ----------
-    atlas_img : Nifti1Image
-        Schaefer parcellation image.
-    lang_mask_img : Nifti1Image
-        Binary language mask image.
-
-    Returns
-    -------
-    roi_voxel_counts : pd.DataFrame
-        DataFrame with ROI index and voxel count.
-    """
+def roi_regression(sugg_dict, behav_df, atlas_img, target_col, roi_idx):
     atlas_data = atlas_img.get_fdata()
-    lang_data = lang_mask_img.get_fdata()
+    shared_subjects = sorted(sugg_dict.keys())
 
-    unique_rois = np.unique(atlas_data)
-    voxel_counts = []
+    X = []
+    y = []
 
-    for roi in unique_rois:
-        if roi == 0:
-            continue  # skip background
-        roi_mask = (atlas_data == roi) & (lang_data > 0)
-        count = np.sum(roi_mask)
-        voxel_counts.append((int(roi), count))
+    for subj in shared_subjects:
+        apm_subj = 'APM' + subj[4:]
+        img = load_img(sugg_dict[subj])
+        img_data = img.get_fdata()
+        roi_mask = atlas_data == roi_idx
+        if not roi_mask.any():
+            continue
+        pattern = img_data[roi_mask].flatten()
+        X.append(pattern)
+        y_val = behav_df.loc[apm_subj, target_col]
+        y.append(y_val)
 
-    df_counts = pd.DataFrame(voxel_counts, columns=['ROI_index', 'Voxel_count'])
-    return df_counts.sort_values('Voxel_count', ascending=False)
+    X = np.array(X)
+    y = np.array(y)
+    print(f"X shape: {X.shape}, y shape: {y.shape}")
+    # Remove subjects with NaNs
+    valid_mask = ~np.isnan(y)
+    X = X[valid_mask]
+    y = y[valid_mask]
 
-roi_voxel_df = count_voxels_per_roi(atlas, resamp_mask)
-print(roi_voxel_df)
+    model = make_pipeline(StandardScaler(), PCA(n_components=0.95), Lasso())
+    cv = ShuffleSplit(n_splits=10, test_size=0.2, random_state=42)
+    scores = cross_val_score(model, X, y, cv=cv, scoring='explained_variance')
+    
+    print(f"ROI {roi_idx} — Mean R²: {scores.mean():.3f}, STD: {scores.std():.3f}")
+    return scores
 
+top5_rois = ['HIPP2_Right', 'F3O1_Right', 'prec3_Left', 'HIPP2_Left', 'f2_2_Left']
+roi_indices = atlas_data.set_index('annot_abbreviation').loc[list(final_df.index), 'Index']
 
+roi_scores = {}
+for abbr, roi_idx in roi_indices.items():
+    print(f"\nRunning regression for ROI: {abbr} (Index: {roi_idx})")
+    scores = roi_regression(
+        sugg_dict=shock_dict,
+        behav_df=behav_df,
+        atlas_img=atlas,
+        target_col='total_chge_pain_hypAna',
+        roi_idx=roi_idx
+    )
+    roi_scores[abbr] = scores
+
+roi_scores_df = pd.DataFrame.from_dict(roi_scores, orient='index')
+roi_scores_df.columns = [f'Split_{i}' for i in range(roi_scores_df.shape[1])]
+
+# Add summary stats
+roi_scores_df['Mean_R2'] = roi_scores_df.mean(axis=1)
+roi_scores_df['STD_R2'] = roi_scores_df.std(axis=1)
+
+# Sort by mean R²
+roi_scores_df = roi_scores_df.sort_values('Mean_R2', ascending=False)
+
+# Plot
+plt.figure(figsize=(10, 6))
+sns.barplot(x=roi_scores_df.index.astype(str), y=roi_scores_df['Mean_R2'], palette='viridis')
+plt.axhline(0, color='black', linestyle='--')
+plt.title("ROI-wise Cross-Validated R² Scores")
+plt.ylabel("Mean R²")
+plt.xlabel("ROI Index")
+plt.xticks(rotation=45)
+plt.tight_layout()
+plt.show()
+
+    
 # %% NPS
 '''
 # dot_p = r'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/preproc_data/model1_23subjects_zscore_sample_detrend_21-02-25/GLM_results/NPS_dot_pain.pkl'
@@ -730,23 +833,24 @@ for cond in dot.keys():
 # res = utils.load_pickle(res_p)
 
 
-# %% NPS
-# signature_folder = os.path.join(setup.project_dir,'masks/mvpa_signatures')
-# conditions_nps = {}
-# for cond in pain_reg:
+%% NPS
+signature_folder = os.path.join(setup.project_dir,'masks/mvpa_signatures')
+conditions_nps = {}
+for cond in pain_reg:
         
-#     cond_files = {subj: contrasts[cond] for subj, contrasts in file_firstlev.items() if subj != 'sub-47'}
+    cond_files = {subj: contrasts[cond] for subj, contrasts in file_firstlev.items() if subj != 'sub-47'}
 
-#     cond_dot = qc_utils.compute_similarity(cond_files, signature_folder, pattern = 'NPS', metric='dot_product', resample_to_mask=True)
-#     conditions_nps[cond] = cond_dot
+    cond_dot = qc_utils.compute_similarity(cond_files, signature_folder, pattern = 'NPS', metric='dot_product', resample_to_mask=True)
+    conditions_nps[cond] = cond_dot
 
-#     shock_similarity = np.array(cond_dot).ravel()
-#     t_stat, p_val = ttest_1samp(shock_similarity, 0)
-#     print(f"One-sample t-test for {cond}: t = {t_stat:.3f}, p = {p_val:.3f}")
+    shock_similarity = np.array(cond_dot).ravel()
+    t_stat, p_val = ttest_1samp(shock_similarity, 0)
+    print(f"One-sample t-test for {cond}: t = {t_stat:.3f}, p = {p_val:.3f}")
 
 
 # %%
 from nilearn import plotting
+import seaborn as sns
 views = []
 for condition in all_regs:
     img = file_group[condition]
