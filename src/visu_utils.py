@@ -223,7 +223,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from statsmodels.stats.multitest import multipletests
 
-def plot_isc_median_with_significance(isc_median, p_values, atlas_labels, p_threshold=0.01, 
+def plot_isc_median_with_significance(isc_median, p_values,atlas, atlas_labels, p_threshold=0.01, 
                                       significant_color='red', nonsignificant_color='gray', 
                                       save_path=None, show=False, fdr_correction=False):
     """
@@ -257,9 +257,20 @@ def plot_isc_median_with_significance(isc_median, p_values, atlas_labels, p_thre
     else:
         sig_mask = p_values < p_threshold
 
+    roi_coords = find_parcellation_cut_coords(labels_img=atlas)
+
     # Highlight significant ROIs
     significant_labels = [label if sig else " " for label, sig in zip(atlas_labels, sig_mask)]
     bar_colors = [significant_color if sig else nonsignificant_color for sig in sig_mask]
+
+    sig_coords = np.array(roi_coords)[sig_mask]
+
+    sig_df = pd.DataFrame({
+        'ROI': [label for label, sig in zip(atlas_labels, sig_mask) if sig],
+        'ISC_median': isc_median[sig_mask],
+        'p_value': p_values[sig_mask],
+        'Coordinates': [tuple(np.round(coord, 2)) for coord in sig_coords]
+    })
 
     # Create the bar plot
     plt.figure(figsize=(14, 7))
@@ -268,7 +279,7 @@ def plot_isc_median_with_significance(isc_median, p_values, atlas_labels, p_thre
     plt.xticks(range(len(isc_median)), significant_labels, rotation=90, fontsize=8)
     plt.xlabel("ROIs", fontsize=12)
     plt.ylabel("Median ISC", fontsize=12)
-    plt.title(f"Median ISC Values (Significant Regions Highlighted, p < {p_threshold})", fontsize=14)
+    plt.title(f"Median ISC Values (Significant regions in red, p < {np.round(p_threshold,2)})", fontsize=14)
     plt.tight_layout()
 
     # Add histogram of p-values in the corner
@@ -289,14 +300,14 @@ def plot_isc_median_with_significance(isc_median, p_values, atlas_labels, p_thre
     else:
         plt.close()
 
-    return sig_mask
+    return sig_mask, sig_df 
 
 import nibabel as nib
 import numpy as np
 import os
 from nilearn.plotting import plot_stat_map
 
-def project_isc_to_brain(atlas_path, isc_median, atlas_labels, p_values=None, p_threshold=0.01,title = '"ISC Median Values (Thresholded)', save_path=None, show=True):
+def project_isc_to_brain(atlas_path, isc_median, atlas_labels, p_values=None, p_threshold=0.01,title = '"ISC Median Values (Thresholded)', color = 'Reds',save_path=None, show=True):
     """
     Projects ISC values to brain space and optionally thresholds by significance.
 
@@ -320,11 +331,13 @@ def project_isc_to_brain(atlas_path, isc_median, atlas_labels, p_values=None, p_
     
     atlas_img = nib.load(atlas_path)
     atlas_data = atlas_img.get_fdata()
+    roi_coords = find_parcellation_cut_coords(labels_img=atlas_img)
 
     # Create an empty volume to store ISC values
     isc_vol = np.zeros_like(atlas_data)
     non_sig_max_isc = []
     sig_min_isc = []
+    sig_labels_data = []
     # Assign ISC values to corresponding atlas regions
     for roi_idx, label in enumerate(atlas_labels):
         roi_mask = atlas_data == roi_idx + 1
@@ -332,6 +345,13 @@ def project_isc_to_brain(atlas_path, isc_median, atlas_labels, p_values=None, p_
             # Assign significant ISC value
             isc_vol[roi_mask] = isc_median[roi_idx]
             sig_min_isc.append(isc_median[roi_idx])
+            sig_labels_data.append({
+                "ROI": label,
+                "ISC": round(isc_median[roi_idx], 2),
+                "p-value": round(p_values[roi_idx], 2),
+                "Coordinates": tuple(np.round(roi_coords[roi_idx], 2))
+            })
+
         else:
             # Track the highest ISC value for non-significant ROIs
             non_sig_max_isc.append(isc_median[roi_idx])
@@ -351,12 +371,12 @@ def project_isc_to_brain(atlas_path, isc_median, atlas_labels, p_values=None, p_
     print(f"Max ISC value: {max_isc}")
 
     if show:
-        plot_stat_map(isc_img, title=title, threshold=min_sig,vmax=max_isc, colorbar=True, display_mode='z', cut_coords=7, draw_cross=False)
+        plot_stat_map(isc_img, title=title, threshold=min_sig,vmax=max_isc, colorbar=True, display_mode='z', cut_coords=7, cmap=color,draw_cross=False)
 
-    return isc_img, min_sig 
+    return isc_img, min_sig, pd.DataFrame(sig_labels_data)
 
 
-def project_isc_to_brain_perm(atlas_path, isc_median, atlas_labels, p_values=None, p_threshold=0.01,title = '"ISC Median Values (Thresholded)', save_path=None, show=True):
+def project_isc_to_brain_perm(atlas_path, isc_median, atlas_labels, p_values=None, p_threshold=0.01,title = '"ISC Median Values (Thresholded)',color='seismic', save_path=None, show=True):
     """
     Projects ISC values to brain space and optionally thresholds by significance.
 
@@ -384,8 +404,8 @@ def project_isc_to_brain_perm(atlas_path, isc_median, atlas_labels, p_values=Non
 
     # Create an empty volume to store ISC values
     isc_vol = np.zeros_like(atlas_data)
-    non_sig_max_isc = []
     sig_labels_data = []
+    sig_min_isc = []
 
     # Assign ISC values to corresponding atlas regions
     for roi_idx, label in enumerate(atlas_labels):
@@ -393,20 +413,22 @@ def project_isc_to_brain_perm(atlas_path, isc_median, atlas_labels, p_values=Non
         if p_values is not None and p_values[roi_idx] < p_threshold:
             # Assign significant ISC value
             isc_vol[roi_mask] = isc_median[roi_idx]
+            sig_min_isc.append(isc_median[roi_idx])
             sig_labels_data.append({
                 "ROI": label,
                 "Difference": round(isc_median[roi_idx], 2),
                 "p-value": round(p_values[roi_idx], 2),
                 "Coordinates": tuple(np.round(roi_coords[roi_idx], 2))
             })
-        else:
-            # Track the highest ISC value for non-significant ROIs
-            non_sig_max_isc.append(isc_median[roi_idx])
 
     # Create a Nifti image for the ISC projection
     isc_img = nib.Nifti1Image(isc_vol, atlas_img.affine, atlas_img.header)
 
-    max_isc_thresh = np.max(np.array(non_sig_max_isc))
+    if len(sig_min_isc) > 0:
+        min_sig_thresh = np.min(np.abs(sig_min_isc))
+    else:
+        min_sig_thresh = 0.0001
+
     # Save the ISC map if save_path is provided
     if save_path:
         os.makedirs(os.path.dirname(save_path), exist_ok=True)
@@ -418,9 +440,10 @@ def project_isc_to_brain_perm(atlas_path, isc_median, atlas_labels, p_values=Non
     print(f"Max ISC abs diff: {max_diff} and sign : {sign_max}")
 
     if show:
-        plot_stat_map(isc_img, title=title, threshold=max_isc_thresh,vmax=max_diff, colorbar=True, display_mode='x', cut_coords=6, draw_cross=False)
+        plot_stat_map(isc_img, title=title, threshold=min_sig_thresh, vmax=max_diff, 
+                      colorbar=True, display_mode='x', cmap=color, cut_coords=6, draw_cross=False)
 
-    return isc_img, max_isc_thresh, pd.DataFrame(sig_labels_data)
+    return isc_img, min_sig_thresh, pd.DataFrame(sig_labels_data)
 
 
 import seaborn as sns
@@ -511,7 +534,7 @@ def yeo_networks_from_schaeffer(label_list):
 
     for idx, label in enumerate(label_list):
         # Extract the network name from the label (e.g., 'Vis' from '7Networks_LH_Vis_9')
-        network = label.decode().split('_')[2]
+        network =  label.split('_')[2]
         labels_by_index.append(network)
 
         if network not in network_mapping:
@@ -630,4 +653,143 @@ def plot_images_grid(image_paths, title,save_to=False, show=True):
         plt.show()
 
     
+import numpy as np
+import seaborn as sns
+import matplotlib.pyplot as plt
+from scipy.stats import linregress
+import numpy as np
+import seaborn as sns
+import matplotlib.pyplot as plt
+from scipy.stats import linregress
+
+def jointplot(x, y, x_label="X", y_label="Y", 
+              title=None, default_color=[0.2, 0.5, 1], 
+              density_color_x='#4c80ff', density_color_y='#fd6262'):
+    """
+    Create a jointplot with regression line for X and Y with KDE marginals.
+
+    Parameters:
+    -----------
+    x : array-like
+        Predictor variable.
+    y : array-like
+        Outcome variable.
+    x_label : str
+        Label for the x-axis.
+    y_label : str
+        Label for the y-axis.
+    title : str or None
+        Title of the plot.
+    default_color : list
+        RGB color used for plotting points.
+    density_color_x : str
+        Color code for the X-axis marginal KDE distribution.
+    density_color_y : str
+        Color code for the Y-axis marginal KDE distribution.
+
+    Returns:
+    --------
+    g : seaborn.axisgrid.JointGrid
+        The seaborn jointplot object.
+    """
+    # Handle NaNs
+    valid_mask = ~np.isnan(x) & ~np.isnan(y)
+
+    x_valid = x[valid_mask]
+    y_valid = y[valid_mask]
+
+    # Compute correlation
+    slope, intercept, r_value, p_value, _ = linregress(x_valid, y_valid)
+    corr_label = f'r = {r_value:.2f}, p = {p_value:.3f}'
+
+    # Determine consistent limits
+    x_margin = (x_valid.max() - x_valid.min()) * 0.05
+    y_margin = (y_valid.max() - y_valid.min()) * 0.05
+    xlim = (x_valid.min() - x_margin, x_valid.max() + x_margin)
+    ylim = (y_valid.min() - y_margin, y_valid.max() + y_margin)
+
+    # Create JointGrid with fixed axis limits
+    g = sns.JointGrid(x=x_valid, y=y_valid, height=8, xlim=xlim, ylim=ylim)
+
+    # Scatter plot
+    g.ax_joint.scatter(x_valid, y_valid, alpha=0.7, s=50, edgecolor='black', color=default_color)
+    g.ax_joint.tick_params(axis='both', which='major', labelsize=22)
+
+
+    # Add regression line
+    sns.regplot(x=x_valid, y=y_valid, scatter=False, ax=g.ax_joint,
+                line_kws={'color': 'black', 'linewidth': 5})
+
+    # KDE marginal distributions with separate colors
+    sns.kdeplot(x=x_valid, ax=g.ax_marg_x, fill=True, color=density_color_x, alpha=0.5)
+    sns.kdeplot(y=y_valid, ax=g.ax_marg_y, fill=True, color=density_color_y, alpha=0.5)
+
+    # Add correlation text with larger box
+    g.ax_joint.text(0.05, 0.95, corr_label, transform=g.ax_joint.transAxes,
+                    fontsize=25, verticalalignment='top', 
+                    bbox=dict(boxstyle="round,pad=0.48", alpha=0.5, facecolor = 'lightgray'))
+
+    # Add labels and title
+    g.set_axis_labels(x_label, y_label, fontsize=30)
+    if title:
+        g.fig.suptitle(title, fontsize=30, y=0.98)
+
+    plt.tight_layout()
+    plt.show()
+
+    return g
+
+
+# =============
+# RADAR CHART
+#==============
+import matplotlib.pyplot as plt
+import numpy as np
+from collections import Counter
+
+def plot_network_radar(network_list, title="Network Distribution of Significant ROIs"):
+    """
+    Plot a radar chart with discrete scale and fewer radial labels for clarity.
+
+    Parameters
+    ----------
+    network_list : list of str
+        List of network names (e.g., ['Default', 'Limbic', ...]).
+    title : str
+        Title for the radar chart.
+    """
+    counts = Counter(network_list)
+
+    network_order = ['Visual', 'SomMot', 'DorsAttn', 'SalVentAttn', 'Limbic',
+                     'Cont', 'Default', 'TempPar', 'Subcortical', 'Cerebellum']
+    
+    values = [counts.get(n, 0) for n in network_order]
+    max_val = max(values) if max(values) > 0 else 1
+
+    labels = network_order
+    angles = np.linspace(0, 2 * np.pi, len(labels), endpoint=False).tolist()
+    values += values[:1]
+    angles += angles[:1]
+
+    fig, ax = plt.subplots(figsize=(8, 8), subplot_kw=dict(polar=True))
+    ax.plot(angles, values, color='tab:blue', linewidth=2)
+    ax.fill(angles, values, color='tab:blue', alpha=0.25)
+
+    ax.set_xticks(angles[:-1])
+    ax.set_xticklabels(labels, fontsize=10)
+
+    yticks = list(range(1, max_val + 1))
+    ax.set_yticks(yticks)
+
+    # Label every 2nd radial line (e.g., 2, 4, 6)
+    ytick_labels = [str(y) if y % 2 == 0 else "" for y in yticks]
+    ax.set_yticklabels(ytick_labels, fontsize=9)
+    ax.set_ylim(0, max_val)
+
+    ax.yaxis.grid(True, linestyle='dotted')
+    ax.xaxis.grid(True, linestyle='dotted')
+
+    plt.title(title, fontsize=13)
+    plt.tight_layout()
+    plt.show()
 

@@ -6,6 +6,7 @@ import seaborn as sns
 from nilearn import plotting
 from nilearn.plotting import view_img 
 
+
 import time
 from importlib import reload
 import nibabel as nib
@@ -26,10 +27,10 @@ reload(visu_utils)
 reload(isc_utils)
 # %% Load the data
 model_names = {
-    'model1': 'model1_sugg_23-sub_schafer-200-2mm_mask-whole-brain_pairWise-True_preproc_reg-mvmnt-True-8',
+    'model1_sugg': 'model1_sugg_23-sub_schafer-200-2mm_mask-whole-brain_pairWise-True_preproc_reg-mvmnt-True-8',
     'model1-6': 'model1_sugg_23-sub_schafer-200-2mm_mask-whole-brain_pairWise-True_preproc_reg-mvmnt-True-6',
     'model2_sugg': 'model2_sugg_23-sub_schafer-200-2mm_mask-whole-brain_pairWise-False_preproc_reg-mvmnt-True-8',
-    'model2_shock': 'model2_shock_23-sub_schafer-200-2mm_mask-whole-brain_pairWise-False_preproc_reg-mvmnt-True-8',
+    'model2_shock_loo': 'model2_shock_23-sub_schafer-200-2mm_mask-whole-brain_pairWise-False_preproc_reg-mvmnt-True-8',
     'model3-shock': 'model3_shock_23-sub_schafer-200-2mm_mask-whole-brain_pairWise-True_preproc_reg-mvmnt-True-8',
     'model4': 'model4_sugg_0602_preproc_reg-mvmnt-True_high-variance-False_23sub_voxelWise_lanA800',
     'model5': 'model5_sugg_schafer-200-2mm_mask-whole-brain_pairWise-True_preproc_reg-mvmnt-True-8',
@@ -40,16 +41,17 @@ model_names = {
     'single_trial_wb' : 'model_single-trial-wb_sugg_23-sub_schafer-200-2mm_mask-whole-brain_pairWise-True_preproc_reg-mvmnt-True-8'
 }
 
-ref_preproc_models = { 'model2' : model_names['model1']}
-
 model_is = 'model1'
 model_is = 'single_trial_wb'
+
+ref_preproc_models = { 'model2' : model_names[model_is]}
 ref_model_name = ref_preproc_models['model2']
 
 project_dir = "/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions"
 clean_save_to = os.path.join(project_dir, f'results/imaging/visualization/{model_is}')
 os.makedirs(clean_save_to, exist_ok=True)
 
+color_isc = 'Reds' 
 # base_path = "/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/data/test_data_sugg_3sub"
 preproc_model_data = '23subjects_zscore_sample_detrend_FWHM6_low-pass428_10-12-24/suggestion_blocks_concat_4D_23sub'
 
@@ -72,8 +74,8 @@ n_sub = setup['n_sub']
 atlas_data = fetch_atlas_schaefer_2018(n_rois = 200, resolution_mm=2)
 atlas = nib.load(atlas_data['maps'])
 atlas_path = atlas_data['maps'] #os.path.join(project_dir,os.path.join(project_dir, 'masks', 'k50_2mm', '*.nii*'))
-labels = list(atlas_data['labels'])
-
+# labels_bytes = list(atlas_data['labels'])
+labels = [str(label, 'utf-8') if isinstance(label, bytes) else str(label) for label in atlas_data['labels']]
 atlas_masker = NiftiLabelsMasker(labels_img=atlas_path, standardize=False)
 atlas_masker.fit()
 
@@ -96,9 +98,10 @@ behav_df = behav_df.sort_index()
 reload(visu_utils)
 reload(isc_utils)
 result_key = 'isc_results'
-conditions = ['HYPER', 'ANA', 'NHYPER', 'NANA']
+conditions = ['HYPER', 'ANA', 'NHYPER', 'NANA'] if 'single_trial' not in model_name else ['N_ANA1_instrbk_1', 'N_HYPER1_instrbk_1']
 conditions = setup['conditions']
-conditions = ['N_ANA1_instrbk_1', 'N_HYPER1_instrbk_1']
+
+# %%
     # cond = conditions[0]
 views = {}
 surf = {}
@@ -186,9 +189,10 @@ masker = isc_utils.load_pickle('/data/rainville/dSutterlin/projects/ISC_hypnotic
 from src import visu_utils
 reload(visu_utils)
 reload(isc_utils)
+
 result_key = 'isc_results'
 interactive_views = []
-all_conditions = ['all_sugg', 'modulation', 'neutral']
+all_conditions = ['all_sugg'] #, 'modulation', 'neutral']
 # n_scans = [468, 200, 268] #[438, 188, 250]
 views = {}
 sig_df_conditions = {}
@@ -212,9 +216,11 @@ for i, cond in enumerate(all_conditions):
     print(f'FDR thresh : {fdr_p}')
     # to brain plot 
     reload(visu_utils)
+
     sig_mask, sig_df = visu_utils.plot_isc_median_with_significance(
         isc_median=isc_median,
         p_values=p_values,
+        atlas = atlas,
         atlas_labels=labels,
         p_threshold=fdr_p,
         save_path=None,
@@ -222,6 +228,11 @@ for i, cond in enumerate(all_conditions):
         fdr_correction=False
     )
     sig_df_conditions[cond] = sig_df
+
+    if 'shock' in model_name:
+        cond = cond+'_shock'
+    title_view = f'ISC_{cond}_(FDR<.05)'
+
     if 'voxelWise' in parcel_name:
         isc_median[~sig_mask] = 0
         isc_img = masker[0].inverse_transform(isc_median)
@@ -233,11 +244,10 @@ for i, cond in enumerate(all_conditions):
             atlas_labels=labels,
             p_values=p_values,
             p_threshold=fdr_p,
-            title = f"ISC Median per ROI for {cond}",
+            title = title_view,
             save_path=None,
             show=True
         )
-    title_view = f'ISC_{cond}_(FDR<.05)'
     views[cond] = view_img_on_surf(isc_img, threshold=isc_thresh, surf_mesh='fsaverage')
     reload(visu_utils)
     p_mask = p_values < fdr_p
@@ -247,34 +257,24 @@ for i, cond in enumerate(all_conditions):
     interactive_view = view_img(
             isc_img,
             threshold=isc_thresh,
-            title=title_view
+            title=title_view,
+            cmap = color_isc
                             )
     interactive_views.append(interactive_view)
     interactive_view.save_as_html(os.path.join(clean_save_to, f'{title_view}.html'))
 
 # %%
-import os
-import numpy as np
-import nibabel as nib
-from nilearn.maskers import NiftiLabelsMasker
-from nilearn.image import load_img, resample_to_img
-reload(qc_utils)
+# Pie plot of sig regions in df
+#------------------------------
+reload(visu_utils)
 
-masker = NiftiLabelsMasker(labels_img=atlas, standardize=False)
-masker.fit()
+# all_sugg pie-chart
+cond_pie ='all_sugg'
+sig_rois_for_pie = sig_df_conditions[cond_pie]['ROI']
+sig_networks = [label.split('_')[2] for label in sig_rois_for_pie]
 
-isc_imgs_dct = {}
-for pair in range(isc_rois.shape[0]):
-    isc_vector = np.array(isc_rois.iloc[pair, :])
-    isc_img = masker.inverse_transform(isc_vector)
-       
-    isc_imgs_dct[pair] = isc_img
+visu_utils.plot_network_radar(sig_networks, title = f'Sig ISC during {cond_pie}')
 
-from src.qc_utils import compute_similarity
-
-isc_nps = compute_summary_statistic(isc_imgs_dct, metric='dot_product', resample_to_mask=True, summary = True)
-    
-# %%
 
 #%%
 import matplotlib.pyplot as plt
@@ -332,14 +332,14 @@ result_key = 'cond_contrast_permutation'
 # conditions = ['Hyper', 'Ana', 'NHyper', 'NAna']
 contrasts = ['Ana-Hyper', 'NHyper-NAna']
 
-contrasts = ['Ana-N_Ana', 'Hyper-N_Hyper', 'N_ANA1_instrbk_1-N_HYPER1_instrbk_1']
+# contrasts = ['Ana-N_Ana', 'Hyper-N_Hyper', 'N_ANA1_instrbk_1-N_HYPER1_instrbk_1']
 
 reload(visu_utils)
 # n_scans = [100, 100, 134] #[94, 94, 125]
 views = {}
 sig_rois = {}
 interactive_views=[]
-for i, cont in enumerate([contrasts[2]]):
+for i, cont in enumerate(contrasts):
     # scans = n_scans[i]
     # masker =utils.load_pickle(os.path.join(results_dir, cond, f'maskers_{atlas_name}_{cond}_{n_sub}sub.pkl'))
     # file = f"isc_results_{contrast}_{n_scans}TRs_{setup['n_perm']}perm_pairWiseTrue.pkl"
@@ -363,10 +363,11 @@ for i, cont in enumerate([contrasts[2]]):
         isc_median=observed_diff,
         atlas_labels=labels,
         p_values=p_values,
-        p_threshold=unc_p,
+        p_threshold=fdr_p,
         title = f"Difference in ISC between {cont}",
         save_path=None,
-        show=True
+        show=True,
+        color='Reds'
     )
     p_mask= p_values < fdr_p
     # sig_labels = [labels[i] for i in range(len(labels)) if p_mask[i]]
@@ -424,7 +425,7 @@ for i in range(len(roi_focus)):
 # Difference for high vs low SHSS
 result_key = 'cond_contrast_permutation'
 # conditions = ['Hyper', 'Ana', 'NHyper', 'NAna']
-# contrasts = ['Hyper-Ana', 'Ana-Hyper', 'NHyper-NAna']
+contrasts = ['Hyper-Ana', 'Ana-Hyper', 'NHyper-NAna']
 
 reload(visu_utils)
 n_scans = [94, 94, 125]
@@ -434,7 +435,7 @@ surf_views = {}
 cb_names =['counterbalance_H1', 'counterbalance_H2']
 group_names = ['high_shss', 'low_shss'] if 'single_trial' in model_name else ['high_shss', 'low_shss', 'counterbalance_H1', 'counterbalance_H2']
 # for shss_grp, n_sub in zip(group_names, [11, 12]):
-for shss_grp, n_sub in zip(cb_names, [11, 12]):
+for shss_grp, n_sub in zip(group_names, [11, 12]):
     print(f"Doing {shss_grp} with {n_sub} subjects")
     views[shss_grp] = []
     surf_views[shss_grp] = []
@@ -522,19 +523,18 @@ plot_stat_map(
 # QUESTION : does ISC differ as a function of SHHS score (median split)?
 result_key = 'group_permutation_results'
 conditions = ['Hyper', 'Ana', 'NHyper', 'NAna']
-conditions = [ 'all_sugg', 'neutral', 'modulation', 'HYPER', 'ANA']
 conditions = ['modulation', 'HYPER', 'ANA']
-# behav_ls = 'Abs_diff_automaticity' #'total_chge_pain_hypAna' #['SHSS_score', 'Abs_diff_automaticity', 'total_chge_pain_hypAna']
+conditions = [ 'all_sugg', 'neutral', 'modulation'] #, 'HYPER', 'ANA']
+behav_ls = ['total_chge_pain_hypAna_median_grp'] #, 'SHSS_score', 'Abs_diff_automaticity', 'total_chge_pain_hypAna']
 sig_rois_cond = {}
 views = {}
 for cond in conditions:
     #masker =utils.load_pickle(os.path.join(results_dir, conditions[0], f'maskers_{atlas_name}_{conditions[0]}_{n_sub}sub.pkl'))
     # isc_group = utils.load_pickle(all_results_paths[result_key][cond])
     isc_group = isc_utils.load_pickle(os.path.join(setup['project_dir'], f'results/imaging/ISC/{model_name}/behavioral_group_permutation/{cond}_group_permutation_results_5000perm.pkl'))
-    behav_ls = list(isc_group.keys())
+    # behav_ls = list(isc_group.keys())
     sig_rois_cond[cond] = {}
     views[cond] = {}
-    behav_ls = ['SHSS_score_median_grp']
     for y in behav_ls:
     
         print(f"Condition: {cond}, Behavior: {y}")
@@ -615,14 +615,15 @@ import matplotlib.pyplot as plt
 from sklearn.manifold import TSNE
 from scipy.stats import ttest_1samp
 from scipy.stats import ttest_rel
-
+reload(visu_utils
+       )
 # ===========================
 # ISC-RSA
 behav_df = pd.read_csv(f'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/behavioral_data_cleaned.csv')
 X_pheno = behav_df
 result_key = 'rsa_isc_results'
-conditions = ['HYPER','ANA', 'NHYPER', 'NANA'] # ['Hyper', 'Ana', 'NHyper', 'NAna']
-conditions = ['ANA']
+conditions = ['all_sugg', 'modulation'] #['HYPER','ANA', 'NHYPER', 'NANA'] # ['Hyper', 'Ana', 'NHyper', 'NAna']
+# conditions = ['ANA']
 #conditions = ['Hyper', 'Ana', 'NHyper', 'NAna', 'all_sugg', 'modulation', 'neutral']
 behav_ls = ['SHSS_score', 'Abs_diff_automaticity'] #'total_chge_pain_hypAna']
 models =['euclidean', 'annak']
@@ -637,16 +638,19 @@ for y_name in behav_ls:
     rsa_dict_2ttest[y_name] = {}
 
     for cond in conditions:
-        isc_bootstrap = isc_utils.load_pickle(
-            f'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/ISC/{model_name}/{cond}/isc_results_{cond}_5000boot_pairWise{do_pairWise}.pkl'
-        )
+        if cond == 'all_sugg' or cond == 'modulation':
+            p = f'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/ISC/{model_name}/concat_suggs_1samp_boot/isc_results_{cond}_5000boot_pairWise{do_pairWise}.pkl'
+        else:
+            p = f'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/ISC/{model_name}/{cond}/isc_results_{cond}_5000boot_pairWise{do_pairWise}.pkl'
+
+        isc_bootstrap = isc_utils.load_pickle(p)
         isc_rois = pd.DataFrame(isc_bootstrap['isc'], columns=labels)
         rsa_dict_2ttest[y_name][cond] = {}
 
         for simil_model in models:
             # Load RSA data
             rsa_df = pd.read_csv(
-                f'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/ISC/{model_name}/rsa_isc_results_{simil_model}/rsa-isc_{cond}/{y_name}_rsa_isc_{simil_model}simil_10000perm_pvalues.csv'
+                f'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/ISC/{model_name}/rsa_isc_results_{simil_model}/rsa-isc_{cond}/{y_name}_rsa_isc_{simil_model}simil_{n_perm_rsa}perm_pvalues.csv'
             )
             p_values = np.array(rsa_df['p_value'])
             fdr_p = isc_utils.fdr(p_values, q=0.05)
@@ -685,14 +689,15 @@ for y_name in behav_ls:
 
 # %% 
 y_name = 'SHSS_score'
-best_model = 'euclidean' #'annak' #'euclidean'
+best_model = 'annak' #'euclidean'
 for cond in conditions:
     correl = rsa_dict_2ttest[y_name][cond][best_model]['correlation']
     p_values = rsa_dict_2ttest[y_name][cond][best_model]['p_values']
     fdr_p = rsa_dict_2ttest[y_name][cond][best_model]['fdr_p']
     p_unc = 0.01
     print('FDR thresh : ', fdr_p)
-    sig_mask = visu_utils.plot_isc_median_with_significance(
+
+    sig_mask, sig_df = visu_utils.plot_isc_median_with_significance(
     isc_median=correl,
     p_values=p_values,
     atlas_labels=labels,
@@ -701,7 +706,8 @@ for cond in conditions:
     show=True,
     fdr_correction=False
 )
-    
+    print(sig_df)
+
 y_name = 'Abs_diff_automaticity'
 best_model = 'annak' #'euclidean'
 print(f'====Processing {y_name} across conditions======')
@@ -711,7 +717,7 @@ for cond in conditions:
     fdr_p = rsa_dict_2ttest[y_name][cond][best_model]['fdr_p']
     p_unc = 0.01
     print('FDR thresh : ', fdr_p)
-    sig_mask = visu_utils.plot_isc_median_with_significance(
+    sig_mask, sig_df = visu_utils.plot_isc_median_with_significance(
     isc_median=correl,
     p_values=p_values,
     atlas_labels=labels,
@@ -720,6 +726,8 @@ for cond in conditions:
     show=True,
     fdr_correction=False
 )
+    print(sig_df)
+
 # Take home is that annak is better in Hyper related conditions while NN in Ana
 
 # %%
