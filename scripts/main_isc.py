@@ -189,6 +189,7 @@ elif apply_mask == 'outside_lanA800':
 elif apply_mask == None or apply_mask == 'whole-brain':
     print('Loading whole brain MNI template as mask')
     mask_native = datasets.load_mni152_brain_mask()
+    mask_native = nib.load('/data/rainville/Hypnosis_ISC/masks/brainmask_91-109-91.nii')
     mask_path = os.path.join(results_dir, 'mni_mask.nii.gz')
 
 else:
@@ -486,7 +487,6 @@ isc_utils.plot_flat_rois(
     condition_names=setup.conditions,
     save_dir=os.path.join(setup.results_dir, "QC_flat_rois")
 )
-
 
 #%%
 
@@ -889,85 +889,85 @@ if do_shss_permutation:
         # do_shss_permutation = True
 
 
-    if counter_balance_effect:
+    # if counter_balance_effect:
     
-        shss_grps = ['H1', 'H2']
-        subject_to_cb_group = {
-        'sub-02': 2,
-        'sub-03': 1,
-        'sub-06': 2,
-        'sub-07': 1,
-        'sub-09': 1,
-        'sub-12': 2,
-        'sub-16': 1,
-        'sub-17': 2,
-        'sub-20': 2,
-        'sub-22': 2,
-        'sub-26': 1,
-        'sub-27': 2,
-        'sub-28': 1,
-        'sub-29': 1,
-        'sub-33': 1,
-        'sub-36': 1,
-        'sub-37': 2,
-        'sub-38': 1,
-        'sub-40': 1,
-        'sub-41': 2,
-        'sub-42': 2,
-        'sub-43': 2,
-        'sub-47': 2
-        }
-        # adjust for test n subjects
-        subject_to_cb_group = {k: v for k, v in subject_to_cb_group.items() if k in subjects}
+    #     shss_grps = ['H1', 'H2']
+    #     subject_to_cb_group = {
+    #     'sub-02': 2,
+    #     'sub-03': 1,
+    #     'sub-06': 2,
+    #     'sub-07': 1,
+    #     'sub-09': 1,
+    #     'sub-12': 2,
+    #     'sub-16': 1,
+    #     'sub-17': 2,
+    #     'sub-20': 2,
+    #     'sub-22': 2,
+    #     'sub-26': 1,
+    #     'sub-27': 2,
+    #     'sub-28': 1,
+    #     'sub-29': 1,
+    #     'sub-33': 1,
+    #     'sub-36': 1,
+    #     'sub-37': 2,
+    #     'sub-38': 1,
+    #     'sub-40': 1,
+    #     'sub-41': 2,
+    #     'sub-42': 2,
+    #     'sub-43': 2,
+    #     'sub-47': 2
+    #     }
+    #     # adjust for test n subjects
+    #     subject_to_cb_group = {k: v for k, v in subject_to_cb_group.items() if k in subjects}
 
-        cb_groups = ['H1', 'H2']
-        isc_permutation_cond_contrast = {}
+    #     cb_groups = ['H1', 'H2']
+    #     isc_permutation_cond_contrast = {}
 
-        for cb_grp in cb_groups:
-            start_grp_time = time.time()
-            print(f'==== Doing {cb_grp} counterbalancing group ====')
+    #     for cb_grp in cb_groups:
+    #         start_grp_time = time.time()
+    #         print(f'==== Doing {cb_grp} counterbalancing group ====')
 
-            contrast_perm_cb = os.path.join(results_dir, f'group_perm_counterbalance_{cb_grp}')
-            os.makedirs(contrast_perm_cb, exist_ok=True)
+    #         contrast_perm_cb = os.path.join(results_dir, f'group_perm_counterbalance_{cb_grp}')
+    #         os.makedirs(contrast_perm_cb, exist_ok=True)
 
-            # Get subject indices for this CB group
-            cb_value = 1 if cb_grp == 'H1' else 2
-            subjects_in_cb = [s for s, v in subject_to_cb_group.items() if v == cb_value]
-            keep_n = len(subjects_in_cb)
-            print(f'----- {cb_grp} group with {keep_n} subjects')
+    #         # Get subject indices for this CB group
+    #         cb_value = 1 if cb_grp == 'H1' else 2
+    #         subjects_in_cb = [s for s, v in subject_to_cb_group.items() if v == cb_value]
+    #         keep_n = len(subjects_in_cb)
+    #         print(f'----- {cb_grp} group with {keep_n} subjects')
 
-            # Build mask for subject selection
-            subject_indices = [i for i, s in enumerate(subjects) if s in subjects_in_cb]
-            cb_idx = np.zeros(len(subjects), dtype=bool)
-            cb_idx[subject_indices] = True
-            cb_idx_concat = np.concatenate([cb_idx, cb_idx])  # for 2-condition ISC data
-            group_ids_selected = np.array([0] * keep_n + [1] * keep_n)
+    #         # Build mask for subject selection
+    #         subject_indices = [i for i, s in enumerate(subjects) if s in subjects_in_cb]
+    #         cb_idx = np.zeros(len(subjects), dtype=bool)
+    #         cb_idx[subject_indices] = True
+    #         cb_idx_concat = np.concatenate([cb_idx, cb_idx])  # for 2-condition ISC data
+    #         group_ids_selected = np.array([0] * keep_n + [1] * keep_n)
 
-            for i, contrast in enumerate(contrast_conditions):
-                combined_data_ls = [transformed_data_per_cond[task] for task in contrast_to_test[i]]
-                combined_data = np.concatenate(combined_data_ls, axis=2)
-                combined_data_selected = combined_data[:, :, cb_idx_concat]
+    #         for i, contrast in enumerate(contrast_conditions):
+    #             combined_data_ls = [transformed_data_per_cond[task] for task in contrast_to_test[i]]
+    #             combined_data = np.concatenate(combined_data_ls, axis=2)
+    #             combined_data_selected = combined_data[:, :, cb_idx_concat]
 
-                print(f'{contrast} : Repeated measure ISC shape: {combined_data_selected.shape}')
+    #             print(f'{contrast} : Repeated measure ISC shape: {combined_data_selected.shape}')
 
-                isc_grouped_selected = isc(combined_data_selected, pairwise=do_pairwise, summary_statistic=None)
+    #             isc_grouped_selected = isc(combined_data_selected, pairwise=do_pairwise, summary_statistic=None)
 
-                isc_permutation_cond_contrast[contrast] = isc_utils.group_permutation(
-                    isc_grouped_selected,
-                    group_ids_selected,
-                    n_perm,
-                    do_pairwise,
-                    side='two-sided',
-                    summary_statistic='median'
-                )
+    #             isc_permutation_cond_contrast[contrast] = isc_utils.group_permutation(
+    #                 isc_grouped_selected,
+    #                 group_ids_selected,
+    #                 n_perm,
+    #                 do_pairwise,
+    #                 side='two-sided',
+    #                 summary_statistic='median'
+    #             )
 
-                save_path = os.path.join(contrast_perm_cb, f"isc_results_{keep_n}sub_{contrast}_{n_perm}perm_pairWise{do_pairwise}.pkl")
-                isc_utils.save_data(save_path, isc_permutation_cond_contrast[contrast])
-                result_paths["condition_contrast_results"][contrast] = save_path
+    #             save_path = os.path.join(contrast_perm_cb, f"isc_results_{keep_n}sub_{contrast}_{n_perm}perm_pairWise{do_pairwise}.pkl")
+    #             isc_utils.save_data(save_path, isc_permutation_cond_contrast[contrast])
+    #             result_paths["condition_contrast_results"][contrast] = save_path
 
-            print(f'Contrasts for {cb_grp} done in {time.time() - start_grp_time:.2f} sec')
+    #         print(f'Contrasts for {cb_grp} done in {time.time() - start_grp_time:.2f} sec')
 
-            group_labels_df['subject_to_cb'] = group_labels_df.index.map(subject_to_cb_group)
+    #         group_labels_df['subject_to_cb'] = group_labels_df.index.map(subject_to_cb_group)
 
     #-----------------------
     # Split subj based on SHSS and test contrasts

@@ -406,6 +406,47 @@ def count_plot_TRs_2conditions(
 
 
 #======First LEvel GLM function==================
+from scipy.ndimage import label
+import numpy as np
+
+def create_tr_mask_for_single_trial(combined_dm, trial_regressor, verbose=True):
+    """
+    Extract TR indices for a single trial regressor in the design matrix.
+    
+    Parameters
+    ----------
+    combined_dm : pandas.DataFrame
+        The combined design matrix across runs.
+        
+    trial_regressor : str
+        Name of the regressor corresponding to a single trial (e.g., 'ANA_instrbk_5').
+        
+    verbose : bool
+        Whether to print extraction info.
+        
+    Returns
+    -------
+    trial_indices : np.ndarray
+        Indices of TRs where this single-trial regressor is active (after HRF convolution).
+    
+    """
+    if trial_regressor not in combined_dm.columns:
+        raise ValueError(f"{trial_regressor} not found in design matrix columns.")
+
+    # Extract the signal for this specific regressor
+    regressor_signal = combined_dm[trial_regressor].to_numpy()
+    active_mask = regressor_signal != 0  # This captures any non-zero HRF response
+    labeled_array, num_features = label(active_mask)
+
+    trial_indices = np.where((labeled_array > 0) & (regressor_signal != 0))[0]
+
+    if verbose:
+        print(f"Regressor: {trial_regressor}")
+        print(f"TRs extracted: {len(trial_indices)}")
+        # print(f"Indices: {trial_indices}")
+
+    return trial_indices, [trial_regressor]
+
 
 def create_tr_masks_for_suggestion(combined_dm, regressor,all_conds = ['ANA', 'N_ANA', 'HYPER', 'N_HYPER'], verbose=True):
     """

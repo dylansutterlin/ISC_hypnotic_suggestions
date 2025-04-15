@@ -29,7 +29,7 @@ class Atlas:
         self.df[["x", "y", "z"]] = self.get_coords()
         self.fig = self.get_fig()
 
-    def get_data(self):
+    def get_data(self, n_rois=None):
         """Load atlas maps and corresponding labels/DF based on self.title."""
         if self.title == "yeo2011":
             fetcher = datasets.fetch_atlas_yeo_2011()
@@ -38,8 +38,9 @@ class Atlas:
             probabilistic = False
 
         elif self.title == "schaefer2018":
+            if n_rois is None: n_rois = 200
             fetcher = datasets.fetch_atlas_schaefer_2018(
-                n_rois=100, yeo_networks=7, resolution_mm=2
+                n_rois=n_rois, yeo_networks=7, resolution_mm=2
             )
             maps = fetcher.maps
             df = [label.decode() for label in fetcher.labels]
@@ -47,7 +48,8 @@ class Atlas:
             probabilistic = False
 
         elif self.title == "difumo2020":
-            fetcher = datasets.fetch_atlas_difumo(dimension=64)
+            if n_rois is None: n_rois = 64
+            fetcher = datasets.fetch_atlas_difumo(dimension=n_rois)
             maps = fetcher.maps
             df = pd.DataFrame([lbl[1] for lbl in fetcher.labels], columns=["labels"])
             probabilistic = True
