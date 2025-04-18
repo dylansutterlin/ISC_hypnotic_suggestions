@@ -596,6 +596,38 @@ def isc_1sample(data_3d, pairwise, n_boot=5000, side = 'two-sided', summary_stat
 
     return isc_results
 
+from brainiak.isc import isfc
+
+def isfc_1sample(data_3d, pairwise, n_boot=5000, side = 'two-sided', summary_statistic=None):
+    
+    # isc_result = isfc(data_3d, pairwise=pairwise, summary_statistic=None)
+    isfc_result, isc_diag = isfc(data_3d, pairwise=True, vectorize_isfcs=True)
+    print(f"ISFC shape: {isfc_result.shape}")
+    print(f'--bootstrap {n_boot}--')
+
+    observed, ci, p, distribution = bootstrap_isc(
+    isfc_result,
+    pairwise=pairwise,
+    summary_statistic="median",
+    n_bootstraps=n_boot,
+    side = side,
+    ci_percentile=95,
+    )
+
+    total_median_isc = compute_summary_statistic(isfc_result, 'median', axis=None)
+    print(f'Median ISC : {total_median_isc}')
+
+    isfc_dict = {
+    "isfc": isfc_result,
+    "observed": observed,
+    "confidence_intervals": ci,
+    "p_values": p,
+    "distribution": distribution,
+    }
+
+    return isfc_dict
+
+
 def trim_TRs(hyper_data_3d, ana_data_3d):
     """
     Adjust Ana and Hyper conditions to match TRs for direct contrast.

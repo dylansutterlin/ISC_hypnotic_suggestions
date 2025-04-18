@@ -76,6 +76,8 @@ keep_n_confouds =  setup.keep_n_conf
 conditions = setup.conditions
 transform_imgs = setup.transform_imgs
 do_isc_analyses = setup.do_isc_analyses
+
+do_shss_split = setup.do_shss_split
 do_rsa = setup.do_rsa
 
 n_boot = setup.n_boot
@@ -272,7 +274,12 @@ print(APM_subjects)
 sub_check['APM_behav'] = APM_subjects
 phenotype =pd.read_csv(behav_path, index_col=0)
 phenotype.head()
-y_interest = ['SHSS_score', 'total_chge_pain_hypAna', 'Abs_diff_automaticity']
+# y_interest = ['SHSS_score', 'total_chge_pain_hypAna', 'Abs_diff_automaticity', ]
+y_interest = [
+    'Chge_hypnotic_depth', 'SHSS_score', 'raw_change_HYPER',
+    'raw_change_ANA', 'total_chge_pain_hypAna',
+    'Mental_relax_absChange', 'Abs_diff_automaticity'
+]
 X_pheno, group_labels_df, sub_check= isc_utils.load_process_behav(phenotype, y_interest, setup, sub_check)
 #X_pheno includes group labels_df!! 
 setup.group_labels = group_labels_df
@@ -346,52 +353,6 @@ if transform_imgs == True:
     end_total_time = time.time()
     print(f"Total time for data extraction: {end_total_time - start_total_time:.2f} seconds")
 
-    # mask_img = nib.load(voxel_masker.obj.mask_img)
-    # resmap_mask = resample_img(mask_img, target_affine=data_affine, target_shape=data_shape)
-    # cond= 'Ana'
-    
-    # qc_path = os.path.join(setup.results_dir, 'QC')
-    # os.makedirs(qc_path, exist_ok=True)
-    # print('==Carpet plots==')
-
-    # if atlas_name =='voxelWise':
-    #     carpet_mask = resamp_mask    
-    #     carpet_lab = None
-    # elif 'schafer' in atlas_name : # == f'schafer{n_rois}_2mm':
-    #     carpet_mask = atlas
-    #     carpet_lab = None
-    # elif atlas_name =='voxelWise_lanA800':
-    #     carpet_mask = resamp_mask
-    #     carpet_lab = None
-
-    # for sub in range(n_sub):
-    #     subject = subjects[sub]
-    #     shapes = []
-    #     for cond in conditions:
-    #         file_path = os.path.join(qc_path, f'{subject}_{cond}_carpet_detrend.png')
-    #         inv_img = fitted_maskers[cond][sub].inverse_transform(transformed_data_per_cond[cond][sub])
-    #         shapes.append(inv_img.shape)
-    #         display = plot_carpet(
-    #             inv_img,
-    #             mask_img=carpet_mask,
-    #             mask_labels=carpet_lab,
-    #             detrend=True,
-    #             t_r=3,
-    #             standardize=True,
-    #             output_file=file_path,
-    #             title=f"global patterns {subject} in cond {cond}",
-    #         )
-
-    # combined carpet plot
-    # for cond in conditions:
-    #     carpet_files = glob.glob(os.path.join(results_dir, 'QC', f'sub-*_{cond}_carpet_*.png'))
-    #     carpet_files = sorted(carpet_files)
-    #     save_cond= os.path.join(results_dir,'QC', f'combined_sub_{cond}_carpet.png')
-    #     title = f'{cond} for model : {model_name}'
-    #     visu_utils.plot_images_grid(carpet_files, title, save_to=save_cond, show=True)
-
-    #     print('Subject : ', subject, 'imgs shapes : ', shapes)
-
 	# save transformed data and masker
     for cond in conditions:
 
@@ -444,33 +405,6 @@ else:
 
     print(f'Loading existing data and fitted maskers from : {load_path}')
 
-
-#%%
-# Perform ISC
-
-# # isc with spheres ROI
-# isc_results_roi = {}
-# for cond in conditions:
-
-#     print(f'Performing sphere ISC for condition: {cond}')
-#     roi_ls = [] #stack list of roi timepoints x subjects 
-#     for roi in roi_coords.keys():
-#         roi_dict = transformed_sphere_per_roi[cond][roi]
-#         roi_ts = [] # stack timepoints x subjects
-#         for sub in roi_dict.keys():
-#             roi_ts.append(np.array(roi_dict[sub])) # list timepoints x 1 vector
-#         roi_ls.append(np.array(roi_ts)) # list of roi timepoints x subjects
-#     roi_data_3d = np.stack(np.squeeze(roi_ls), axis=1).T # timepoints x roi x subjects
-    
-#     isc_results_roi[cond] = utils.isc_1sample(roi_data_3d, pairwise=do_pairwise, n_boot=n_boot, summary_statistic=None)
-    
-#roi_isc['roi_names'] = list(roi_coords.keys())
-
-# for cond, isc_dict in isc_results_roi.items():
-#     save_path = os.path.join(results_dir, cond, roi_folder, f"isc_{len(roi_coords)}spheres_{cond}_{n_boot}boot_pairWise{do_pairwise}.pkl")
-#     utils.save_data(save_path, isc_dict)
-#     print(f"ISC results saved for {cond} at {save_path}")
-
 # if 'schafer' not in atlas_name: # != f'schafer{n_rois}_2mm':
     # Assess 0 variance subjects
 
@@ -489,7 +423,6 @@ isc_utils.plot_flat_rois(
 )
 
 #%%
-
 if do_isc_analyses:
     # bootstrap_conditions = ['Hyper', 'Ana', 'NHyper', 'NAna', 'all_sugg', 'modulation', 'neutral']
 
@@ -529,15 +462,13 @@ if do_isc_analyses:
         print(f" {cond} done in {end_cond_time - start_cond_time:.2f} sec")
         print(f"ISC results saved for {cond} at {save_path}")
 
-# %%
-
     # %%
 
     # Combined condition bootstrap
     print('====================================')
     # code conditions for all_sugg, (ANA+Hyper), (Neutral_H + Neutral_A)
-    combined_conditions = ['all_sugg', 'modulation', 'neutral']
-    task_to_test = [conditions, conditions[0:2], conditions[2:4]]
+    combined_conditions = ['all_sugg', 'modulation', 'neutral', 'ana_run']
+    task_to_test = [conditions, conditions[0:2], conditions[2:4], conditions[1::2]]
 
     if 'instrbk' in setup.model_id:
         task_to_test = [conditions]
@@ -551,8 +482,10 @@ if do_isc_analyses:
         print(f'Performing bootstraped ISC for combined condition: {comb_cond}')
         
         combined_data = np.concatenate([transformed_data_per_cond[task]for task in task_to_test[i]], axis=0)
+
+        transformed_data_per_cond[comb_cond] = combined_data
         n_scans = combined_data.shape[0] #  concat along TR axis for each 3d task array
-        n_sub = combined_data.shape[-1]
+        # n_sub = combined_data.shape[-1]
         # isc_combined = isc(combined_data, pairwise=do_pairwise, summary_statistic=None)
 
         isc_results[comb_cond] = isc_utils.isc_1sample(combined_data, pairwise=do_pairwise,n_boot = n_boot, summary_statistic=None)
@@ -567,122 +500,79 @@ if do_isc_analyses:
         print(f"ISC results saved for {comb_cond} at {save_path}")
 
 
-    # %%
-    #==============================
-    # ISFC per conditions
+# %%
+#==============================
+# ISFC per conditions
+do_isfc = True #setup.do_isfc
 
-    # from brainiak.isfc import isfc
+if do_isfc:
 
-    # conditions = ['Hyper', 'Ana', 'NHyper', 'NAna']
-    # isfc_results_per_cond = {}
-    # isc_results = {}
-    # for cond, data in transformed_data_per_cond.items():
-    #     print(f'Performing ISC for condition: {cond}')
-    #     # Convert list of 2D arrays to 3D array (n_TRs, n_voxels, n_subjects)
-    #     if isinstance(data, list):
-    #         data_3d = np.stack(data, axis=-1)
-    #     elif isinstance(data, np.ndarray):
-    #         data_3d = data
-    #     assert data_3d.shape[-1] == setup.n_sub, f"Data shape {data_3d.shape} does not match number of subjects {n_sub}"
-        
-    #     isfc_results_per_cond[cond] = isfc(data, pairwise=True, vectorize_isfcs=True)
+    isfc_results_per_cond = {}
+    isfc_save_folder = os.path.join(results_dir, 'isfc_1sample')
+    os.makedirs(isfc_save_folder, exist_ok=True)
+    result_paths['isfc_results'] = {}
 
+    for cond in ['all_sugg', 'ana_run']: #conditions: 
 
+        start_cond_time = time.time()
+        print(f' Performing ISFC for condition: {cond}')
 
-    # %%    
-    # Project isc values and p values to brain
+        data = transformed_data_per_cond[cond]
+        print('Data for ISFC : ' , data.shape)
 
-    # # inverse trnasform isc with fitted maskers
-    # for cond, isc_dict in isc_results.items():
+        isfc_results_per_cond[cond] = isc_utils.isfc_1sample(data, pairwise=do_pairwise,n_boot = n_boot, summary_statistic=None)
+     
+        save_path = os.path.join(isfc_save_folder, f"isfc_results_{cond}_{n_boot}boot_pairWise{do_pairwise}.pkl")
+        isc_utils.save_data(save_path, isfc_results_per_cond[cond])
+        result_paths["isfc_results"][cond] = save_path
 
-    #     masker = fitted_maskers[cond]
-    #     isc_img = masker.inverse_transform(isc_dict['observed'])
-    #     p_img = masker.inverse_transform(isc_dict['p_values'])
+        end_cond_time = time.time()
+        print(f" {cond} done in {end_cond_time - start_cond_time:.2f} sec")
+        print(f"ISC results saved for {cond} at {save_path}")
 
-    #     # save images
-    #     save_boot = os.path.join(results_dir, cond)
-    #     isc_img_name = f"isc_val_{cond}_boot{n_boot}_pariwise{do_pairwise}.nii.gz"
-    #     isc_img.to_filename(os.path.join(save_boot, isc_img_name))
-    #     print(f"ISC image saved to {save_boot}")
-
-    #     isc_pval_img_name =  f"p_values_{cond}_boot{n_boot}_pairwise{do_pairwise}.nii.gz"
-    #     p_img.to_filename(os.path.join(save_boot, isc_pval_img_name))
-    #     print(f"p-values group image saved to {save_boot}")
-
-    #     # plot images
-    #     plot_path = os.path.join(results_dir, cond, f"isc_plot_{cond}_boot{n_boot}_pairwise{do_pairwise}.png")
-    #     plotting.plot_stat_map(isc_img, title=f'ISC {cond}', colorbar=True, threshold=0.1, display_mode='z', cut_coords=10, output_file=plot_path)
-    #     print(f"ISC plot saved to {plot_path}")
-
-    #     plot_path = os.path.join(results_dir, cond, f"p_values_plot_{cond}_boot{n_boot}_pairwise{do_pairwise}.png")
-    #     plotting.plot_stat_map(p_img, title=f'p-values {cond}', colorbar=True, threshold=0.05, display_mode='z', cut_coords=10, output_file=plot_path)
-    #     print(f"p-values plot saved to {plot_path}")
-
-
-    # %%
-    # Permutation based on group labels
-
-    # ----------------
-    # sphere permutation
-    # isc_results_roi = {}
-    # for cond in conditions:
-
-    #     print(f'Performing sphere ISC for condition: {cond}')
-    #     roi_ls = [] #stack list of roi timepoints x subjects 
-    #     for roi in roi_coords.keys():
-    #         roi_dict = transformed_sphere_per_roi[cond][roi]
-    #         roi_ts = [] # stack timepoints x subjects
-    #         for sub in roi_dict.keys():
-    #             roi_ts.append(np.array(roi_dict[sub])) # list timepoints x 1 vector
-    #         roi_ls.append(np.array(roi_ts)) # list of roi timepoints x subjects
-        
-    #     roi_data_3d = np.stack(np.squeeze(roi_ls), axis=1).T # timepoints x roi x subjects
-    #     isc_results_roi[cond] = utils.isc_1sample(roi_data_3d, pairwise=do_pairwise, n_boot=n_boot, summary_statistic=None)
-        
-    # #roi_isc['roi_names'] = list(roi_coords.keys())
-
-    # for cond, isc_dict in isc_results_roi.items():
-    #     save_path = os.path.join(results_dir, cond, roi_folder, f"isc_{len(roi_coords)}spheres_{cond}_{n_boot}boot_pairWise{do_pairwise}.pkl")
-    #     utils.save_data(save_path, isc_dict)
-    #     print(f"ISC results saved for {cond} at {save_path}")
-
-    # isc_sphere_permutation_group_results = {}
-    # for cond, isc_dict in isc_results_roi.items():  # `isc_results` should already contain ISC values
-    #     print(f"Performing permutation ISC for condition: {cond}")
-
-    #     isc_values = isc_dict['isc']
-
-    #     for var in group_labels_df.columns:
-    #         group_assignment = group_labels_df[var].values  # Get group labels for this variable
-
-    #         # Perform ISC permutation test
-    #         observed, p_value, distribution = permutation_isc(
-    #             isc_values,  # This should be the ISC matrix from the main analysis
-    #             group_assignment=group_assignment,
-    #             pairwise=do_pairwise,
-    #             summary_statistic="median",  # Median ISC
-    #             n_permutations=n_perm,
-    #             side="two-sided",
-    #             random_state=42
-    #         )
-
-    #         if cond not in isc_sphere_permutation_group_results:
-    #             isc_sphere_permutation_group_results[cond] = {}
-
-    #         isc_sphere_permutation_group_results[cond][var] = {
-    #             "observed": observed,
-    #             "p_value": p_value,
-    #             "distribution": distribution
-    #         }
-
-    #         print(f"Completed SPHERE permutation ISC for condition: {cond}, variable: {var}")
-
-    # # Save the permutation results
-    # for cond, cond_results in isc_sphere_permutation_group_results.items():
-    #     save_path = os.path.join(results_dir, cond, roi_folder, f"isc_{n_perm}permutation_results_{cond}_pairwise{do_pairwise}.pkl")
-    #     utils.save_data(save_path, cond_results)
-    #     print(f"sphere Permutation ISC results saved for {cond} at {save_path}")
     #%%
+    # Group permutation
+    isfc_permutation_group_results = {}
+    isfc_cols = ['Chge_hypnotic_depth_median_grp',
+    'SHSS_score_median_grp',
+    'total_chge_pain_hypAna_median_grp']
+
+    # 'Abs_diff_automaticity_median_grp']
+    # 'raw_change_HYPER_median_grp', 'raw_change_ANA_median_grp'
+    results_save_dir = os.path.join(results_dir, 'isfc_group_permutation')
+    os.makedirs(results_save_dir, exist_ok=True)
+
+    for cond, isfc_dict in isfc_results_per_cond.items():  # isfc_results[cond] = subjects x roi_pairs
+        
+        print(f"Performing permutation ISFC for condition: {cond}")
+        result_paths["isfc_group_permutation_results"] = {}
+        isfc_permutation_group_results[cond] = {}
+        isfc = isfc_dict['isfc'] 
+        
+        for var in isfc_cols:
+            print(f" --- ISFC for : {var}")
+            group_assignment = group_labels_df[var].values  # binary labels (0 or 1), length = n_subjects
+            
+            # Run permutation test per ROI pair (e.g., vectorized ISFC values)
+            isfc_permutation_group_results[cond][var] = isc_utils.group_permutation(
+                isfc, group_assignment,
+                n_perm=5,
+                do_pairwise=do_pairwise, 
+                side='two-sided',
+                summary_statistic='median'
+            )
+
+        save_path = os.path.join(results_save_dir, f'{cond}_isfc_group_permutation_{n_perm}perm.pkl')
+        isc_utils.save_data(save_path, isfc_permutation_group_results[cond])
+        result_paths["isfc_group_permutation_results"][cond] = save_path
+    
+        print(f" ==Done permutation ISFC for all variables in: {cond}")
+
+# %%
+
+
+    # %%
+    # Permutation based on group labels    #%%
     # import numpy as np
 
     # def prepare_contrast_data_with_trimmed_TRs(cond_trials1, cond_trials2, tr_trim1=None, tr_trim2=None, transformed_data=None):
@@ -733,6 +623,10 @@ if do_isc_analyses:
     #     return task1_data, task2_data
 
 #%% 
+summary_stat = 'mean'
+
+do_contrast_permutation = True
+if do_contrast_permutation:
     # Paired sample permutation test
     contrast_conditions = ['Hyper-Ana', 'Ana-Hyper', 'NHyper-NAna']
     contrast_to_test = [conditions[0:2], conditions[0:2][::-1], conditions[2:4]]
@@ -817,7 +711,7 @@ if do_isc_analyses:
         # if do_pairwise:
         group_ids = np.array([0] * n_sub + [1] * n_sub)
 
-        isc_permutation_cond_contrast[contrast] = isc_utils.group_permutation(isc_grouped, group_ids, n_perm, do_pairwise, side = 'two-sided', summary_statistic='median')
+        isc_permutation_cond_contrast[contrast] = isc_utils.group_permutation(isc_grouped, group_ids, n_perm, do_pairwise, side = 'two-sided', summary_statistic=summary_stat)
         diff_vector = isc_permutation_cond_contrast[contrast]['observed_diff']
         print(f'{contrast} : Max & min ISC diff : {np.max(diff_vector)}, {np.min(diff_vector)}')
         save_path = os.path.join(contrast_perm_save, f"isc_results_{contrast}_{n_perm}perm_pairWise{do_pairwise}.pkl")
@@ -827,7 +721,7 @@ if do_isc_analyses:
         print(f'contrast {contrast} done in {time.time() - start_cond_time:.2f} sec')
 
 #%%
-do_shss_permutation = False
+do_shss_split = False
 
 if 'single-trial' in setup.model_id:
     contrast_conditions = ['N_ANA1_instrbk_1-N_HYPER1_instrbk_1', 'Ana-N_Ana', 'Hyper-N_Hyper'] #, 'Ana-N_Ana', 'Hyper-N_HYPER']
@@ -838,7 +732,7 @@ else:
     contrast_conditions = ['Hyper-Ana', 'Ana-Hyper', 'NHyper-NAna']
     contrast_to_test = [conditions[0:2], conditions[0:2][::-1], conditions[2:4]]
 
-if do_shss_permutation:
+if do_shss_split:
 
     shss_grps = ['low_shss', 'high_shss']
     isc_permutation_cond_contrast = {}
@@ -871,7 +765,7 @@ if do_shss_permutation:
         # print('group id unique : ', np.unique(group_ids_selected, return_counts=True))  
         
             isc_grouped_selected = isc(combined_data_selected, pairwise=do_pairwise, summary_statistic=None)
-            group_ids = np.array([0] * n_sub + [1] * n_sub)
+            # group_ids = np.array([0] * n_sub + [1] * n_sub)
             isc_permutation_cond_contrast[contrast] = isc_utils.group_permutation(isc_grouped_selected, group_ids_selected, n_perm, do_pairwise, side = 'two-sided', summary_statistic='median')
 
             save_path = os.path.join(contrast_perm_shss, f"isc_results_{keep_n}sub_{contrast}_{n_perm}perm_pairWise{do_pairwise}.pkl")
@@ -969,55 +863,18 @@ if do_shss_permutation:
 
     #         group_labels_df['subject_to_cb'] = group_labels_df.index.map(subject_to_cb_group)
 
-    #-----------------------
-    # Split subj based on SHSS and test contrasts
-    shss_grps = ['low_shss', 'high_shss']
-    isc_permutation_cond_contrast = {}
-
-    for g, shss_grp in enumerate(shss_grps):
-        start_grp_time = time.time()
-        # print(f'==== Doing {shss_grp}, suppose to have 12 if low and 11 if high ====')
-        contrast_perm_shss = os.path.join(results_dir, f'group_perm_{shss_grp}')
-        os.makedirs(contrast_perm_shss, exist_ok=True)
-
-        if shss_grp == 'low_shss':
-            shss_idx = np.array(group_labels_df['SHSS_score_median_grp'] == 0)
-            keep_n = len(shss_idx[shss_idx == True]) # inverse!
-        elif shss_grp == 'high_shss':
-            shss_idx = np.array(group_labels_df['SHSS_score_median_grp'] == 1)
-            keep_n = len(shss_idx[shss_idx == True])
-
-        shss_idx_concat = np.concatenate([shss_idx, shss_idx])
-        group_ids_selected = np.array([0] * keep_n + [1] * keep_n)
-        # else:
-        #     group_ids_selected = np.array([1] * keep_n)
-
-        print(f'-----{shss_grp} grp with {keep_n} subjects')
-        for i, contrast in enumerate(contrast_conditions):
-
-            combined_data_ls = [transformed_data_per_cond[task] for task in contrast_to_test[i]]
-            combined_data = np.concatenate(combined_data_ls, axis=2)
-            combined_data_selected = combined_data[:, :, shss_idx_concat]
-            print(f'{contrast} : Repeated mesaure isc having shape : ', combined_data_selected.shape)
-        # print('group id unique : ', np.unique(group_ids_selected, return_counts=True))  
-        
-            isc_grouped_selected = isc(combined_data_selected, pairwise=do_pairwise, summary_statistic=None)
-            group_ids = np.array([0] * n_sub + [1] * n_sub)
-            isc_permutation_cond_contrast[contrast] = isc_utils.group_permutation(isc_grouped_selected, group_ids_selected, n_perm, do_pairwise, side = 'two-sided', summary_statistic='median')
-
-            save_path = os.path.join(contrast_perm_shss, f"isc_results_{keep_n}sub_{contrast}_{n_perm}perm_pairWise{do_pairwise}.pkl")
-            isc_utils.save_data(save_path, isc_permutation_cond_contrast[contrast])
-            result_paths["condition_contrast_results"][contrast] = save_path
-        print(f'Contrasts for {shss_grp} done in {time.time() - start_grp_time:.2f} sec')      
 
 # %%
 
-    # %%
-    # ------------
-    # Perform permutation based on group labels
+# ------------
+# Perform permutation based on group labels
+do_group_permutation = True
+
+if do_group_permutation:
     reload(isc_utils)
 
     isc_permutation_group_results = {}
+
     for cond, isc_dict in isc_results.items():  # `isc_results` should already contain ISC values
         print(f"Performing permutation ISC for condition: {cond}")
         var_isc_results = {}
@@ -1025,8 +882,9 @@ if do_shss_permutation:
         isc_permutation_group_results[cond] = {}
 
         for var in group_labels_df.columns:
+            print(f"Performing permutation ISC for condition: {cond}, variable: {var}")
             group_assignment = group_labels_df[var].values  # Get group labels for this variable
-            isc_permutation_group_results[cond][var] = isc_utils.group_permutation(isc_values, group_assignment, n_perm, do_pairwise, side = 'two-sided', summary_statistic='median')
+            isc_permutation_group_results[cond][var] = isc_utils.group_permutation(isc_values, group_assignment, n_perm, do_pairwise, side = 'two-sided', summary_statistic=summary_stat)
         
         print(f"Completed permutation ISC for {group_labels_df.columns}")
 
