@@ -7,13 +7,19 @@ def init():
     setup = ExperimentSetup()
 
     setup.atlas_name = "schafer-200-2mm"
-    setup.model_id = 'model1'
-    setup.model_is = 'sugg'
-
+    setup.model_id = 'model4-mean'
+    setup.model_is = 'shock'
+    setup.apply_mask = 'whole-brain'
+    
     setup.transform_imgs = True
-    setup.pre_computed = False 
+    setup.pre_computed = 'model1_sugg_23-sub_schafer-200-2mm_mask-whole-brain_pairWise-True_preproc_reg-mvmnt-True-8' 
     setup.do_isc_analyses = True
-    setup.do_rsa = True
+    setup.do_pairwise = True
+    setup.do_isfc = False
+    setup.do_group_permutation = True
+    setup.do_shss_split = False # median split and perform 1 sample test + contrast ISC
+    setup.do_rsa = False
+
 
     setup.n_boot = 5000
     setup.do_pairwise = True

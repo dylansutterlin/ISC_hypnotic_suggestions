@@ -28,8 +28,11 @@ class ExperimentSetup():
 
         self.transform_imgs = True #False
         self.pre_computed = False # used if transform_imgs is False, can specify diff model to load
-        self.do_isc_analyses = True
         self.do_pairwise = True 
+        self.do_isfc = False
+        self.do_isc_analyses = True
+        self.do_group_permutation = True
+        self.do_shss_split = True # median split and perform 1 sample test + contrast ISC
         self.do_rsa = True
     
         self.n_boot = 5000
@@ -64,8 +67,10 @@ class ExperimentSetup():
     @property
     def model_name(self):
         """Dynamically updates the model name whenever attributes change."""
-        return f'{self.model_id}_{self.model_is}_{self.n_sub}-sub_{self.atlas_name}_mask-{self.apply_mask}_pairWise-{self.do_pairwise}_preproc_reg-mvmnt-{self.reg_conf}-{self.keep_n_conf}'
-
+        if self.keep_n_sub is not None:
+            return f'{self.model_id}_{self.model_is}_{self.keep_n_sub}-sub_{self.atlas_name}_mask-{self.apply_mask}_pairWise-{self.do_pairwise}_preproc_reg-mvmnt-{self.reg_conf}-{self.keep_n_conf}'
+        else:
+            return f'{self.model_id}_{self.model_is}_{self.n_sub}-sub_{self.atlas_name}_mask-{self.apply_mask}_pairWise-{self.do_pairwise}_preproc_reg-mvmnt-{self.reg_conf}-{self.keep_n_conf}'
     @property
     def results_dir(self):
         """Dynamically updates the results directory whenever model parameters change."""

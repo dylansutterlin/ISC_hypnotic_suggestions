@@ -8,7 +8,7 @@ def init():
 
     setup.atlas_name = "schafer-200-2mm"
     setup.model_id = 'model5-isfc'
-    setup.model_is = 'sugg'
+    setup.model_is = 'shock'
     setup.apply_mask = 'lanA800'
     
     setup.transform_imgs = True
