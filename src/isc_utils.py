@@ -745,48 +745,34 @@ from joblib import Parallel, delayed
 # Permutation from chenc 2016
 
 # Helper function for correlation computation
-def _permute_func(data1, data2, metric, how, include_diag=False, random_state=None):
-    """
-    Permute the rows and columns of a matrix and compute the correlation.
-
-    Parameters:
-    - data1: np.array, square similarity matrix to permute
-    - data2: np.array, vectorized matrix (same size as upper triangle of data1)
-    - metric: str, correlation metric ('spearman', 'pearson', 'kendall')
-    - how: str, which part of the matrix to use ('upper', 'lower', 'full')
-    - include_diag: bool, whether to include diagonal elements for 'full'
-    - random_state: RandomState, random state for reproducibility
-
-    Returns:
-    - r: float, correlation value
-    """
+def _permute_func(data1, vec2, metric, how, include_diag=False, random_state=None):
     random_state = check_random_state(random_state)
+    permuted_ix = random_state.permutation(len(data1))
 
-    # Permute rows and columns together
-    permuted_ix = random_state.permutation(data1.shape[0])
-    permuted_matrix = data1[np.ix_(permuted_ix, permuted_ix)]
-
-    # Extract relevant part of the permuted matrix
-    if how == "upper":
-        permuted_vec = permuted_matrix[np.triu_indices(permuted_matrix.shape[0], k=1)]
-    elif how == "lower":
-        permuted_vec = permuted_matrix[np.tril_indices(permuted_matrix.shape[0], k=-1)]
-    elif how == "full":
-        if include_diag:
-            permuted_vec = permuted_matrix.ravel()
-        else:
-            permuted_vec = np.concatenate([
-                permuted_matrix[np.triu_indices(permuted_matrix.shape[0], k=1)],
-                permuted_matrix[np.tril_indices(permuted_matrix.shape[0], k=-1)]
-            ])
-
-    # Compute correlation
-    if metric == "spearman":
-        r, _ = spearmanr(permuted_vec, data2)
+    if data1.ndim == 1:
+        permuted_vec = data1[permuted_ix]
     else:
-        raise ValueError("Only 'spearman' metric is currently supported.")
+        permuted_matrix = data1[np.ix_(permuted_ix, permuted_ix)]
+        if how == "upper":
+            permuted_vec = permuted_matrix[np.triu_indices(permuted_matrix.shape[0], k=1)]
+        elif how == "lower":
+            permuted_vec = permuted_matrix[np.tril_indices(permuted_matrix.shape[0], k=-1)]
+        elif how == "full":
+            if include_diag:
+                permuted_vec = permuted_matrix.ravel()
+            else:
+                permuted_vec = np.concatenate([
+                    permuted_matrix[np.triu_indices(permuted_matrix.shape[0], k=1)],
+                    permuted_matrix[np.tril_indices(permuted_matrix.shape[0], k=-1)]
+                ])
+
+    if metric == "spearman":
+        r, _ = spearmanr(permuted_vec, vec2)
+    else:
+        raise ValueError("Only 'spearman' is supported.")
 
     return r
+
 
 # Main Mantel test function [! 15 jan. 25 DSG changed data2 to vec2
 # for inputing vectorized output isc values]
@@ -822,26 +808,31 @@ def matrix_permutation(
     """
     random_state = check_random_state(random_state)
 
-    # Validate and extract parts of the matrices
-    if how == "upper":
-        vec1 = data1[np.triu_indices(data1.shape[0], k=1)]
-        #vec2 = data2[np.triu_indices(data2.shape[0], k=1)]
-    elif how == "lower":
-        vec1 = data1[np.tril_indices(data1.shape[0], k=-1)]
-        #vec2 = data2[np.tril_indices(data2.shape[0], k=-1)]
-    elif how == "full":
-        if include_diag:
-            vec1 = data1.ravel()
-            #vec2 = data2.ravel()
-        else:
-            vec1 = np.concatenate([
-                data1[np.triu_indices(data1.shape[0], k=1)],
-                data1[np.tril_indices(data1.shape[0], k=-1)],
-            ])
-            #vec2 = np.concatenate([
-                # data2[np.triu_indices(data2.shape[0], k=1)],
-                # data2[np.tril_indices(data2.shape[0], k=-1)],
-            # ])
+    if data1.ndim == 1: # can already pass a vector
+        vec1 = data1
+    else:
+        # Validate and extract parts of the matrices
+        if how == "upper":
+            vec1 = data1[np.triu_indices(data1.shape[0], k=1)]
+            #vec2 = data2[np.triu_indices(data2.shape[0], k=1)]
+        elif how == "lower":
+            vec1 = data1[np.tril_indices(data1.shape[0], k=-1)]
+            #vec2 = data2[np.tril_indices(data2.shape[0], k=-1)]
+        elif how == "full":
+            if include_diag:
+                vec1 = data1.ravel()
+                #vec2 = data2.ravel()
+            else:
+                vec1 = np.concatenate([
+                    data1[np.triu_indices(data1.shape[0], k=1)],
+                    data1[np.tril_indices(data1.shape[0], k=-1)],
+                ])
+                #vec2 = np.concatenate([
+                    # data2[np.triu_indices(data2.shape[0], k=1)],
+                    # data2[np.tril_indices(data2.shape[0], k=-1)],
+                # ])
+    if len(vec1) != len(vec2):
+        raise ValueError("Similarity vectors must be the same length.")
 
     # Compute observed correlation
     observed_r, _ = spearmanr(vec1, vec2)
@@ -850,11 +841,11 @@ def matrix_permutation(
     seeds = random_state.randint(0, 2**32 - 1, size=n_permute)
     permuted_r = Parallel(n_jobs=n_jobs)(
         delayed(_permute_func)(
-            data1, vec2, metric=metric, how=how, include_diag=include_diag, random_state=seeds[i]
+            vec1, vec2, metric=metric, how=how, include_diag=include_diag, random_state=seeds[i]
         ) for i in range(n_permute)
     )
 
-    # Calculate p-value
+    #  p-value
     permuted_r = np.array(permuted_r)
     if tail == 2:
         p_value = np.mean(np.abs(permuted_r) >= np.abs(observed_r))
@@ -867,7 +858,7 @@ def matrix_permutation(
     if return_perms:
         stats["perm_dist"] = permuted_r
 
-    return stats
+    return observed_r, p_value, permuted_r
 
 
 def fdr(p, q=0.05):
