@@ -8,7 +8,7 @@ isc-py39
 *conda*
 
 nilearn_cache/*
-
+*/nilearn_cache
 # Results and temporary files
 results/
 *.nii
