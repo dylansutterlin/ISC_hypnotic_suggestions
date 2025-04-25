@@ -466,10 +466,10 @@ if do_isc_analyses:
 
     # Combined condition bootstrap
     print('====================================')
-    # code conditions for all_sugg, (ANA+Hyper), (Neutral_H + Neutral_A)
-    combined_conditions = ['all_sugg', 'modulation', 'neutral', 'ana_run']
-    task_to_test = [conditions, conditions[0:2], conditions[2:4], conditions[1::2]]
 
+    combined_conditions = setup.combined_conditions
+    task_to_test = setup.how_to_combine_conds #list of list of cond to include
+    
     if 'instrbk' in setup.model_id:
         task_to_test = [conditions]
         combined_conditions = ['all_sugg']
@@ -480,7 +480,8 @@ if do_isc_analyses:
     for i, comb_cond in enumerate(combined_conditions):
         start_cond_time = time.time()
         print(f'Performing bootstraped ISC for combined condition: {comb_cond}')
-        
+        print(f'--Conditions to combine: {task_to_test[i]}')
+
         combined_data = np.concatenate([transformed_data_per_cond[task]for task in task_to_test[i]], axis=0)
 
         transformed_data_per_cond[comb_cond] = combined_data
@@ -503,7 +504,7 @@ if do_isc_analyses:
 # %%
 #==============================
 # ISFC per conditions
-do_isfc = True #setup.do_isfc
+do_isfc = setup.do_isfc
 
 if do_isfc:
 
@@ -530,7 +531,6 @@ if do_isfc:
         print(f" {cond} done in {end_cond_time - start_cond_time:.2f} sec")
         print(f"ISC results saved for {cond} at {save_path}")
 
-    #%%
     # Group permutation
     isfc_permutation_group_results = {}
     isfc_cols = ['Chge_hypnotic_depth_median_grp',
@@ -623,14 +623,16 @@ if do_isfc:
     #     return task1_data, task2_data
 
 #%% 
-summary_stat = 'mean'
+summary_stat = 'median'
 
 do_contrast_permutation = True
 if do_contrast_permutation:
     # Paired sample permutation test
-    contrast_conditions = ['Hyper-Ana', 'Ana-Hyper', 'NHyper-NAna']
-    contrast_to_test = [conditions[0:2], conditions[0:2][::-1], conditions[2:4]]
-    
+    # contrast_conditions = ['Hyper-Ana', 'Ana-Hyper', 'NAna-NHyper', 'ana_run-hyper_run']
+    # contrast_to_test = [conditions[0:2], conditions[0:2][::-1], conditions[2:4], combined_conditions[3:]]
+    contrast_conditions = setup.contrast_conditions
+    contrast_to_test = setup.contrast_to_test
+
     if 'single-trial' in setup.model_id:
         contrast_conditions = ['N_ANA1_instrbk_1-N_HYPER1_instrbk_1', 'Ana-N_Ana', 'Hyper-N_Hyper'] #, 'Ana-N_Ana', 'Hyper-N_HYPER']
 
@@ -646,7 +648,7 @@ if do_contrast_permutation:
     os.makedirs(contrast_perm_save, exist_ok=True)
 
     for i, contrast in enumerate(contrast_conditions):
-        print(f'Performing 2 group permutation ISC : {contrast}')
+        print(f'== Performing 2 group permutation ISC : {contrast}')
 
         start_cond_time = time.time()
 
@@ -713,15 +715,15 @@ if do_contrast_permutation:
 
         isc_permutation_cond_contrast[contrast] = isc_utils.group_permutation(isc_grouped, group_ids, n_perm, do_pairwise, side = 'two-sided', summary_statistic=summary_stat)
         diff_vector = isc_permutation_cond_contrast[contrast]['observed_diff']
-        print(f'{contrast} : Max & min ISC diff : {np.max(diff_vector)}, {np.min(diff_vector)}')
+        print(f'Max & min ISC diff : {np.max(diff_vector)}, {np.min(diff_vector)}')
         save_path = os.path.join(contrast_perm_save, f"isc_results_{contrast}_{n_perm}perm_pairWise{do_pairwise}.pkl")
         isc_utils.save_data(save_path, isc_permutation_cond_contrast[contrast])
         result_paths["condition_contrast_results"][contrast] = save_path
         
-        print(f'contrast {contrast} done in {time.time() - start_cond_time:.2f} sec')
+        print(f'     ... done in {time.time() - start_cond_time:.2f} sec')
 
 #%%
-do_shss_split = False
+do_shss_split = setup.do_shss_split
 
 if 'single-trial' in setup.model_id:
     contrast_conditions = ['N_ANA1_instrbk_1-N_HYPER1_instrbk_1', 'Ana-N_Ana', 'Hyper-N_Hyper'] #, 'Ana-N_Ana', 'Hyper-N_HYPER']
@@ -899,13 +901,13 @@ if do_group_permutation:
         # print(f"Saved ISC permutation results for condition: {cond} at {save_path}")
 
 # %%
-
 # %%
 if do_rsa :
     # Load existing ISC results
-    task_to_test = setup.combined_task_to_test # [conditions, conditions[0:2], conditions[2:4]]
+    # task_to_test = setup.combined_task_to_test # [conditions, conditions[0:2], conditions[2:4]]
     combined_conditions = setup.combined_conditions #['all_sugg', 'modulation', 'neutral']
-    all_conditions = setup.all_conditions # ['Hyper', 'Ana', 'NHyper', 'NAna', 'all_sugg', 'modulation', 'neutral']
+    # all_conditions = setup.all_conditions # ['Hyper', 'Ana', 'NHyper', 'NAna', 'all_sugg', 'modulation', 'neutral']
+    all_conditions = conditions + combined_conditions
 
     isc_results = {}
     
@@ -914,9 +916,9 @@ if do_rsa :
             f = os.path.join(results_dir, cond, f"isc_results_{cond}_{n_boot}boot_pairWise{do_pairwise}.pkl")
             isc_results[cond] = isc_utils.load_pickle(f)
         elif cond in combined_conditions:
-            i = combined_conditions.index(cond)
-            combined_data = np.concatenate([transformed_data_per_cond[task] for task in task_to_test[i]], axis=0)
-            n_scans = combined_data.shape[0]
+            # i = combined_conditions.index(cond)
+            # combined_data = np.concatenate([transformed_data_per_cond[task] for task in task_to_test[i]], axis=0)
+            # n_scans = combined_data.shape[0]
             f = os.path.join(concat_cond_save, f"isc_results_{cond}_{n_boot}boot_pairWise{do_pairwise}.pkl")
             isc_results[cond] = isc_utils.load_pickle(f) 
 

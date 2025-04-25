@@ -7,8 +7,8 @@ def init():
     setup = ExperimentSetup()
 
     setup.atlas_name = "schafer-200-2mm"
-    setup.model_id = 'model4-mean'
-    setup.model_is = 'shock'
+    setup.model_id = 'model1-ext-conds'
+    setup.model_is = 'sugg'
     setup.apply_mask = 'whole-brain'
     
     setup.transform_imgs = True

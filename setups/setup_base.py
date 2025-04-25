@@ -22,16 +22,20 @@ class ExperimentSetup():
         # Model parameters
         self.model_is = 'sugg' # or shock
         self.conditions = ['HYPER', 'ANA', 'NHYPER', 'NANA']
-        self.combined_conditions = ['all_sugg', 'modulation', 'neutral']
-        self.combined_task_to_test = [self.conditions, self.conditions[0:2], self.conditions[2:4]]
-        self.all_conditions = ['HYPER', 'ANA', 'NHYPER', 'NANA', 'all_sugg', 'modulation', 'neutral']
+        self.combined_conditions = ['all_sugg', 'modulation', 'neutral', 'ana_run', 'hyper_run']
+        self.how_to_combine_conds = [self.conditions, self.conditions[0:2], self.conditions[2:4], self.conditions[1::2], self.conditions[0::2]]
+        # self.all_conditions = ['HYPER', 'ANA', 'NHYPER', 'NANA', 'all_sugg', 'modulation', 'neutral']
 
         self.transform_imgs = True #False
         self.pre_computed = False # used if transform_imgs is False, can specify diff model to load
         self.do_pairwise = True 
         self.do_isfc = False
         self.do_isc_analyses = True
-        self.do_group_permutation = True
+        self.so_contrast_permutation = True
+        self.contrast_conditions = ['Hyper-Ana', 'Ana-Hyper', 'NAna-NHyper', 'ana_run-hyper_run']
+        self.contrast_to_test = [self.conditions[0:2], self.conditions[0:2][::-1], self.conditions[2:4], self.combined_conditions[3:]]
+        
+        self.do_group_permutation = True # median split : ISC grp1 > ISC grp2
         self.do_shss_split = True # median split and perform 1 sample test + contrast ISC
         self.do_rsa = True
     
