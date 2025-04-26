@@ -37,12 +37,14 @@ def load_json(file_path):
         data = json.load(f)
     return data
 
+from nilearn import datasets
 def load_data_mask(ref_img):
     mask = '/data/rainville/Hypnosis_ISC/masks/brainmask_91-109-91.nii'
+    mask_native = datasets.load_mni152_brain_mask()
     # from qc_utils import resamp_to_img_mask, assert_same_affine
 
     # reload(utils)
-    mask = utils.resamp_to_img_mask(mask, ref_img)
+    mask = utils.resamp_to_img_mask(mask_native, ref_img)
     utils.assert_same_affine([ref_img], subjects=['mask'], check_other_img=mask)
     print(mask.shape)
 

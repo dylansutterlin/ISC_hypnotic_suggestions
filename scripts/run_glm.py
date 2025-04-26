@@ -49,7 +49,7 @@ preproc_model_name = r'model2_23subjects_zscore_sample_detrend_25-02-25' #r'mode
 model_dir = rf'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/preproc_data/{preproc_model_name}'
 model_name = "model3_23subjects_nuis_nodrift_{}".format(datetime.today().strftime("%d-%m-%y"))
 
-model_name = 'model3_23subjects_nuis_nodrift_31-03-25' #final model, reproduced Desmarteaux et al., 2019 !! 31 mars
+model_name = 'model3_final-isc_23subjects_nuis_nodrift_31-03-25' #final model, reproduced Desmarteaux et al., 2019 !! 31 mars
 
 #load manually
 # model_name = r'model3_23subjects_allnuis_nodrift_10-03-25'
@@ -82,7 +82,8 @@ tr = setup.tr
 reload(utils)
 ref_img = nib.load(setup.ana_run[0])
 mask = utils.load_data_mask(ref_img)
-mni_temp = datasets.load_mni152_template(resolution=None)
+
+mni_temp = datasets.load_mni152_template(resolution=1)
 mni_bg = qc_utils.resamp_to_img_mask(mni_temp, mask)
 
 save_glm = os.path.join(setup.project_dir, 'results', 'imaging', 'GLM', model_name)
@@ -98,9 +99,17 @@ from importlib import reload
 reload(utils)
 
 # combined runs GLM. Pre fixed effect try march 7th 25
-extra_regressors_idx = {
+extra_regressors_idx = { #based on regular conditions : regressors_dct.keys()
     'all_sugg': [0, 1, 2, 3],
-    'all_shock': [4, 5, 6, 7]
+    'all_shock': [4, 5, 6, 7],
+    'ana_run_sugg': [0, 1],
+    'hyper_run_sugg': [2, 3],
+    'modulation_sugg': [0,2],
+    'neutral_sugg': [1,3],
+    'ana_run_shock': [4, 5],
+    'hyper_run_shock': [6, 7],
+    'modulation_shock': [4,6],
+    'neutral_shock': [5,7],
 }
 
 contrasts_spec = {
@@ -119,6 +128,9 @@ loc_contrasts_vectors = {}
 first_level_models = {}
 contrast_maps = {}
 first_lev_files = {}
+
+save_first_lev = os.path.join(save_glm, 'first_level')
+os.makedirs(save_first_lev, exist_ok=True)
 
 for sub, subject in enumerate(subjects):
 
@@ -158,7 +170,7 @@ for sub, subject in enumerate(subjects):
     i = 0
     for condition, contrast_vector in loc_contrasts_vectors[subject].items():
         
-        os.makedirs(os.path.join(save_glm, condition), exist_ok=True)
+        os.makedirs(os.path.join(save_first_lev, condition), exist_ok=True)
 
         # print(f"{condition}...")
         if i < MAX_CONT:
@@ -167,7 +179,7 @@ for sub, subject in enumerate(subjects):
             sub_contrasts[condition] = contrast_map
 
             # Save contrast maps
-            contrasts_files[condition] = os.path.join(save_glm, condition, f"firstlev_localizer_{subject}.nii.gz")
+            contrasts_files[condition] = os.path.join(save_first_lev, condition, f"firstlev_localizer_{subject}.nii.gz")
             contrast_map.to_filename(contrasts_files[condition])
             i += 1
         else :
@@ -287,28 +299,28 @@ conditions_nps = {}
 pain_reg = ['ANA_shock', 'N_ANA_shock', 'HYPER_shock', 'N_HYPER_shock']
 signature_folder = os.path.join(setup.project_dir,'masks/mvpa_signatures')
 
-# for cond in pain_reg:
+for cond in pain_reg:
         
-#     cond_files = {subj: contrasts[cond] for subj, contrasts in first_lev_files.items() if subj != 'sub-47'}
+    cond_files = {subj: contrasts[cond] for subj, contrasts in first_lev_files.items() if subj != 'sub-47'}
 
-#     cond_dot = qc_utils.compute_similarity(cond_files, signature_folder, pattern = 'NPS', metric='dot_product', resample_to_mask=True)
-#     conditions_nps[cond] = cond_dot
+    cond_dot = qc_utils.compute_similarity(cond_files, signature_folder, pattern = 'NPS', metric='dot_product', resample_to_mask=True)
+    conditions_nps[cond] = cond_dot
 
-# # Print the results
+# Print the results
 
-# print("Dot Product Similarity for pain contrasts")
-# print(conditions_nps)
+print("Dot Product Similarity for pain contrasts")
+print(conditions_nps)
 
-# utils.save_pickle(os.path.join(setup.save_dir, 'GLM_results', 'NPS_dot_pain.pkl'), conditions_nps)
-# %%
-# utils.save_json(os.path.join(setup.save_dir, 'GLM_results', 'glm_info.json'), glm_info)
+utils.save_pickle(os.path.join(setup.save_dir, 'GLM_results', 'NPS_dot_pain.pkl'), conditions_nps)
+#%%
+utils.save_json(os.path.join(setup.save_dir, 'GLM_results', 'glm_info.json'), glm_info)
 
 print("Done with all GLM processing!")
 # %%
 #============================
 # VISUALIZATION
 #============================
-
+'''
 def prep_visu_glm(results_p):
 
     # dot_p = os.path.join(results_p, 'GLM_results', 'NPS_dot_pain.pkl')
@@ -480,7 +492,7 @@ from nilearn.maskers import NiftiLabelsMasker
 from nilearn.image import binarize_img
 from nilearn.plotting import view_img
 from nilearn.datasets import fetch_atlas_schaefer_2018
-from src import qc_utils
+from src import qc_utils, isc_utils
 
 model_res = r'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/GLM/model3_23subjects_nuis_nodrift_31-03-25'
 project_dir = setup.project_dir
@@ -593,6 +605,93 @@ def extract_multivoxel_patterns_by_subject(sugg_dict, shock_dict, atlas_img, all
 
     return similarity_df
 
+import numpy as np
+import pandas as pd
+from nilearn.image import load_img
+from sklearn.metrics.pairwise import cosine_similarity
+from tqdm import tqdm
+
+def group_level_mvpa_reactivation_permutation(
+    sugg_dict, shock_dict, atlas_img, roi_indices,
+    n_permutations=1000, random_state=42
+):
+    """
+    Perform group-level permutation test of MVPA pattern reactivation.
+    """
+
+    rng = np.random.RandomState(random_state)
+    atlas_data = atlas_img.get_fdata()
+    shared_subjects = sorted(set(sugg_dict) & set(shock_dict))
+
+    # Preload subject images to save disk access time
+    sugg_data_dict = {subj: load_img(sugg_dict[subj]).get_fdata() for subj in shared_subjects}
+    shock_data_dict = {subj: load_img(shock_dict[subj]).get_fdata() for subj in shared_subjects}
+
+    results = {}
+
+    for roi_idx in tqdm(roi_indices, desc="Running ROIs"):
+        roi_mask = atlas_data == roi_idx
+        if not roi_mask.any():
+            continue
+
+        # Compute true similarities
+        true_sims = []
+
+        for subj in shared_subjects:
+            sugg_vec = sugg_data_dict[subj][roi_mask].flatten()
+            shock_vec = shock_data_dict[subj][roi_mask].flatten()
+
+            if np.linalg.norm(sugg_vec) == 0 or np.linalg.norm(shock_vec) == 0:
+                continue
+
+            sim = cosine_similarity(
+                sugg_vec.reshape(1, -1), shock_vec.reshape(1, -1)
+            )[0, 0]
+            true_sims.append(sim)
+
+        if len(true_sims) == 0:
+            # No valid data for this ROI
+            continue
+
+        true_mean = np.mean(true_sims)
+
+        # Build null distribution
+        permuted_means = []
+        for _ in range(n_permutations):
+            perm_sims = []
+            for subj in shared_subjects:
+                sugg_vec = sugg_data_dict[subj][roi_mask].flatten()
+                shock_vec = shock_data_dict[subj][roi_mask].flatten()
+
+                if np.linalg.norm(sugg_vec) == 0 or np.linalg.norm(shock_vec) == 0:
+                    continue
+
+                # Shuffle within the ROI
+                permuted_sugg_vec = rng.permutation(sugg_vec)
+
+                perm_sim = cosine_similarity(
+                    permuted_sugg_vec.reshape(1, -1), shock_vec.reshape(1, -1)
+                )[0, 0]
+                perm_sims.append(perm_sim)
+
+            if len(perm_sims) > 0:
+                permuted_means.append(np.mean(perm_sims))
+
+        permuted_means = np.array(permuted_means)
+        
+        # p-value: proportion of permuted mean similarities >= true mean
+        p_value = np.mean(permuted_means >= true_mean)
+
+        results[roi_idx] = {
+            "true_mean_similarity": true_mean,
+            "null_distribution": permuted_means,
+            "p_value": p_value,
+            "n_subjects": len(true_sims),
+        }
+
+    return results
+
+
 def project_vector_to_atlas(vector, roi_index, atlas):
     #will replace the label integer in vol with vector value
     atlas_fdata = atlas.get_fdata()  # Always use this for consistency
@@ -608,28 +707,39 @@ def project_vector_to_atlas(vector, roi_index, atlas):
 
     return sim_img
 
-similarity_df  = extract_multivoxel_patterns_by_subject(
-    sugg_dict, shock_dict, atlas, roi_index
+# similarity_df  = extract_multivoxel_patterns_by_subject(
+#     sugg_dict, shock_dict, atlas, roi_index
+# )
+results = group_level_mvpa_reactivation_permutation(
+    sugg_dict, shock_dict, atlas_img=atlas, 
+    roi_indices=roi_index, n_permutations=10
 )
 
-#%%
+p_values = np.array([results[roi]['p_value'] for roi in results])
+roi_list = np.array(list(results.keys()))
 
-mean_sim = similarity_df.mean(axis=0)
-mean_sim_df = pd.DataFrame(mean_sim, columns=['mean_similarity'])
-mean_sim_df.index = labels
+# Apply your isc_utils.fdr function
+p_thresh = isc_utils.fdr(p_values, q=0.05)  # returns a scalar threshold
+print(f"FDR-corrected p-value threshold: {p_thresh:.4f}")
 
-threshold = 0.30
-above_thresh = mean_sim_df[mean_sim_df['mean_similarity'] > threshold].copy()
-# get thresholded df!
-region_details = atlas_data.set_index('annot_abbreviation').loc[above_thresh.index]
-final_df = above_thresh.join(region_details[['Network', 'Region', 'Abbreviation', 'Xmm', 'Ymm', 'Zmm']])
-final_df['Full_Name'] = final_df['Region'] + " (" + final_df['Abbreviation'] + ")"
-final_df = final_df.sort_values('mean_similarity', ascending=False)
+significant_rois = [roi for roi in results if results[roi]['p_value'] <= p_thresh]
+significant_similarities = np.array([results[roi]['true_mean_similarity'] for roi in significant_rois])
+
+threshold = np.abs(significant_similarities).min()
+
+mean_sim_dct = {roi: results[roi]['true_mean_similarity'] for roi in results}
+mean_sim_all = np.array(list(mean_sim_dct.values()))
+sim_img = project_vector_to_atlas(mean_sim_dct, roi_index=list(results.keys()), atlas=atlas)
+
+#NO PERM
+similarity_df = extract_multivoxel_patterns_by_subject(
+    sugg_dict, shock_dict, atlas, roi_index)
 
 
-sim_img = project_vector_to_atlas(mean_sim, roi_index, atlas)
-view = view_img(sim_img, threshold=0.3,vmax=mean_sim.max(), cmap='coolwarm', title='Projected similarity')
+view = view_img(sim_img, threshold=threshold,vmax=mean_sim_all.max(), cmap='coolwarm', title='Projected similarity')
 view
+
+#%%
 
 plot_stat_map(sim_img, threshold=0, title='Cosine Similarity Projection',
                   colorbar=True, display_mode='x', cut_coords=5,
@@ -676,6 +786,46 @@ g = sns.pairplot(behav_subset, kind='scatter', diag_kind='kde', height=2.5,
 g.fig.suptitle('Pairwise Distributions and Relationships of Behavioral Variables', y=1.02)
 plt.tight_layout()
 plt.show()
+
+
+#%%
+import statsmodels.api as sm
+
+
+# Inputs
+y_name = 'total_chge_pain_hypAna'
+y = behav_df[y_name].values
+rois = similarity_df.columns
+
+betas = []
+p_vals = []
+
+for roi in rois:
+    x = similarity_df[roi].values
+    mask = ~np.isnan(x) & ~np.isnan(y)
+    
+    if mask.sum() > 2:
+        X_roi = sm.add_constant(x[mask])  # Adds intercept term
+        model = sm.OLS(y[mask], X_roi).fit()
+        beta = model.params[1]  # coefficient for cosine similarity
+        p = model.pvalues[1]    # p-value for cosine similarity
+    else:
+        beta, p = np.nan, np.nan
+    
+    betas.append(beta)
+    p_vals.append(p)
+
+regression_df = pd.DataFrame({
+    'ROI_index': rois.astype(int),
+    'beta': betas,
+    'p_value': p_vals
+})
+
+p_thresh = isc_utils.fdr(regression_df['p_value'].values, q=0.05)
+regression_df['significant'] = regression_df['p_value'] <= p_thresh
+
+
+regression_df[regression_df['significant'] ==True]
 
 #%%
 
@@ -813,7 +963,6 @@ plt.show()
 
     
 # %% NPS
-'''
 # dot_p = r'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/preproc_data/model1_23subjects_zscore_sample_detrend_21-02-25/GLM_results/NPS_dot_pain.pkl'
 # dot = utils.load_pickle(dot_p)
 # print(dot)
@@ -851,6 +1000,7 @@ for cond in pain_reg:
 # %%
 from nilearn import plotting
 import seaborn as sns
+import random
 views = []
 for condition in all_regs:
     img = file_group[condition]
@@ -870,4 +1020,5 @@ for condition in all_regs:
 #         display_mode='ortho')     
 
 #     plt.show()
+
 '''
