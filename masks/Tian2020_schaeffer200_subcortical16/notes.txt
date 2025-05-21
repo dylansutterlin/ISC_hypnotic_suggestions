@@ -1,0 +1,8 @@
+Needed to convert Cifti file to nifti with the HCP wb_command
+
+conda install -c conda-forge connectome-workbench
+
+wb_command -cifti-separate ___your_file.dscalar.nii___ COLUMN -volume-all output_volume.nii.gz
+
+
+original Cifti file : Schaefer2018_200Parcels_17Networks_order_Tian_Subcortex_S1.dlabel.nii
