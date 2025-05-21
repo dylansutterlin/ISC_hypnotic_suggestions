@@ -679,13 +679,36 @@ def group_permutation(isc_values, group_ids, n_perm, do_pairwise, side = 'two-si
     return perm_results
 
 
-def compute_behav_similarity(behavior, metric='euclidean'):
+from sklearn.metrics import pairwise_distances
+import numpy as np
+
+def compute_behav_similarity(behavior, metric='euclidean', vectorize=False):
+    """
+    Compute similarity matrix between subjects based on behavioral scores.
+
+    Parameters
+    ----------
+    behavior : array-like of shape (n_subjects,)
+        Behavioral values for each subject.
+
+    metric : str, default='euclidean'
+        Similarity metric to use ('euclidean' or 'annak').
+
+    vectorize : bool, default=False
+        If True, return the vectorized upper triangle of the similarity matrix.
+
+    Returns
+    -------
+    sim_matrix : ndarray
+        Similarity matrix (n_subjects x n_subjects) or vectorized upper triangle.
+    """
     n_subs = len(behavior)
     behavior = behavior.reshape(-1, 1)
+
     if metric == 'euclidean':
-        dist_matrix = pairwise_distances(behavior[:,], metric='euclidean')
+        dist_matrix = pairwise_distances(behavior, metric='euclidean')
         sim_matrix = 1 - dist_matrix / np.max(dist_matrix)  # Normalize to similarity
-    
+
     elif metric == 'annak':
         sim_matrix = np.zeros((n_subs, n_subs))
         for i in range(n_subs):
@@ -693,7 +716,15 @@ def compute_behav_similarity(behavior, metric='euclidean'):
                 sim_ij = np.mean([behavior[i], behavior[j]]) / np.max(behavior)
                 sim_matrix[i, j] = sim_matrix[j, i] = sim_ij
 
+    else:
+        raise ValueError("Unsupported metric. Choose 'euclidean' or 'annak'.")
+
+    if vectorize:
+        triu_indices = np.triu_indices(n_subs, k=1)
+        return sim_matrix[triu_indices]
+
     return sim_matrix
+
 
 
 def compute_behav_similarity_LOO(behavior, metric='euclidean'):

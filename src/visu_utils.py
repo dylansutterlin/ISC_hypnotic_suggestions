@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy.stats import rankdata
+from nilearn import datasets
 from nilearn.maskers  import NiftiLabelsMasker, NiftiMapsMasker
 import os 
 import nibabel as nib
@@ -224,7 +225,7 @@ import matplotlib.pyplot as plt
 from statsmodels.stats.multitest import multipletests
 
 def plot_isc_median_with_significance(isc_median, p_values,atlas, atlas_labels, p_threshold=0.01, 
-                                      significant_color='red', nonsignificant_color='gray', 
+                                      significant_color='red', nonsignificant_color='gray',coords_bool_mask=None, 
                                       save_path=None, show=False, fdr_correction=False):
     """
     Plots ISC median values as a bar plot with significant regions highlighted.
@@ -257,8 +258,10 @@ def plot_isc_median_with_significance(isc_median, p_values,atlas, atlas_labels, 
     else:
         sig_mask = p_values < p_threshold
 
-    roi_coords = find_parcellation_cut_coords(labels_img=atlas)
-
+    roi_coords = find_parcellation_cut_coorcoordsds(labels_img=atlas)
+    if coords_bool_mask is not None:
+        roi_coords = roi_coords[coords_bool_mask]
+    
     # Highlight significant ROIs
     significant_labels = [label if sig else " " for label, sig in zip(atlas_labels, sig_mask)]
     bar_colors = [significant_color if sig else nonsignificant_color for sig in sig_mask]
@@ -267,7 +270,7 @@ def plot_isc_median_with_significance(isc_median, p_values,atlas, atlas_labels, 
 
     sig_df = pd.DataFrame({
         'ROI': [label for label, sig in zip(atlas_labels, sig_mask) if sig],
-        'ISC_median': isc_median[sig_mask],
+        'ISC': isc_median[sig_mask],
         'p_value': p_values[sig_mask],
         'Coordinates': [tuple(np.round(coord, 2)) for coord in sig_coords]
     })
@@ -307,7 +310,7 @@ import numpy as np
 import os
 from nilearn.plotting import plot_stat_map
 
-def project_isc_to_brain(atlas_path, isc_median, atlas_labels, p_values=None, p_threshold=0.01,title = '"ISC Median Values (Thresholded)', color = 'Reds',save_path=None, show=True):
+def project_isc_to_brain(atlas_img, isc_median, atlas_labels,roi_coords, p_values=None, p_threshold=0.01,title = '"ISC Median Values (Thresholded)', coords_bool_mask = None, color = 'Reds',save_path=None, show=True, cut_coords_plot = None, display_mode = 'z'):
     """
     Projects ISC values to brain space and optionally thresholds by significance.
 
@@ -319,6 +322,7 @@ def project_isc_to_brain(atlas_path, isc_median, atlas_labels, p_values=None, p_
         Array of median ISC values for each ROI.
     atlas_labels : list
         List of ROI labels corresponding to the atlas.
+        **assumes start at 1, 0 is background
     p_values : np.ndarray, optional
         P-values corresponding to the ISC values. Default is None.
     p_threshold : float, optional
@@ -329,54 +333,84 @@ def project_isc_to_brain(atlas_path, isc_median, atlas_labels, p_values=None, p_
         Whether to display the plot. Default is True.
     """
     
-    atlas_img = nib.load(atlas_path)
-    atlas_data = atlas_img.get_fdata()
-    roi_coords = find_parcellation_cut_coords(labels_img=atlas_img)
+    bg_mni =  datasets.load_mni152_template(resolution=1)
 
+    # atlas_img = nib.load(atlas_path)
+    # atlas_data = atlas_img.get_fdata()
+
+    labels = list(atlas_labels.values())
+
+    # atlas_data = atlas_img.get_fdata()
+    atlas_data = np.rint(atlas_img.get_fdata()).astype(int)
+
+    if len(roi_coords) != len(labels):
+        roi_coords = roi_coords[coords_bool_mask]
+        raise ValueError("Mismatch between number of ROI coordinates and labels.")
+        
     # Create an empty volume to store ISC values
-    isc_vol = np.zeros_like(atlas_data)
+    isc_vol = np.zeros_like(atlas_data, dtype=float)
     non_sig_max_isc = []
-    sig_min_isc = []
+    sig_isc_values = []
     sig_labels_data = []
+
     # Assign ISC values to corresponding atlas regions
-    for roi_idx, label in enumerate(atlas_labels):
-        roi_mask = atlas_data == roi_idx + 1
-        if p_values is not None and p_values[roi_idx] < p_threshold:
+    for (roi_idx, label) in atlas_labels.items():
+
+        i = int(roi_idx) - 1  # Adjust for zero-based indexing
+
+        roi_mask = atlas_data ==int(roi_idx) #+1 !!! ok pre Sensaas
+        if p_values is not None and p_values[i] < p_threshold:
+            # print('Sig ROI', label, p_values[i], isc_median[i])
             # Assign significant ISC value
-            isc_vol[roi_mask] = isc_median[roi_idx]
-            sig_min_isc.append(isc_median[roi_idx])
+            isc_vol[roi_mask] = isc_median[i]
+            sig_isc_values.append(isc_median[i])
+
             sig_labels_data.append({
                 "ROI": label,
-                "ISC": round(isc_median[roi_idx], 2),
-                "p-value": round(p_values[roi_idx], 2),
-                "Coordinates": tuple(np.round(roi_coords[roi_idx], 2))
+                "ISC": round(isc_median[i], 2),
+                "p-value": round(p_values[i], 2),
+                "Coordinates": tuple(np.round(roi_coords[i], 2))
             })
-
+            
         else:
             # Track the highest ISC value for non-significant ROIs
-            non_sig_max_isc.append(isc_median[roi_idx])
+            non_sig_max_isc.append(isc_median[i])
 
     isc_img = nib.Nifti1Image(isc_vol, atlas_img.affine, atlas_img.header)
     
     # max_isc_thresh = np.max(np.array(non_sig_max_isc))
-    if len(sig_min_isc) > 0:
-        min_sig = np.min(np.array(sig_min_isc))
+    if len(sig_isc_values) > 0:
+        min_sig = np.min(np.array(sig_isc_values)) -0.01
     else : min_sig = 0.0001
+
     # Save the ISC map if save_path is provided
     if save_path:
         os.makedirs(os.path.dirname(save_path), exist_ok=True)
         nib.save(isc_img, save_path)
         print(f"ISC projection saved to {save_path}")
+
     max_isc = np.max(isc_vol)
     print(f"Max ISC value: {max_isc}")
 
     if show:
-        plot_stat_map(isc_img, title=title, threshold=min_sig,vmax=max_isc, colorbar=True, display_mode='z', cut_coords=7, cmap=color,draw_cross=False)
+        plot_stat_map(
+            isc_img,
+            bg_img=bg_mni,
+            title=title,
+            threshold=min_sig,
+            vmax=max_isc,
+            black_bg=False,
+            colorbar=True,
+            display_mode=display_mode,
+            cut_coords=cut_coords_plot,
+            cmap=color,
+            draw_cross=False
+        )
 
     return isc_img, min_sig, pd.DataFrame(sig_labels_data)
 
 
-def project_isc_to_brain_perm(atlas_path, isc_median, atlas_labels, p_values=None, p_threshold=0.01,title = '"ISC Median Values (Thresholded)',color='seismic', save_path=None, show=True):
+def project_isc_to_brain_perm(atlas_img, isc_median, atlas_labels,roi_coords, p_values=None, p_threshold=0.01,title = '"ISC Median Values (Thresholded)',color='seismic', save_path=None, show=True, display_mode = 'z',cut_coords_plot = None):
     """
     Projects ISC values to brain space and optionally thresholds by significance.
 
@@ -386,8 +420,8 @@ def project_isc_to_brain_perm(atlas_path, isc_median, atlas_labels, p_values=Non
         Path to the atlas file used for analysis.
     isc_median : np.ndarray
         Array of median ISC values for each ROI.
-    atlas_labels : list
-        List of ROI labels corresponding to the atlas.
+    atlas_labels : dict 
+        ROI label (integer) : label (string) mapping.
     p_values : np.ndarray, optional
         P-values corresponding to the ISC values. Default is None.
     p_threshold : float, optional
@@ -398,34 +432,46 @@ def project_isc_to_brain_perm(atlas_path, isc_median, atlas_labels, p_values=Non
         Whether to display the plot. Default is True.
     """
     # Load the atlas
-    atlas_img = nib.load(atlas_path)
+    bg_mni =  datasets.load_mni152_template(resolution=1)
+    # atlas_img = nib.load(atlas_path)
     atlas_data = atlas_img.get_fdata()
-    roi_coords = find_parcellation_cut_coords(labels_img=atlas_img)
+    # if coords is not None:
+    #     roi_coords = list(zip(
+    #     coords['Xmm'].astype(float),
+    #     coords['Ymm'].astype(float),
+    #     coords['Zmm'].astype(float)
+    #     ))
+    # else:
+    #     roi_coords = find_parcellation_cut_coords(labels_img=atlas_img)
 
     # Create an empty volume to store ISC values
-    isc_vol = np.zeros_like(atlas_data)
+    isc_vol = np.zeros_like(atlas_data, dtype=float)
     sig_labels_data = []
     sig_min_isc = []
 
     # Assign ISC values to corresponding atlas regions
-    for roi_idx, label in enumerate(atlas_labels):
-        roi_mask = atlas_data == roi_idx + 1
-        if p_values is not None and p_values[roi_idx] < p_threshold:
+    for (roi_idx, label) in atlas_labels.items():
+
+        i = int(roi_idx) - 1  # Adjust for zero-based indexing
+        roi_mask = atlas_data ==int(roi_idx)
+    
+        if p_values is not None and p_values[i] < p_threshold:
             # Assign significant ISC value
-            isc_vol[roi_mask] = isc_median[roi_idx]
-            sig_min_isc.append(isc_median[roi_idx])
+            isc_vol[roi_mask] = isc_median[i]
+            sig_min_isc.append(isc_median[i])
             sig_labels_data.append({
                 "ROI": label,
-                "Difference": round(isc_median[roi_idx], 2),
-                "p-value": round(p_values[roi_idx], 2),
-                "Coordinates": tuple(np.round(roi_coords[roi_idx], 2))
+                "Difference": round(isc_median[i], 4),
+                "p-value": round(p_values[i], 5),
+                "Coordinates": tuple(np.round(roi_coords[i], 2))
             })
+    
 
     # Create a Nifti image for the ISC projection
     isc_img = nib.Nifti1Image(isc_vol, atlas_img.affine, atlas_img.header)
 
     if len(sig_min_isc) > 0:
-        min_sig_thresh = np.min(np.abs(sig_min_isc))
+        min_sig_thresh = np.min(np.abs(sig_min_isc)) -0.01
     else:
         min_sig_thresh = 0.0001
 
@@ -438,11 +484,23 @@ def project_isc_to_brain_perm(atlas_path, isc_median, atlas_labels, p_values=Non
     max_diff = np.max(np.abs(isc_vol))
     sign_max = np.max(isc_vol) if np.max(isc_vol) > 0 else np.min(isc_vol)
     print(f"Max ISC abs diff: {max_diff} and sign : {sign_max}")
-
+    max_isc = np.max(isc_vol)
     if show:
-        plot_stat_map(isc_img, title=title, threshold=min_sig_thresh, vmax=max_diff, 
-                      colorbar=True, display_mode='x', cmap=color, cut_coords=6, draw_cross=False)
-
+        # plot_stat_map(isc_img, title=title, threshold=min_sig_thresh, vmax=max_diff, 
+        #               colorbar=True, display_mode='x', cmap=color, cut_coords=6, draw_cross=False)
+        plot_stat_map(
+            isc_img,
+            bg_img=bg_mni,
+            title=title,
+            threshold=min_sig_thresh,
+            vmax=max_diff,
+            black_bg=False,
+            colorbar=True,
+            display_mode=display_mode,
+            cut_coords=cut_coords_plot,
+            cmap=color,
+            draw_cross=False
+        )
     return isc_img, min_sig_thresh, pd.DataFrame(sig_labels_data)
 
 
@@ -793,3 +851,143 @@ def plot_network_radar(network_list, title="Network Distribution of Significant 
     plt.tight_layout()
     plt.show()
 
+
+#for multiple networks/conditions
+
+def plot_overlay_network_radar(sig_dfs_dict, full_cond_names, title="Overlay Network Distribution"):
+    network_order = ['Visual', 'SomMot', 'DorsAttn', 'SalVentAttn', 'Limbic', 'Cont', 'Default', 'TempPar', 'Subcortical', 'Cerebellum']
+    all_used_networks = set()
+    for df in sig_dfs_dict.values():
+        nets = [roi.split('_')[2] for roi in df['ROI']]
+        all_used_networks.update(nets)
+    network_order = [n for n in network_order if n in all_used_networks]
+
+    angles = np.linspace(0, 2 * np.pi, len(network_order), endpoint=False).tolist()
+    angles += angles[:1]
+
+    fig, ax = plt.subplots(figsize=(8, 8), subplot_kw=dict(polar=True))
+    colors = plt.cm.tab10.colors
+
+    for i, (cond, full_cond) in enumerate(full_cond_names.items()):
+        df = sig_dfs_dict[cond]
+        nets = [roi.split('_')[2] for roi in df['ROI']]
+        counts = Counter(nets)
+        values = [counts.get(n, 0) for n in network_order]
+        values += values[:1]
+
+        ax.plot(angles, values, label=full_cond, linewidth=2, color=colors[i % len(colors)])
+        ax.fill(angles, values, alpha=0.25, color=colors[i % len(colors)])
+
+    ax.set_xticks(angles[:-1])
+    ax.set_xticklabels(network_order, fontsize=12)
+    max_val = max([max(Counter([roi.split('_')[2] for roi in df['ROI']]).values()) for df in sig_dfs_dict.values()])
+    yticks = list(range(1, max_val + 1))
+    ax.set_yticks(yticks)
+    ax.set_yticklabels([str(y) if y % 2 == 0 else '' for y in yticks], fontsize=10)
+    ax.set_ylim(0, max_val)
+
+    ax.yaxis.grid(True, linestyle='dotted')
+    ax.xaxis.grid(True, linestyle='dotted')
+    legend = plt.legend(loc='upper right', bbox_to_anchor=(1.1, 1.1), fontsize=12)
+    plt.setp(legend.get_texts(), fontsize=12)
+    plt.title(title, fontsize=14)
+    plt.tight_layout()
+    plt.show()
+
+def plot_median_isc_dots(sig_dfs_one_sample, 
+                          title="Intersubject Correlation (ISC) per Condition", 
+                          conditions_full_names=None,
+                          jitter=True,
+                          jitter_scale=0.08,
+                          y_spacing=1.3):
+    """
+    Plot ISC values as dots for each significant ROI per condition,
+    with median and MAD error bars, condition color coding, and ROI counts.
+
+    Parameters
+    ----------
+    sig_dfs_one_sample : dict
+        Dictionary of condition -> DataFrame with 'ISC' column and 'ROI'.
+    title : str
+        Title for the plot.
+    conditions_full_names : dict or None
+        Mapping from short to full condition labels.
+    jitter : bool
+        Whether to jitter y-axis to separate overlapping points.
+    jitter_scale : float
+        Amount of vertical jitter.
+    y_spacing : float
+        Vertical spacing between condition rows.
+    """
+    import matplotlib.pyplot as plt
+    import numpy as np
+    import matplotlib.patches as patches
+
+    # Color per condition
+    color_map = {
+        'ANA': '#1f77b4',
+        'HYPER': '#d62728',
+        'neutral': '#2ca02c',
+        'modulation': '#9467bd',
+        'all_sugg': '#ff7f0e',
+        'NANA': '#17becf',
+        'NHYPER': '#e377c2',
+    }
+
+    fig, ax = plt.subplots(figsize=(11, 7))
+    yticks = []
+    ylabels = []
+
+    for i, (cond, df) in enumerate(sig_dfs_one_sample.items()):
+        if df.empty:
+            continue
+
+        y_base = i * y_spacing
+        yticks.append(y_base)
+        full_label = conditions_full_names.get(cond, cond) if conditions_full_names else cond
+        ylabels.append(full_label)
+
+        isc_vals = df['ISC'].values
+        n = len(isc_vals)
+
+        # Jitter for dot spread
+        y_vals = y_base + np.random.uniform(-jitter_scale, jitter_scale, size=n) if jitter else np.full(n, y_base)
+
+        color = color_map.get(cond, f"C{i}")
+
+        # Plot dots
+        ax.scatter(isc_vals, y_vals, s=85, alpha=0.9, color=color, edgecolor='black', linewidth=0.4)
+
+        # Compute median and MAD
+        med = np.median(isc_vals)
+        mad = np.median(np.abs(isc_vals - med))
+
+        # Add box
+        box_height = 0.35
+        box = patches.FancyBboxPatch(
+            (med - mad, y_base - box_height / 2),
+            width=2 * mad,
+            height=box_height,
+            boxstyle="round,pad=0.02",
+            linewidth=2.8,
+            edgecolor='black',
+            facecolor=color,
+            alpha=0.25
+        )
+        ax.add_patch(box)
+
+        # Add median line inside box
+        ax.plot([med, med], [y_base - box_height / 2, y_base + box_height / 2],
+                color='black', linewidth=2.5)
+
+    # Final layout
+    ax.set_yticks(yticks)
+    ax.set_yticklabels(ylabels, fontsize=18)
+    ax.set_xlabel('Median ISC per region', fontsize=24)
+    ax.set_title(title, fontsize=26)
+    ax.tick_params(axis='x', labelsize=18)
+    ax.tick_params(axis='y', labelsize=18)
+    ax.set_ylim(-y_spacing, yticks[-1] + y_spacing)
+    ax.grid(axis='x', linestyle='dotted', alpha=0.5)
+    plt.tight_layout()
+    plt.show()

@@ -41,8 +41,9 @@ import src.glm_utils as utils
 
 from sklearn.utils import Bunch
 from importlib import reload
-from nilearn import datasets
+from nilearn import datasets,image
 from datetime import datetime
+
 # %% [markdown]
 ## load data
 preproc_model_name = r'model2_23subjects_zscore_sample_detrend_25-02-25' #r'model2_3subjects_zscore_sample_detrend_25-02-25'
@@ -81,6 +82,7 @@ tr = setup.tr
 
 reload(utils)
 ref_img = nib.load(setup.ana_run[0])
+single_img = image.index_img(ref_img, 0)
 mask = utils.load_data_mask(ref_img)
 
 mni_temp = datasets.load_mni152_template(resolution=1)
@@ -118,6 +120,7 @@ contrasts_spec = {
     "HYPER_sugg_minus_ANA_sugg": (1, -1),
     "N_HYPER_sugg_minus_N_ANA_sugg": (1, -1),
     "ANA_sugg+HYPER_sugg_minus_N_ANA_sugg+N_HYPER_sugg": (1.5, -1),
+    "ANA_sugg+N_ANA_sugg_minus_HYPER_sugg+N_HYPER_sugg": (1, -1),
     "N_ANA_shock_minus_N_HYPER_shock": (1, -1), # eq. N cond?
     "ANA_shock_minus_N_ANA_shock": (1, -1),
     "HYPER_shock_minus_N_HYPER_shock": (1, -1),
@@ -161,7 +164,7 @@ for sub, subject in enumerate(subjects):
     loc_contrasts_vectors[subject].update(utils.make_contrast_vec_from_reg(dm_combined, regressors_dct, contrasts_spec, plot=plot, save_to=save_glm))
   
     first_level_model = FirstLevelModel(t_r=tr, mask_img=mask, smoothing_fwhm=None, standardize=False, signal_scaling=False)
-    first_level_model.fit(func_imgs, design_matrices=dm_combined, confounds=None) # already in dm
+    first_level_model.fit(func_imgs, design_matrices=dm_combined, confounds=None) # conf already in dm
 
     sub_contrasts = {}
     contrasts_files = {}
@@ -293,25 +296,24 @@ utils.save_pickle(os.path.join(glm_second_save, 'results_paths.pkl'), glm_info)
 
 # %%
 
-reload(qc_utils)
-print('Dot product...')
-conditions_nps = {}
-pain_reg = ['ANA_shock', 'N_ANA_shock', 'HYPER_shock', 'N_HYPER_shock']
-signature_folder = os.path.join(setup.project_dir,'masks/mvpa_signatures')
+# reload(qc_utils)
+# print('Dot product...')
+# conditions_nps = {}
+# pain_reg = ['ANA_shock', 'N_ANA_shock', 'HYPER_shock', 'N_HYPER_shock']
+# signature_folder = os.path.join(setup.project_dir,'masks/mvpa_signatures')
 
-for cond in pain_reg:
+# for cond in pain_reg:
         
-    cond_files = {subj: contrasts[cond] for subj, contrasts in first_lev_files.items() if subj != 'sub-47'}
+#     cond_files = {subj: contrasts[cond] for subj, contrasts in first_lev_files.items() if subj != 'sub-47'}
 
-    cond_dot = qc_utils.compute_similarity(cond_files, signature_folder, pattern = 'NPS', metric='dot_product', resample_to_mask=True)
-    conditions_nps[cond] = cond_dot
+#     cond_dot = qc_utils.compute_similarity(cond_files, signature_folder, pattern = 'NPS', metric='dot_product', resample_to_mask=True)
+#     conditions_nps[cond] = cond_dot
 
-# Print the results
+# # Print the results 
+# print("Dot Product Similarity for pain contrasts")
+# print(conditions_nps)
 
-print("Dot Product Similarity for pain contrasts")
-print(conditions_nps)
-
-utils.save_pickle(os.path.join(setup.save_dir, 'GLM_results', 'NPS_dot_pain.pkl'), conditions_nps)
+# utils.save_pickle(os.path.join(setup.save_dir, 'GLM_results', 'NPS_dot_pain.pkl'), conditions_nps)
 #%%
 utils.save_json(os.path.join(setup.save_dir, 'GLM_results', 'glm_info.json'), glm_info)
 
@@ -320,7 +322,7 @@ print("Done with all GLM processing!")
 #============================
 # VISUALIZATION
 #============================
-'''
+
 def prep_visu_glm(results_p):
 
     # dot_p = os.path.join(results_p, 'GLM_results', 'NPS_dot_pain.pkl')
@@ -331,7 +333,7 @@ def prep_visu_glm(results_p):
 
     return res
 
-model_res = r'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/GLM/model3_23subjects_nuis_nodrift_31-03-25'
+model_res = r'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/GLM/model3_final-isc_23subjects_nuis_nodrift_31-03-25'
 res = utils.load_pickle(os.path.join(model_res, 'second_level/results_paths.pkl'))
 # res_model = 'model2_23subjects_zscore_sample_detrend_25-02-25'
 # res_model = 'model2_23subjects_nodrift_10-03-25'
@@ -392,6 +394,16 @@ plt.show()
 # %%
 visu_on = True
 
+reg_list = ['ANA_sugg',
+ 'N_ANA_sugg',
+ 'HYPER_sugg',
+ 'N_HYPER_sugg',
+ 'all_sugg',
+ 'ana_run_sugg',
+ 'hyper_run_sugg']
+
+SUGG_CUTS = (-54, -42, 46, 58 
+             )
 if visu_on:
     # VISU 1st
     # from nilearn import plotting
@@ -406,7 +418,6 @@ if visu_on:
     #         display_mode='ortho')     
 
     #     plt.show()
-    reg_list = ['all_sugg', 'all_shock']
     # VISU 2nd
     apply_thresh = True
     stats_imgs = {}
@@ -430,7 +441,8 @@ if visu_on:
             img,
             title=f"second level stats cor {condition}",
             threshold=thresh,            
-            display_mode='ortho')   
+            display_mode='x',
+            cut_coords=SUGG_CUTS,)   
         
         view = plotting.view_img(img, threshold=thresh, title=f"2d-lev FDR {condition}")
         cuts_second[condition] = display
@@ -494,16 +506,20 @@ from nilearn.plotting import view_img
 from nilearn.datasets import fetch_atlas_schaefer_2018
 from src import qc_utils, isc_utils
 
-model_res = r'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/GLM/model3_23subjects_nuis_nodrift_31-03-25'
+model_res = r'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/GLM/model3_final-isc_23subjects_nuis_nodrift_31-03-25'
 project_dir = setup.project_dir
 results_dir = setup['save_dir']
 
 mvpa_save_to = os.path.join(results_dir, 'mvpa_similarity')
 os.makedirs(mvpa_save_to, exist_ok=True)
 
+PAIN_REG = 'modulation_shock'
+SUGG_REG = 'neutral_sugg' #'modulation_sugg'
+
+
 # load maps 
-all_shock_maps = glob(os.path.join(model_res, 'all_shock', 'firstlev_localizer_*.nii.gz'))
-all_sugg = glob(os.path.join(model_res, 'all_sugg', 'firstlev_localizer_*.nii.gz'))
+all_shock_maps = glob(os.path.join(model_res, 'first_level', PAIN_REG, 'firstlev_localizer_*.nii.gz'))
+all_sugg = glob(os.path.join(model_res, 'first_level', SUGG_REG, 'firstlev_localizer_*.nii.gz'))
 
 def build_subject_dict(file_list):
     """Build a dict: {subject_id: filepath} from a list of NIfTI file paths."""
@@ -521,26 +537,63 @@ shock_dict = build_subject_dict(all_shock_maps)
 shared_subjects = sorted(set(sugg_dict) & set(shock_dict))
 
 # load atlas for ROI
-full_mask = nib.load(os.path.join(project_dir, 'masks/lipkin2022_lanA800', 'LanA_n806.nii'))
-mask_native = binarize_img(full_mask, threshold=0.20)
-mask_path = os.path.join(mvpa_save_to, f'bin_lanA800_{0.2}thresh.nii.gz')
-resamp_mask = qc_utils.resamp_to_img_mask(mask_native, ref_img)
-resamp_mask.to_filename(mask_path)
 
-# atlas_data = fetch_atlas_schaefer_2018(n_rois = 100, resolution_mm=2)
-# atlas_native = nib.load(atlas_data['maps'])
-atlas_native = nib.load('/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/masks/sensaas/SENSAAS_MNI_ICBM_152_2mm.nii')
-atlas_data = pd.read_csv('/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/masks/sensaas/SENSAAS_description.csv')
-atlas = qc_utils.resamp_to_img_mask(atlas_native, nib.load(all_sugg[0]))
-view_img(atlas, threshold=0.5, title='SENSAAS atlas')
+#load Tian subcortical + combine with schaeffer 
+tian_sub_cortical = nib.load(os.path.join(project_dir, 'masks/Tian2020_schaeffer200_subcortical16/Schaefer2018_200Parcels_17Networks_order_Tian_Subcortex_S1.dlabel.nii.gz'))
+tian_data = tian_sub_cortical.get_fdata()
 
-#sensaas ids and labels
-roi_index = atlas_data['Index'].values
-atlas_data['annot_abbreviation'] = atlas_data['Abbreviation'] + '_' + atlas_data['Hemisphere']
-labels = atlas_data['annot_abbreviation'].values
+# Load the labels from a text file
+labels_tian16 = os.path.join(project_dir, 'masks/Tian2020_schaeffer200_subcortical16/Schaefer2018_200Parcels_17Networks_order_Tian_Subcortex_S1_label.txt')
+with open(labels_tian16, 'r') as f:
+    tian16_labels = [line.strip() for line in f][::2][0:16] #!! getting only labels, only 16 !!
 
 
-print(atlas.shape, mask.shape, mask_native.shape)
+atlas_data = fetch_atlas_schaefer_2018(n_rois = 200, resolution_mm=2)
+atlas = nib.load(atlas_data['maps'])
+atlas_path = atlas_data['maps'] #os.path.join(project_dir,os.path.join(project_dir, 'masks', 'k50_2mm', '*.nii*'))
+# labels_bytes = list(atlas_data['labels'])
+full_labels = [str(label, 'utf-8') if isinstance(label, bytes) else str(label) for label in atlas_data['labels']]
+roi_index = [full_labels.index(lbl)+1 for lbl in full_labels]
+id_labels_dct = dict(zip(roi_index, full_labels))
+
+#combined Tian + shaeffer
+combined_data = atlas.get_fdata().copy()
+combined_data[tian_data > 0] = tian_data[tian_data > 0] + 200  # Avoid index collision
+combined_img = nib.Nifti1Image(combined_data, affine=atlas.affine, header=atlas.header)
+nib.save(combined_img, os.path.join(project_dir, 'masks/Tian2020_schaeffer200_subcortical16/', 'combined_schaefer200_tian16.nii.gz'))
+
+plotting.plot_roi(combined_img,bg_img=single_img, colorbar=True, display_mode = 'x', cut_coords=(-60,-50,0,50,60 ))
+
+labels = full_labels + tian16_labels
+roi_index = [full_labels.index(lbl)+1 for lbl in full_labels] + [tian16_labels.index(lbl)+201 for lbl in tian16_labels]
+ATLAS = combined_img
+
+#find coords
+from nilearn.plotting import find_parcellation_cut_coords
+coords = find_parcellation_cut_coords(ATLAS)
+
+
+# # Load the mask
+# full_mask = nib.load(os.path.join(project_dir, 'masks/lipkin2022_lanA800', 'LanA_n806.nii'))
+# mask_native = binarize_img(full_mask, threshold=0.20)
+# mask_path = os.path.join(mvpa_save_to, f'bin_lanA800_{0.2}thresh.nii.gz')
+# resamp_mask = qc_utils.resamp_to_img_mask(mask_native, ref_img)
+# resamp_mask.to_filename(mask_path)
+
+# # atlas_data = fetch_atlas_schaefer_2018(n_rois = 100, resolution_mm=2)
+# # atlas_native = nib.load(atlas_data['maps'])
+# atlas_native = nib.load('/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/masks/sensaas/SENSAAS_MNI_ICBM_152_2mm.nii')
+# atlas_data = pd.read_csv('/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/masks/sensaas/SENSAAS_description.csv')
+# atlas = qc_utils.resamp_to_img_mask(atlas_native, nib.load(all_sugg[0]))
+# view_img(atlas, threshold=0.5, title='SENSAAS atlas')
+
+# #sensaas ids and labels
+# roi_index = atlas_data['Index'].values
+# atlas_data['annot_abbreviation'] = atlas_data['Abbreviation'] + '_' + atlas_data['Hemisphere']
+# labels = atlas_data['annot_abbreviation'].values
+
+
+# print(atlas.shape, mask.shape, mask_native.shape)
 # %%
 
 from nilearn.image import load_img
@@ -707,11 +760,166 @@ def project_vector_to_atlas(vector, roi_index, atlas):
 
     return sim_img
 
+# INtersubject MVPA
+def compute_inter_subject_mvpa_similarity(condition_dict, atlas_img, roi_indices):
+    """
+    Computes inter-subject cosine similarity matrices (subject x subject) for each ROI
+    based on multivoxel patterns from a single condition.
+
+    Parameters
+    ----------
+    condition_dict : dict
+        Dictionary mapping subject IDs to NIfTI image file paths for a single condition.
+    atlas_img : Nifti1Image
+        NIfTI image of the brain atlas (e.g., Schaefer parcellation).
+    roi_indices : list of int
+        List of ROI indices to include.
+
+    Returns
+    -------
+    similarity_matrices : dict
+        Keys are ROI indices, values are subject x subject cosine similarity matrices.
+    vectorized_df : pd.DataFrame
+        DataFrame where rows are pairwise subject combinations and columns are ROIs.
+        Each cell is the cosine similarity between two subjects for that ROI.
+    """
+    atlas_data = atlas_img.get_fdata()
+    shared_subjects = sorted(condition_dict.keys())
+    n_subjects = len(shared_subjects)
+
+    # Load all data once
+    condition_data_dict = {
+        subj: load_img(condition_dict[subj]).get_fdata() for subj in shared_subjects
+    }
+
+    similarity_matrices = {}
+    similarity_vectors = []
+
+    for roi_idx in roi_indices:
+        roi_mask = atlas_data == roi_idx
+        if not roi_mask.any():
+            continue
+
+        subj_vectors = []
+
+        for subj in shared_subjects:
+            vec = condition_data_dict[subj][roi_mask].flatten()
+
+            if np.linalg.norm(vec) == 0:
+                subj_vectors.append(np.full(np.sum(roi_mask), np.nan))
+            else:
+                subj_vectors.append(vec)
+
+        subj_vectors = np.array(subj_vectors)
+        valid_mask = ~np.isnan(subj_vectors).any(axis=1)
+        valid_vectors = subj_vectors[valid_mask]
+        valid_subjects = np.array(shared_subjects)[valid_mask]
+
+        if valid_vectors.shape[0] < 2:
+            continue
+
+        sim_matrix = cosine_similarity(valid_vectors)
+        similarity_matrices[roi_idx] = pd.DataFrame(
+            sim_matrix, index=valid_subjects, columns=valid_subjects
+        )
+
+        # Extract upper triangle for this ROI
+        upper_tri_indices = np.triu_indices(sim_matrix.shape[0], k=1)
+        upper_tri_values = sim_matrix[upper_tri_indices]
+        similarity_vectors.append(pd.Series(upper_tri_values, name=roi_idx))
+
+    vectorized_df = pd.concat(similarity_vectors, axis=1)
+    vectorized_df.columns.name = 'ROI'
+
+    return similarity_matrices, vectorized_df
+
+from brainiak.isc import bootstrap_isc
+from scipy.spatial.distance import squareform
+
+def bootstrap_test_pairwise_ISC(vectorized_df, summary_statistic='median', n_bootstraps=1000, ci_percentile=95, side='right', random_state=None):
+
+    results = []
+
+    for roi in tqdm(vectorized_df.columns):
+        iscs = vectorized_df[roi].dropna().values
+        if len(iscs) < 2:
+            continue  # Skip if not enough data
+
+        observed, ci, p, dist = bootstrap_isc(
+            iscs,
+            pairwise=True,
+            summary_statistic=summary_statistic,
+            n_bootstraps=n_bootstraps,
+            ci_percentile=ci_percentile,
+            side=side,
+            random_state=random_state
+        )
+
+        results.append({
+            "ROI": roi,
+            "observed": observed,
+            "ci_lower": ci[0],
+            "ci_upper": ci[1],
+            "p_value": p
+        })
+
+    result_df = pd.DataFrame(results).set_index("ROI")
+    # import ace_tools as tools; tools.display_dataframe_to_user(name="Bootstrap ISC Results", dataframe=result_df)
+    
+    return result_df
+#%%
+
+# intersubject MVPA
+similarity_matrices, similarity_df = compute_inter_subject_mvpa_similarity(
+    sugg_dict, atlas_img=ATLAS, roi_indices=roi_index
+)
+
+bootstrap_pattern_results = bootstrap_test_pairwise_ISC(
+    similarity_df, summary_statistic='mean', n_bootstraps=1000, ci_percentile=95, side='right', random_state=42
+)
+
+def clean_bootstrap_output(df):
+    cleaned_df = df.copy()
+    for col in ['observed', 'ci_lower', 'ci_upper', 'p_value']:
+        cleaned_df[col] = cleaned_df[col].apply(lambda x: round(x[0] if isinstance(x, (list, np.ndarray)) else x, 5))
+    return cleaned_df
+
+results_boot = clean_bootstrap_output(bootstrap_pattern_results)
+
+#%%
+tuple_coords = [tuple(coord) for coord in coords]
+id_labels_dct = {roi: label for roi, label in zip(roi_index, labels)}
+
+observed = np.array(results_boot['observed'])
+p_values = np.array(results_boot['p_value'])
+fdr_p = isc_utils.fdr(results_boot['p_value'].values, q=0.05)
+print(f"FDR-corrected p-value threshold: {fdr_p:.4f}")
+
+cut_coords = (5) #(-48, -2, 6, 50)
+isc_img, isc_thresh, sig_df = visu_utils.project_isc_to_brain(
+    atlas_img=atlas,
+    isc_median=observed,
+    atlas_labels=id_labels_dct,
+    roi_coords = tuple_coords,
+    p_values=p_values,
+    p_threshold=fdr_p,
+    title = f'Intersubject mvpa : {SUGG_REG}',
+    coords_bool_mask = None,
+    save_path=None,
+    show=True,
+    display_mode='x',
+    cut_coords_plot=cut_coords,
+)
+view_img(isc_img, threshold=isc_thresh, title='Intersubject MVPA', colorbar=True, cmap='Reds')
+
+
+# %% 
+# PATTERN REACTIVATION
 # similarity_df  = extract_multivoxel_patterns_by_subject(
 #     sugg_dict, shock_dict, atlas, roi_index
 # )
 results = group_level_mvpa_reactivation_permutation(
-    sugg_dict, shock_dict, atlas_img=atlas, 
+    sugg_dict, shock_dict, atlas_img=ATLAS, 
     roi_indices=roi_index, n_permutations=10
 )
 
@@ -729,11 +937,11 @@ threshold = np.abs(significant_similarities).min()
 
 mean_sim_dct = {roi: results[roi]['true_mean_similarity'] for roi in results}
 mean_sim_all = np.array(list(mean_sim_dct.values()))
-sim_img = project_vector_to_atlas(mean_sim_dct, roi_index=list(results.keys()), atlas=atlas)
+sim_img = project_vector_to_atlas(mean_sim_dct, roi_index=list(results.keys()), atlas=ATLAS)
 
 #NO PERM
 similarity_df = extract_multivoxel_patterns_by_subject(
-    sugg_dict, shock_dict, atlas, roi_index)
+    sugg_dict, shock_dict, ATLAS, roi_index)
 
 
 view = view_img(sim_img, threshold=threshold,vmax=mean_sim_all.max(), cmap='coolwarm', title='Projected similarity')
@@ -864,7 +1072,7 @@ plt.legend()
 plt.tight_layout()
 plt.show()
 
-brain_r_pain = project_vector_to_atlas(corr_df['correl'], roi_index, atlas)
+brain_r_pain = project_vector_to_atlas(corr_df['correl'], roi_index, ATLAS)
 view_interaction = view_img(brain_r_pain, threshold=0, title=f'Cosine x {y_name}',
               cmap='coolwarm', colorbar=True)
 

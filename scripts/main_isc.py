@@ -118,17 +118,20 @@ if keep_n_sub is not None:
     isc_data_df = isc_data_df[isc_data_df['subject'].isin(isc_data_df['subject'].unique()[:keep_n_sub])]
     subjects = isc_data_df['subject'].unique()
     n_sub = len(subjects)
-setup.subjects = subjects
+setup.subjects = list(subjects)
 setup.n_sub = n_sub
 
 # create save dir and save params
-setup.check_and_create_results_dir() 
-set     
+setup.check_and_create_results_dir()    
 print('Results directory at :' , results_dir)
 
-# save_setup = os.path.join(setup.results_dir, "setup_parameters.json")
-# with open(save_setup, 'w') as fp:
-#     json.dump(dict(setup), fp, indent=4)
+# breakpoint()
+# for key, item in setup.items():
+#     print(f'{Key} type:', type(key), 'Item type:', type(item))
+
+save_setup = os.path.join(setup.results_dir, "setup_parameters.json")
+with open(save_setup, 'w') as fp:
+    json.dump(setup.to_dict(), fp, indent=4)
 
 result_paths = {
     "isc_results": {},
@@ -138,6 +141,7 @@ result_paths = {
     "rsa_isc_results": {},
     "setup_parameters": os.path.join(setup.results_dir, 'setup_parameters.json')
 }
+
 
 # %%
 reload(isc_utils)
@@ -191,7 +195,7 @@ elif apply_mask == 'outside_lanA800':
 elif apply_mask == None or apply_mask == 'whole-brain':
     print('Loading whole brain MNI template as mask')
     mask_native = datasets.load_mni152_brain_mask()
-    mask_native = nib.load('/data/rainville/Hypnosis_ISC/masks/brainmask_91-109-91.nii')
+    # mask_native = nib.load('/data/rainville/Hypnosis_ISC/masks/brainmask_91-109-91.nii')
     mask_path = os.path.join(results_dir, 'mni_mask.nii.gz')
 
 else:
@@ -244,26 +248,79 @@ elif 'schafer' in atlas_name : #atlas_name == f'schafer-{n_rois}-2mm':
 
     atlas_native = nib.load(atlas_data['maps'])
     atlas = qc_utils.resamp_to_img_mask(atlas_native, ref_img)
-    atlas_path = atlas_data['maps'] #os.path.join(project_dir,os.path.join(project_dir, 'masks', 'k50_2mm', '*.nii*'))
+    # atlas_path = atlas_data['maps'] #os.path.join(project_dir,os.path.join(project_dir, 'masks', 'k50_2mm', '*.nii*'))
     # atlas_labels = list(atlas_data['labels'])
     # atlas_labels.insert(0, 'background')
+    
     atlas_labels = [str(label, 'utf-8') if isinstance(label, bytes) else str(label) for label in atlas_data['labels']]
     atlas_labels.insert(0, 'background')
+
+
+    #load Tian subcortical + combine with schaeffer 
+    tian_sub_cortical = nib.load(os.path.join(project_dir, 'masks/Tian2020_schaeffer200_subcortical16/Schaefer2018_200Parcels_17Networks_order_Tian_Subcortex_S1.dlabel.nii.gz'))
+    tian_data = tian_sub_cortical.get_fdata()
+
+    # Load the labels from a text file
+    labels_tian16 = os.path.join(project_dir, 'masks/Tian2020_schaeffer200_subcortical16/Schaefer2018_200Parcels_17Networks_order_Tian_Subcortex_S1_label.txt')
+    with open(labels_tian16, 'r') as f:
+        tian16_labels = [line.strip() for line in f][::2][0:16] #!! getting only labels, only 16 !!
+
+    # atlas_data = fetch_atlas_schaefer_2018(n_rois = 200, resolution_mm=2)
+    # atlas = nib.load(atlas_data['maps'])
+    # atlas_path = atlas_data['maps'] #os.path.join(project_dir,os.path.join(project_dir, 'masks', 'k50_2mm', '*.nii*'))
+    # # labels_bytes = list(atlas_data['labels'])
+    # full_labels = [str(label, 'utf-8') if isinstance(label, bytes) else str(label) for label in atlas_data['labels']]
+    # roi_index = [full_labels.index(lbl)+1 for lbl in full_labels]
+    roi_index = np.unique(atlas.get_fdata()).astype(int).tolist()
+    id_labels_dct = dict(zip(roi_index, atlas_labels))
+
+    #combined Tian + shaeffer
+    combined_data = atlas.get_fdata().copy()
+    combined_data[tian_data > 0] = tian_data[tian_data > 0] + n_rois  # Avoid index collision
+    combined_img = nib.Nifti1Image(combined_data, affine=atlas.affine, header=atlas.header)
+    nib.save(combined_img, os.path.join(project_dir, 'masks/Tian2020_schaeffer200_subcortical16/', 'combined_schaefer200_tian16_DSG.nii.gz'))
+
+    #reset atlas
+    atlas_labels = atlas_labels + tian16_labels
+    # roi_index = [full_labels.index(lbl)+1 for lbl in full_labels] + [tian16_labels.index(lbl)+201 for lbl in tian16_labels]
+    roi_index = np.unique(combined_img.get_fdata()).astype(int).tolist()
+    atlas = combined_img
+
+    roi_labels_dict = dict(zip(roi_index, atlas_labels))
+    isc_utils.save_json(os.path.join(results_dir, 'roi_labels_dict.json'), roi_labels_dict)
+
+
+    # #find coords
+    # from nilearn.plotting import find_parcellation_cut_coords
+    # coords = find_parcellation_cut_coords(ATLAS)
+
+    plotting.plot_roi(combined_img, colorbar=True, output_file=os.path.join(results_dir, 'schaefer200_tian16_combined.png'), title='Schaefer200 + Tian16 combined')
+    
+elif 'SENSAAS' in atlas_name:
+    atlas_native = nib.load('/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/masks/sensaas/SENSAAS_MNI_ICBM_152_2mm.nii')
+    atlas_data = pd.read_csv('/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/masks/sensaas/SENSAAS_description.csv')
+    atlas = qc_utils.resamp_to_img_mask(atlas_native, ref_img)
+    # view_img(atlas, threshold=0.5, title='SENSAAS atlas')
+
+    #sensaas ids and labels
+    roi_index = atlas_data['Index'].values
+    atlas_data['annot_abbreviation'] = atlas_data['Abbreviation'] + '_' + atlas_data['Hemisphere']
+    atlas_labels = atlas_data['annot_abbreviation'].values
 
 # elif atlas_name == 'lanA800':
 #     atlas = nib.load(os.path.join(project_dir, 'masks/lipkin2022_lanA800', 'LanA_n806.nii'))
 #     atlas_labels = None
 
-    print('atlas loaded with N ROI : ', atlas.shape)
+print('atlas loaded with N ROI : ', atlas.shape)
 
  # extract sphere signal
-roi_coords = {
-"amcc": (-2, 20, 32),
-"rPO": (54, -28, 26),
-"lPHG": (-20, -26, -14),
-}
-sphere_radius = 10
-roi_folder = f"sphere_{sphere_radius}mm_{len(roi_coords)}ROIS_isc"
+# roi_coords = {
+# "amcc": (-2, 20, 32),
+# "rPO": (54, -28, 26),
+# "lPHG": (-20, -26, -14),
+# }
+# sphere_radius = 10
+# roi_folder = f"sphere_{sphere_radius}mm_{len(roi_coords)}ROIS_isc"
 
 # %% load behavioral data
 #==============================================
@@ -284,6 +341,7 @@ X_pheno, group_labels_df, sub_check= isc_utils.load_process_behav(phenotype, y_i
 #X_pheno includes group labels_df!! 
 setup.group_labels = group_labels_df
 
+# breakpoint()
 # %%
 # extract timseries from atlas
 if transform_imgs == True:
@@ -298,8 +356,8 @@ if transform_imgs == True:
     if atlas_name =='voxelWise' or atlas_name == 'voxelWise_lanA800':
         masker = voxel_masker.obj
     elif atlas_name == 'Difumo256':
-        masker = MultiNiftiMapsMasker(maps_img=atlas, standardize=False, memory='nilearn_cache', verbose=5, n_jobs= 1)
-    elif 'schafer' in atlas_name : # == f'schafer{n_rois}_2mm':
+        masker = NiftiMapsMasker(maps_img=atlas,mask_img = resamp_mask,  standardize=True, memory='nilearn_cache', verbose=5, n_jobs= 1)
+    elif atlas_name.split('-')[0] in ['schafer', 'SENSAAS']  : # == f'schafer{n_rois}_2mm':
         masker = NiftiLabelsMasker(labels_img=atlas, labels = atlas_labels, mask_img=resamp_mask,resampling_target='data', standardize=True,high_variance_confounds=False,standardize_confounds=True,keep_masked_labels=False, memory='nilearn_cache', verbose=5, n_jobs= 1)
 
     #masker = MultiNiftiMapsMasker(maps_img=atlas, standardize=False, memory='nilearn_cache', verbose=5, n_jobs= 1)
@@ -316,11 +374,12 @@ if transform_imgs == True:
         #qc_utils.assert_same_affine(concatenated_subjects)
 
 	    #print(f'fitting images for condition : {cond} with shape {concatenated_subjects[subjects[0]][0].shape}')
-        if 'voxelWise' in atlas_name or 'schafer' in atlas_name: # == f'schafer{n_rois}_2mm':
+        if atlas_name.split('-')[0] in ['voxelWise', 'schafer', 'SENSAAS'] : # in atlas_name: # == f'schafer{n_rois}_2mm':
             # ls_voxel_wise = [masker.fit_transform(concatenated_subjects[sub],
             #                                        confounds= confounds_ls[i][cond])
             #                                          for i, sub in enumerate(subjects)
             # ]
+            
             print(f'Fitting {atlas_name} masker for {cond}')
             ls_voxel_wise = []
             fitted_maskers[cond] = []
@@ -470,7 +529,7 @@ if do_isc_analyses:
     combined_conditions = setup.combined_conditions
     task_to_test = setup.how_to_combine_conds #list of list of cond to include
     
-    if 'instrbk' in setup.model_id:
+    if 'instrbk' in setup.model_id or 'single-trial' in setup.model_id:
         task_to_test = [conditions]
         combined_conditions = ['all_sugg']
 
