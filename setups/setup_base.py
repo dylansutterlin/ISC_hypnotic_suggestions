@@ -31,7 +31,7 @@ class ExperimentSetup():
         self.do_pairwise = True 
         self.do_isfc = False
         self.do_isc_analyses = True
-        self.so_contrast_permutation = True
+        self.do_contrast_permutation = True
         self.contrast_conditions = ['Hyper-Ana', 'Ana-Hyper', 'NAna-NHyper', 'ana_run-hyper_run']
         self.contrast_to_test = [self.conditions[0:2], self.conditions[0:2][::-1], self.conditions[2:4], self.combined_conditions[3:]]
         

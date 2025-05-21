@@ -37,11 +37,16 @@ def init():
     setup.transform_imgs = True #False
     setup.pre_computed = False #'model5_sugg_schafer-200-2mm_mask-whole-brain_preproc_reg-mvmnt-True-6'
     setup.do_isc_analyses = True 
+    setup.do_pairwise = True
+    setup.do_isfc = False
+    setup.do_contrast_permutation = True
+    setup.do_group_permutation = True
+    setup.do_shss_split = False 
     setup.do_rsa = False  
 
-    setup.n_boot = 5000
+    setup.n_boot = 10000
     setup.do_pairwise = True # !!
-    setup.n_perm = 5000
+    setup.n_perm = 10000
     setup.n_perm_rsa = 5000  # Default, but can be overridden
     setup.reg_conf = True  # Whether to regress out movement confounds
 

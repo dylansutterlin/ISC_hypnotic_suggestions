@@ -7,9 +7,9 @@ def init():
     setup = ExperimentSetup()
 
     setup.atlas_name = "schafer-200-2mm"
-    setup.model_id = 'model5-isfc'
-    setup.model_is = 'shock'
-    setup.apply_mask = 'lanA800'
+    setup.model_id = 'model6-isfc'
+    setup.model_is = 'sugg'
+    setup.apply_mask = 'whole-brain' #'lanA800'
     
     setup.transform_imgs = True
     setup.pre_computed = False #'model1_sugg_23-sub_schafer-200-2mm_mask-whole-brain_pairWise-True_preproc_reg-mvmnt-True-8' 
