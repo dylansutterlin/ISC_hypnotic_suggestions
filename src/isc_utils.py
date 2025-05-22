@@ -679,52 +679,74 @@ def group_permutation(isc_values, group_ids, n_perm, do_pairwise, side = 'two-si
     return perm_results
 
 
-from sklearn.metrics import pairwise_distances
-import numpy as np
+from sklearn.preprocessing import StandardScaler
+from sklearn.metrics.pairwise import pairwise_distances, cosine_similarity
 
-def compute_behav_similarity(behavior, metric='euclidean', vectorize=False):
+def compute_behav_similarity(behavior, 
+                             metric='euclidean', 
+                             standardize=True, 
+                             vectorize=False):
     """
-    Compute similarity matrix between subjects based on behavioral scores.
+    Compute a subject-by-subject similarity matrix from 1D or multi-D behavioral data.
 
     Parameters
     ----------
-    behavior : array-like of shape (n_subjects,)
-        Behavioral values for each subject.
+    behavior : array-like, shape (n_subjects,) or (n_subjects, n_features)
+        Raw behavioral scores per subject (either a single score or multiple condition scores).
+    metric : {'euclidean', 'annak', 'cosine', 'rbf'}, default='euclidean'
+        Similarity metric to use:
+          - 'euclidean':  1 - (pairwise Euclidean distance / max distance)
+          - 'annak':      AnnaK mean-based (only for 1D input)
+          - 'cosine':     cosine similarity of the vectors
 
-    metric : str, default='euclidean'
-        Similarity metric to use ('euclidean' or 'annak').
-
+    standardize : bool, default=True
+        If True and input is 2D, z‑score each feature column before computing similarity.
     vectorize : bool, default=False
-        If True, return the vectorized upper triangle of the similarity matrix.
+        If True, return only the upper‑triangle (k=1) of the similarity matrix as a flat array.
 
     Returns
     -------
-    sim_matrix : ndarray
-        Similarity matrix (n_subjects x n_subjects) or vectorized upper triangle.
+    sim_matrix : ndarray, shape (n_subjects, n_subjects) or (n_pairs,)
+        Full similarity matrix, or the vectorized upper triangle if `vectorize=True`.
     """
-    n_subs = len(behavior)
-    behavior = behavior.reshape(-1, 1)
+    
+    X = np.asarray(behavior, dtype=float)
+    # ensure shape (n_subjects, n_features)
+    if X.ndim == 1:
+        X = X.reshape(-1, 1)
+    n_subj = X.shape[0]
 
+    # standardize each column if multivariate
+    if standardize and X.shape[1] > 1:
+        X = StandardScaler().fit_transform(X)
+
+    # compute similarity
     if metric == 'euclidean':
-        dist_matrix = pairwise_distances(behavior, metric='euclidean')
-        sim_matrix = 1 - dist_matrix / np.max(dist_matrix)  # Normalize to similarity
+        D = pairwise_distances(X, metric='euclidean')
+        sim = 1 - (D / D.max())
 
     elif metric == 'annak':
-        sim_matrix = np.zeros((n_subs, n_subs))
-        for i in range(n_subs):
-            for j in range(i, n_subs):
-                sim_ij = np.mean([behavior[i], behavior[j]]) / np.max(behavior)
-                sim_matrix[i, j] = sim_matrix[j, i] = sim_ij
+        if X.shape[1] > 1:
+            raise ValueError("AnnaK only supported for univariate input.")
+        values = X.ravel()
+        max_val = values.max()
+        sim = np.zeros((n_subj, n_subj))
+        for i in range(n_subj):
+            for j in range(n_subj):
+                sim[i, j] = (values[i] + values[j]) / (2 * max_val)
+
+    elif metric == 'cosine':
+        sim = cosine_similarity(X)
 
     else:
-        raise ValueError("Unsupported metric. Choose 'euclidean' or 'annak'.")
+        raise ValueError(f"Unsupported metric '{metric}'. "
+                         "Choose from 'euclidean', 'annak', 'cosine'")
 
     if vectorize:
-        triu_indices = np.triu_indices(n_subs, k=1)
-        return sim_matrix[triu_indices]
+        iu = np.triu_indices(n_subj, k=1)
+        return sim[iu]
 
-    return sim_matrix
-
+    return sim
 
 
 def compute_behav_similarity_LOO(behavior, metric='euclidean'):
@@ -773,7 +795,7 @@ from joblib import Parallel, delayed
 #===========================================
 # Permutation tests implemented frmo nlTools 
 # https://nltools.org/api.html#nltools.stats.matrix_permutation
-# Permutation from chenc 2016
+# Permutation from chen 2016
 
 # Helper function for correlation computation
 def _permute_func(data1, vec2, metric, how, include_diag=False, random_state=None):
