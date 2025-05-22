@@ -15,8 +15,6 @@ from nilearn import plotting
 from nilearn.glm.thresholding import threshold_stats_img
 
 
-
-
 print('current working dir : ', os.getcwd())
 # %%
 from src import preproc_utils, visu_utils, qc_utils
@@ -84,36 +82,17 @@ from nilearn.maskers import NiftiLabelsMasker
 from nilearn.image import binarize_img
 from nilearn.plotting import view_img
 from nilearn.datasets import fetch_atlas_schaefer_2018
+from nilearn.plotting import find_parcellation_cut_coords
 from src import qc_utils, isc_utils
 
-model_res = r'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/GLM/model3_23subjects_nuis_nodrift_31-03-25'
+model_res = r'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/GLM/model3_final-isc_23subjects_nuis_nodrift_31-03-25'
+model_res = r'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/GLM/model3_final-isc_23subjects_nuis_nodrift_31-03-25'
 project_dir = setup.project_dir
 results_dir = setup['save_dir']
 
-mvpa_save_to = os.path.join(results_dir, 'mvpa_similarity')
-os.makedirs(mvpa_save_to, exist_ok=True)
 
-# load maps 
-all_shock_maps = glob(os.path.join(model_res, 'all_shock', 'firstlev_localizer_*.nii.gz'))
-all_sugg = glob(os.path.join(model_res, 'all_sugg', 'firstlev_localizer_*.nii.gz'))
-
-def build_subject_dict(file_list):
-    """Build a dict: {subject_id: filepath} from a list of NIfTI file paths."""
-    subject_dict = {}
-    for path in file_list:
-        fname = os.path.basename(path)
-        subj_id = fname.split('_')[-1].replace('.nii.gz', '')  # expects '..._sub-01.nii.gz'
-        subject_dict[subj_id] = path
-    return subject_dict
-
-sugg_dict = build_subject_dict(all_sugg) # not sorted!!
-shock_dict = build_subject_dict(all_shock_maps)
-
-# Intersect 
-shared_subjects = sorted(set(sugg_dict) & set(shock_dict))
-
-# load atlas for ROI
-
+# LOAD ATLAS
+#===========================================
 #load Tian subcortical + combine with schaeffer 
 tian_sub_cortical = nib.load(os.path.join(project_dir, 'masks/Tian2020_schaeffer200_subcortical16/Schaefer2018_200Parcels_17Networks_order_Tian_Subcortex_S1.dlabel.nii.gz'))
 tian_data = tian_sub_cortical.get_fdata()
@@ -138,9 +117,308 @@ combined_data[tian_data > 0] = tian_data[tian_data > 0] + 200  # Avoid index col
 combined_img = nib.Nifti1Image(combined_data, affine=atlas.affine, header=atlas.header)
 nib.save(combined_img, os.path.join(project_dir, 'masks/Tian2020_schaeffer200_subcortical16/', 'combined_schaefer200_tian16.nii.gz'))
 
-image.plot_roi(combined_img,bg_img=single_img, colorbar=True, display_mode = 'x', cut_coords=(-60,-50,0,50,60 ))
+plotting.plot_roi(combined_img,bg_img=single_img, colorbar=True, display_mode = 'x', cut_coords=(-60,-50,0,50,60 ))
+
+# final atlas variables
+roi_index = np.unique(combined_data[combined_data > 0])
+atlas_labels = full_labels + tian16_labels
+labels_roi_dct = dict(zip(roi_index, atlas_labels))
+
+ATLAS = combined_img
+coords = find_parcellation_cut_coords(labels_img=ATLAS)
+
+print(len(atlas_labels), len(roi_index), len(coords))
+#%%
+#==========================
+# mULTIVARIATE BEHAVIORAL
+#==========================
+from sklearn.preprocessing import StandardScaler
+
+
+xlsx_path = r'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/masks/Hypnosis_variables_20190114_pr_jc.xlsx'
+subjects = list(setup['subjects'])
+apm_subjects = ['APM' + subj[4:] for subj in subjects]
+print(apm_subjects)
+
+# def load_process_y(xlsx_path, subjects):
+'''Load behavioral variables from xlsx file and process them for further analysis
+'''
+
+# dependant variables
+original_y = rawY = pd.read_excel(xlsx_path, sheet_name=0, index_col=1, header=2)
+rawY = pd.read_excel(xlsx_path, sheet_name=0, index_col=1, header=2).iloc[
+    2:, [4,5,6,7,8,9,10,11,12, 17, 18, 19, 38, 48, 65, 67]
+]
+
+columns_of_interest = [
+    "SHSS_score",
+    "VAS_Nana_Int",
+    "VAS_Ana_Int",
+    "VAS_Nhyper_Int",
+    "VAS_Hyper_Int",
+    "VAS_Nana_UnP",
+    "VAS_Ana_UnP",
+    "VAS_Nhyper_UnP",
+    "VAS_Hyper_UnP",
+    "raw_change_ANA",
+    "raw_change_HYPER",
+    "total_chge_pain_hypAna",
+    "Chge_hypnotic_depth",
+    "Mental_relax_absChange",
+    "Automaticity_post_ind",
+    "Abs_diff_automaticity"]
+
+rawY.columns = columns_of_interest
+cleanY = rawY.iloc[:-6, :]  # remove sub04, sub34 and last 6 rows
+cutY = cleanY.drop(["APM04*", "APM34*"])
+
+filledY = cutY.fillna(cutY.astype(float).mean()).astype(float)
+filledY["SHSS_groups"] = pd.cut(
+    filledY["SHSS_score"], bins=[0, 4, 8, 12], labels=["0", "1", "2"]
+)  # encode 3 groups for SHSS scores
+
+# bin_edges = np.linspace(min(data_column), max(data_column), 4) # 4 bins
+filledY["auto_groups"] = pd.cut(
+    filledY["Abs_diff_automaticity"],
+    bins=np.linspace(
+        min(filledY["Abs_diff_automaticity"]) - 1e-10,
+        max(filledY["Abs_diff_automaticity"]) + 1e-10,
+        4,
+    ),
+    labels=["0", "1", "2"],
+)
+
+# rename 'APM_XX_HH' to 'APMXX' format, for compatibility with Y.rows
+subjects_rewritten = ["APM" + s.split("-")[1] for s in subjects]
+
+# reorder to match subjects order
+Y = pd.DataFrame(columns=filledY.columns)
+for namei in subjects_rewritten: 
+    row = filledY.loc[namei]
+    Y.loc[namei] = row
+    
+sugg_cols = [
+    "SHSS_score",
+    "Chge_hypnotic_depth",
+    "Mental_relax_absChange",
+    "Abs_diff_automaticity"
+]
+
+pain_cols = ['raw_change_HYPER', 'raw_change_ANA']
+
+scaler = StandardScaler()
+Y_sugg = scaler.fit_transform(np.array(Y[sugg_cols].values, dtype=float))
+Y_pain = scaler.fit_transform(np.array(Y[pain_cols].values, dtype=float))
+
+plt.figure()
+plt.imshow(Y_sugg)
+plt.colorbar(label='scores')
+plt.xticks(np.arange(len(sugg_cols)), sugg_cols, rotation=45, ha='right')
+plt.yticks(np.arange(Y.shape[0]), Y.index)
+plt.title('Behavioral Features Heatmap')
+plt.tight_layout()
+
+plt.figure()
+plt.imshow(Y_pain)
+plt.colorbar(label='scores')
+plt.xticks(np.arange(len(pain_cols)), pain_cols, rotation=45, ha='right')
+plt.yticks(np.arange(Y.shape[0]), Y.index)
+plt.title('Behavioral Features Heatmap')
+plt.tight_layout()
+
+# Compute pairwise cosine similarity using the previously defined function
+cosine_sim_sugg = isc_utils.compute_behav_similarity(Y_sugg, metric='cosine', vectorize=False)
+cosine_sim_pain = isc_utils.compute_behav_similarity(Y_pain, metric='cosine', vectorize=False)
+
+cosine_vec_sugg = isc_utils.compute_behav_similarity(Y_sugg, metric='cosine', vectorize=True)
+cosine_vec_pain = isc_utils.compute_behav_similarity(Y_pain, metric='cosine', vectorize=True)
+
 
 #%%
+# RSA
+from sklearn.metrics.pairwise import cosine_similarity
+from nilearn.image import load_img
+
+def compute_inter_subject_mvpa_similarity(condition_dict, atlas_img, labels_roi_dct):
+    """
+    Computes inter-subject cosine similarity matrices (subject x subject) for each ROI
+    based on multivoxel patterns from a single condition.
+
+    Parameters
+    ----------
+    condition_dict : dict
+        Dictionary mapping subject IDs to NIfTI image file paths for a single condition.
+    atlas_img : Nifti1Image
+        NIfTI image of the brain atlas (e.g., Schaefer parcellation).
+    roi_indices : list of int
+        List of ROI indices to include.
+
+    Returns
+    -------
+    similarity_matrices : dict
+        Keys are ROI indices, values are subject x subject cosine similarity matrices.
+    vectorized_df : pd.DataFrame
+        DataFrame where rows are pairwise subject combinations and columns are ROIs.
+        Each cell is the cosine similarity between two subjects for that ROI.
+    """
+    atlas_data = atlas_img.get_fdata()
+    subjects = sorted(condition_dict.keys())
+    n_subjects = len(subjects)
+    roi_indices = list(labels_roi_dct.keys())
+    roi_labels = list(labels_roi_dct.values())
+
+    # Load all data once
+    condition_data_dict = {
+        subj: load_img(condition_dict[subj]).get_fdata() for subj in subjects
+    }
+
+    similarity_matrices = {}
+    similarity_vectors = []
+
+    for roi_idx in roi_indices:
+        roi_mask = atlas_data == roi_idx
+        if not roi_mask.any():
+            continue
+
+        subj_vectors = []
+
+        for subj in subjects:
+            vec = condition_data_dict[subj][roi_mask].flatten()
+
+            if np.linalg.norm(vec) == 0:
+                subj_vectors.append(np.full(np.sum(roi_mask), np.nan))
+            else:
+                subj_vectors.append(vec)
+
+        subj_vectors = np.array(subj_vectors)
+        valid_mask = ~np.isnan(subj_vectors).any(axis=1)
+        valid_vectors = subj_vectors[valid_mask]
+        valid_subjects = np.array(subjects)[valid_mask]
+
+        if valid_vectors.shape[0] < 2:
+            continue
+
+        sim_matrix = cosine_similarity(valid_vectors)
+        similarity_matrices[roi_idx] = pd.DataFrame(
+            sim_matrix, index=valid_subjects, columns=valid_subjects
+        )
+
+        # Extract upper triangle for this ROI
+        upper_tri_indices = np.triu_indices(sim_matrix.shape[0], k=1)
+        upper_tri_values = sim_matrix[upper_tri_indices]
+        similarity_vectors.append(pd.Series(upper_tri_values, name=roi_idx))
+
+    vectorized_df = pd.concat(similarity_vectors, axis=1)
+    vectorized_df.columns.name = 'ROIs'
+    vectorized_df.columns = roi_labels
+    return similarity_matrices, vectorized_df
+
+#%%
+#===========================
+# MAIN CODE
+from tqdm import tqdm
+
+mvpa_save_to = os.path.join(results_dir, 'mvpa_similarity')
+os.makedirs(mvpa_save_to, exist_ok=True)
+
+conditions = ['modulation_sugg', 'HYPER_sugg', 'ANA_sugg', 'neutral_sugg']
+n_perm_rsa = 5000
+results_dct = {}
+
+for cond in tqdm(conditions):
+    print('Performing RSA on : ', cond)
+    # load maps 
+    all_shock_maps = glob(os.path.join(model_res, 'all_shock', 'firstlev_localizer_*.nii.gz'))
+    sugg_maps = glob(os.path.join(model_res,'first_level', cond, 'firstlev_localizer_*.nii.gz'))
+
+    def build_subject_dict(file_list):
+        """Build a dict: {subject_id: filepath} from a list of NIfTI file paths."""
+        subject_dict = {}
+        for path in file_list:
+            fname = os.path.basename(path)
+            subj_id = fname.split('_')[-1].replace('.nii.gz', '')  # expects '..._sub-01.nii.gz'
+            subject_dict[subj_id] = path
+        return subject_dict
+
+    sugg_dict = build_subject_dict(sugg_maps) # not sorted!!
+    shock_dict = build_subject_dict(all_shock_maps)
+    subjects = sorted(set(sugg_dict) & set(shock_dict))
+
+    # mvpa similarity
+    similarity_matrices_dct, vec_similarity_df = compute_inter_subject_mvpa_similarity(
+        sugg_dict, atlas_img=ATLAS, labels_roi_dct = labels_roi_dct
+    )
+
+    # RSA computation + perm
+    rsa_rows = [] # build df 
+    for roi_idx, roi in enumerate(vec_similarity_df.columns):
+
+        mvpa_sim_vec = vec_similarity_df[roi].values
+        r, p, dist = isc_utils.matrix_permutation(cosine_vec_sugg, mvpa_sim_vec, n_permute=n_perm_rsa, metric="spearman", how="upper", tail=1, return_perms=True)
+
+        rsa_rows.append({
+            'ROI': roi,
+            'spearman_r': r,
+            'p_values': round(p, 5),
+            'x': coords[roi_idx][0],
+            'y': coords[roi_idx][1],
+            'z': coords[roi_idx][2]
+        })
+
+    results_dct[cond] = pd.DataFrame(rsa_rows).sort_values(by='spearman_r', ascending=False)
+    print('Max r, mean and fdr', results_dct[cond]['spearman_r'].max(), results_dct[cond]['spearman_r'].mean(), isc_utils.fdr(results_dct[cond]['p_values'].to_numpy()))
+
+save_path = f'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/RSA/mvpa_IS-RSA_sugg'
+os.makedirs(save_path, exist_ok=True)
+
+save_to = os.path.join(save_path, f'IS-RSA_mvpa_suggestion_tian216{n_perm_rsa}perm.pkl')
+isc_utils.save_data(save_to, results_dct)
+print(f'Saved RSA results to {save_to}')
+print('-----Done with rsa!-----')
+
+# %%
+
+#  print('cond', cond)
+#     rsa_df = rsa_isc_sugg[cond].sort_index(ascending=True) # to match the atlas labels
+
+#     # === Prepare variables for projection ===
+#     correlations = rsa_df['spearman_r'].values
+#     p_values = rsa_df['p_values'].values
+#     roi_labels = rsa_df['ROI'].values  # assumes label matches atlas
+#     fdr_p = isc_utils.fdr(p_values, q=0.05)
+#     print(f'FDR threshold: {fdr_p:.4f}')
+
+#     # === Map ROI label names to atlas index ===
+#     label_to_index = {label: idx for idx, label in enumerate(labels)}
+#     roi_indices = [label_to_index[roi] for roi in roi_labels]
+
+#     # === Create full-length arrays aligned with atlas ===
+#     # full_r_values = np.zeros(len(labels))
+#     # full_p_values = np.ones(len(labels))
+
+#     # for idx, roi_idx in enumerate(roi_indices):
+#     #     full_r_values[roi_idx] = correlations[idx]
+#     #     full_p_values[roi_idx] = p_values[idx]
+
+#     unc_p = 0.01
+#     # === Visualize with your existing function ===
+#     rsa_img, rsa_thresh, sig_labels = visu_utils.project_isc_to_brain_perm(
+#         atlas_img=atlas,
+#         isc_median=correlations,
+#         atlas_labels=atlas_labels,
+#         roi_coords = coords,
+#         p_values=p_values,
+#         p_threshold=fdr_p, #!!
+#         title=None, #"RSA-ISC: Suggestion-Pain Similarity (FDR<.05)",
+#         save_path=None,
+#         show=True,
+#         display_mode='x',
+#         cut_coords_plot=None, #(-52, -40, 34),
+#         color='Reds'
+#     )
+    
+#     views[cond] = plotting.view_img(rsa_img, threshold=rsa_thresh, title=f"RSA suggestion - pain similarity {cond}", colorbar=True,symmetric_cmap=False, cmap = 'Reds')
 
 
 
+# %%

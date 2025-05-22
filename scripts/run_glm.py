@@ -658,8 +658,7 @@ def extract_multivoxel_patterns_by_subject(sugg_dict, shock_dict, atlas_img, all
 
     return similarity_df
 
-import numpy as np
-import pandas as pd
+
 from nilearn.image import load_img
 from sklearn.metrics.pairwise import cosine_similarity
 from tqdm import tqdm

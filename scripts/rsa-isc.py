@@ -7,6 +7,7 @@ import pandas as pd
 from nilearn.datasets import fetch_atlas_schaefer_2018
 from nilearn.maskers import NiftiLabelsMasker
 from nilearn.plotting import find_parcellation_cut_coords
+
 import nibabel as nib
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -278,58 +279,57 @@ atlas_labels = dict(zip(roi_index, labels))
 labels = list(atlas_labels.values())
 
 #%% VISU
-# from nilearn import plotting
-# reload(visu_utils)
+from nilearn import plotting
+reload(visu_utils)
 
-# rsa_path = '/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/RSA/'
-# # rsa_isc = isc_utils.load_pickle(os.path.join(save_path, f'rsa_isc_pain-behav_sugg-pain_{n_perm_rsa}perm.pkl'))
-# rsa_isc = isc_utils.load_pickle('/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/RSA/rsa_pain-behav_sugg-pain_10000perm.pkl')
-# rsa_isc = isc_utils.load_pickle(os.path.join(rsa_path, 'rsa_pain-behav_sugg-pain_10000perm.pkl' ))
+rsa_path = '/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/RSA/2025-05-21_23'
+# rsa_isc = isc_utils.load_pickle(os.path.join(save_path, f'rsa_isc_pain-behav_sugg-pain_{n_perm_rsa}perm.pkl'))
+rsa_isc = isc_utils.load_pickle('/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/RSA/rsa_pain-behav_sugg-pain_10000perm.pkl')
+rsa_isc_sugg = isc_utils.load_pickle(os.path.join(rsa_path, 'rsa_cosine-sugg-behav_isc-sugg5000perm.pkl' ))
 
-# views={}
-# for cond in ['HYPER']:
+views={}
+for cond in ['ANA']: #['HYPER', 'ANA', 'all_sugg', 'neutral']:
 
-#     print('cond', cond)
-#     rsa_df = rsa_isc[cond].sort_index(ascending=True) # to match the atlas labels
+    print('cond', cond)
+    rsa_df = rsa_isc_sugg[cond].sort_index(ascending=True) # to match the atlas labels
 
-#     # === Prepare variables for projection ===
-#     correlations = rsa_df['spearman_r'].values
-#     p_values = rsa_df['p_values'].values
-#     roi_labels = rsa_df['ROI'].values  # assumes label matches atlas
-#     fdr_p = isc_utils.fdr(p_values, q=0.05)
-#     print(f'FDR threshold: {fdr_p:.4f}')
+    # === Prepare variables for projection ===
+    correlations = rsa_df['spearman_r'].values
+    p_values = rsa_df['p_values'].values
+    roi_labels = rsa_df['ROI'].values  # assumes label matches atlas
+    fdr_p = isc_utils.fdr(p_values, q=0.05)
+    print(f'FDR threshold: {fdr_p:.4f}')
 
-#     # === Map ROI label names to atlas index ===
-#     label_to_index = {label: idx for idx, label in enumerate(labels)}
-#     roi_indices = [label_to_index[roi] for roi in roi_labels]
+    # === Map ROI label names to atlas index ===
+    label_to_index = {label: idx for idx, label in enumerate(labels)}
+    roi_indices = [label_to_index[roi] for roi in roi_labels]
 
-#     # === Create full-length arrays aligned with atlas ===
-#     # full_r_values = np.zeros(len(labels))
-#     # full_p_values = np.ones(len(labels))
+    # === Create full-length arrays aligned with atlas ===
+    # full_r_values = np.zeros(len(labels))
+    # full_p_values = np.ones(len(labels))
 
-#     # for idx, roi_idx in enumerate(roi_indices):
-#     #     full_r_values[roi_idx] = correlations[idx]
-#     #     full_p_values[roi_idx] = p_values[idx]
+    # for idx, roi_idx in enumerate(roi_indices):
+    #     full_r_values[roi_idx] = correlations[idx]
+    #     full_p_values[roi_idx] = p_values[idx]
 
-#     unc_p = 0.01
-#     # === Visualize with your existing function ===
-#     rsa_img, rsa_thresh, sig_labels = visu_utils.project_isc_to_brain_perm(
-#         atlas_img=atlas,
-#         isc_median=correlations,
-#         atlas_labels=atlas_labels,
-#         roi_coords = coords,
-#         p_values=p_values,
-#         p_threshold=fdr_p, #!!
-#         title=None, #"RSA-ISC: Suggestion-Pain Similarity (FDR<.05)",
-#         save_path=None,
-#         show=True,
-#         display_mode='x',
-#         cut_coords_plot=None, #(-52, -40, 34),
-#         color='Reds'
-#     )
+    unc_p = 0.01
+    # === Visualize with your existing function ===
+    rsa_img, rsa_thresh, sig_labels = visu_utils.project_isc_to_brain_perm(
+        atlas_img=atlas,
+        isc_median=correlations,
+        atlas_labels=atlas_labels,
+        roi_coords = coords,
+        p_values=p_values,
+        p_threshold=fdr_p, #!!
+        title=None, #"RSA-ISC: Suggestion-Pain Similarity (FDR<.05)",
+        save_path=None,
+        show=True,
+        display_mode='x',
+        cut_coords_plot=None, #(-52, -40, 34),
+        color='Reds'
+    )
     
-
-#     views[cond] = plotting.view_img(rsa_img, threshold=rsa_thresh, title=f"RSA suggestion - pain similarity {cond}", colorbar=True,symmetric_cmap=False, cmap = 'Reds')
+    views[cond] = plotting.view_img(rsa_img, threshold=rsa_thresh, title=f"RSA suggestion - pain similarity {cond}", colorbar=True,symmetric_cmap=False, cmap = 'Reds')
 
     
 # %%
