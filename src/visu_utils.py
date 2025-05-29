@@ -392,6 +392,9 @@ def project_isc_to_brain(atlas_img, isc_median, atlas_labels,roi_coords, p_value
     max_isc = np.max(isc_vol)
     print(f"Max ISC value: {max_isc}")
 
+    if max_isc == 0 :
+        print(f'Max non significant ISC value: {np.max(isc_median)}')
+
     if show:
         plot_stat_map(
             isc_img,
@@ -454,15 +457,19 @@ def project_isc_to_brain_perm(atlas_img, isc_median, atlas_labels,roi_coords, p_
 
         i = int(roi_idx) - 1  # Adjust for zero-based indexing
         roi_mask = atlas_data ==int(roi_idx)
-    
-        if p_values is not None and p_values[i] < p_threshold:
+
+        if isc_median[i] == 0:
+            isc_median[i] = 0.0000
+
+        if p_values is not None and p_values[i] <= p_threshold:
             # Assign significant ISC value
             isc_vol[roi_mask] = isc_median[i]
             sig_min_isc.append(isc_median[i])
             sig_labels_data.append({
-                "ROI": label,
-                "Difference": round(isc_median[i], 4),
-                "p-value": round(p_values[i], 5),
+                "ROI": roi_idx,
+                "Atlas Label": label,
+                "r Difference": round(isc_median[i], 4),
+                "p-value": f"{p_values[i]:.5f}",
                 "Coordinates": tuple(np.round(roi_coords[i], 2))
             })
     
@@ -484,7 +491,11 @@ def project_isc_to_brain_perm(atlas_img, isc_median, atlas_labels,roi_coords, p_
     max_diff = np.max(np.abs(isc_vol))
     sign_max = np.max(isc_vol) if np.max(isc_vol) > 0 else np.min(isc_vol)
     print(f"Max ISC abs diff: {max_diff} and sign : {sign_max}")
-    max_isc = np.max(isc_vol)
+
+    if max_diff == 0 :
+        print(f'Max non significant ISC value: {np.max(isc_median)}')
+
+    
     if show:
         # plot_stat_map(isc_img, title=title, threshold=min_sig_thresh, vmax=max_diff, 
         #               colorbar=True, display_mode='x', cmap=color, cut_coords=6, draw_cross=False)
@@ -655,7 +666,11 @@ def plot_scatter_legend(correl1, correl2, var_name = ['var1', 'var2'], grp_id=No
     # Add diagonal line
     max_val = max(np.max(correl1), np.max(correl2))
     min_val = min(np.min(correl1), np.min(correl2))
+    
     plt.plot([min_val, max_val], [min_val, max_val], linestyle='--', color='black', linewidth=1)
+    
+    plt.axhline(0, linestyle='--', color='gray', lw=1)
+    plt.axvline(0, linestyle='--', color='gray', lw=1)
 
     # Add labels and title
     plt.xlabel(f"{var_name[0]}", fontsize=14)
@@ -750,6 +765,10 @@ def jointplot(x, y, x_label="X", y_label="Y",
     g : seaborn.axisgrid.JointGrid
         The seaborn jointplot object.
     """
+    #ensure np arrays
+    x = np.asarray(x, dtype=float)
+    y = np.asarray(y, dtype=float)
+
     # Handle NaNs
     valid_mask = ~np.isnan(x) & ~np.isnan(y)
 

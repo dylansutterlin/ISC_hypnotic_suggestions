@@ -1075,3 +1075,12 @@ def check_confounfs_isc(confounds_ls, subjects, conditions, show=True):
         visu_utils.plot_isc_median_with_significance(median,p_val,conf_names, show=show)
 
     return isc_conf
+
+
+from scipy.spatial.distance import squareform
+
+
+def vector_to_isc_matrix(vec, diag=1):
+    mat = squareform(vec)           # reconstruct symmetric matrix, zeros on diag
+    np.fill_diagonal(mat, diag)     # set diagonal to desired value
+    return mat

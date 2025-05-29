@@ -11,7 +11,6 @@ from importlib import reload
 import nibabel as nib
 import numpy as np
 import pandas as pd
-import json
 from nilearn.image import concat_imgs
 from brainiak.isc import isc, bootstrap_isc, permutation_isc, compute_summary_statistic, phaseshift_isc
 from nilearn.maskers import MultiNiftiMapsMasker, MultiNiftiMasker
@@ -30,28 +29,38 @@ reload(isc_utils)
 
 # %% Load the data
 model_names = {
-    'model1_sugg': 'model1-ext-conds_sugg_23-sub_schafer-200-2mm_mask-whole-brain_pairWise-True_preproc_reg-mvmnt-True-8',
+    'model1_sugg_200': 'model1_sugg_23-sub_schafer-200-2mm_mask-whole-brain_pairWise-True_preproc_reg-mvmnt-True-8',
+    'model1_sugg_200_run' : 'model1-ext-conds_sugg_23-sub_schafer-200-2mm_mask-whole-brain_pairWise-True_preproc_reg-mvmnt-True-8',
     'model1-6': 'model1_sugg_23-sub_schafer-200-2mm_mask-whole-brain_pairWise-True_preproc_reg-mvmnt-True-6',
-    'model2_sugg-sensaas': 'model1-LNG_sugg_23-sub_SENSAAS_mask-whole-brain_pairWise-True_preproc_reg-mvmnt-True-8',
+    'model2_sugg_loo': 'model2_sugg_23-sub_schafer-200-2mm_mask-whole-brain_pairWise-False_preproc_reg-mvmnt-True-8',
     'model2_shock_loo': 'model2_shock_23-sub_schafer-200-2mm_mask-whole-brain_pairWise-False_preproc_reg-mvmnt-True-8',
-    'model3-shock': 'model3_shock_23-sub_schafer-200-2mm_mask-whole-brain_pairWise-True_preproc_reg-mvmnt-True-8',
+    'model3_shock_200': 'model3_shock_23-sub_schafer-200-2mm_mask-whole-brain_pairWise-True_preproc_reg-mvmnt-True-8',
+    'model3_shock_200_run' : 'model2-ext-conds_shock_23-sub_schafer-200-2mm_mask-whole-brain_pairWise-True_preproc_reg-mvmnt-True-8',
     'model1_mean': 'model4-mean_sugg_23-sub_schafer-200-2mm_mask-whole-brain_pairWise-True_preproc_reg-mvmnt-True-8',
     'model5_isfc_sugg' :'model5-isfc_sugg_23-sub_schafer-200-2mm_mask-lanA800_pairWise-True_preproc_reg-mvmnt-True-8',
     'model5_isfc_shock' : 'model5-isfc_shock_23-sub_schafer-200-2mm_mask-lanA800_pairWise-True_preproc_reg-mvmnt-True-8',
     '9 avril ...' : ' ',
     'single_trial' : 'model_single-trial_sugg_23-sub_schafer-200-2mm_mask-lanA800_pairWise-True_preproc_reg-mvmnt-True-8',
     'single_trial_wb' : 'model_single-trial-wb_sugg_23-sub_schafer-200-2mm_mask-whole-brain_pairWise-True_preproc_reg-mvmnt-True-8',
-    'model5_sugg' : 'model5-with-subcort_sugg_23-sub_schafer-200-2mm_mask-whole-brain_pairWise-True_preproc_reg-mvmnt-True-8'
+    'model5_sugg_tian' : 'model5-with-subcort_sugg_23-sub_schafer-200-2mm_mask-whole-brain_pairWise-True_preproc_reg-mvmnt-True-8',
+    'model1_single-trial': 'model1_single-trial-wb_sugg_23-sub_schafer_tian-200-2mm_mask-whole-brain_pairWise-True_preproc_reg-mvmnt-True-8',
+    'model2_sugg' : 'model2_sugg_23-sub_schafer_tian-200-2mm_mask-whole-brain_pairWise-True_preproc_reg-mvmnt-True-8',
+    'model3_shock' : 'model3_shock_23-sub_schafer_tian-200-2mm_mask-whole-brain_pairWise-True_preproc_reg-mvmnt-True-8',
 }
 
 
 model_is = 'model3-shock'
-model_is = 'single_trial_wb'
 model_is = 'model2_sugg-sensaas'
-model_is = 'model1_sugg'
 model_is = 'model5_sugg'
+model_is = 'model1_single-trial'
+model_is = 'model2_sugg'
 
-ref_preproc_models = { 'model2' : model_names['model1_sugg']}
+model_is = 'model3_shock_200'
+model_is = 'model1_sugg_200_run'
+model_is = 'model3_shock_200_run'
+model_is = 'model1_sugg_200'
+
+ref_preproc_models = { 'model2' : model_names['model1_sugg_200']}
 ref_model_name = ref_preproc_models['model2']
 
 project_dir = "/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions"
@@ -81,7 +90,7 @@ os.makedirs(post_hoc_dir, exist_ok=True)
 # all_results_paths = utils.load_json(os.path.join(results_dir, "result_paths.json"))
 # atlas_name = 'Difumo256' # change to setup['atlas_name']
 # n_sub = setup['n_sub']
-shaeffer_only = False
+shaeffer_only = True
 if shaeffer_only:
 
     atlas_data = fetch_atlas_schaefer_2018(n_rois = 200, resolution_mm=2)
@@ -94,13 +103,13 @@ if shaeffer_only:
 
 #---------------
 #up to date scheaffer + subcortical regions
-  
-atlas = nib.load('/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/masks/Tian2020_schaeffer200_subcortical16/combined_schaefer200_tian16_DSG.nii.gz')
-id_labels_dct = isc_utils.load_json('/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/masks/Tian2020_schaeffer200_subcortical16/roi_labels_dict_DSG.json')
-#remove background 
-id_labels_dct.pop('0')
-full_labels = list(id_labels_dct.values())
-roi_index = list(id_labels_dct.keys())
+else:
+    atlas = nib.load('/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/masks/Tian2020_schaeffer200_subcortical16/combined_schaefer200_tian16_DSG.nii.gz')
+    id_labels_dct = isc_utils.load_json('/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/masks/Tian2020_schaeffer200_subcortical16/roi_labels_dict_DSG.json')
+    #remove background 
+    id_labels_dct.pop('0')
+    full_labels = list(id_labels_dct.values())
+    roi_index = list(id_labels_dct.keys())
 
 atlas_masker = NiftiLabelsMasker(labels_img=atlas, labels=full_labels, standardize=False)
 atlas_masker.fit()
@@ -256,7 +265,7 @@ views = {}
 surf = {}
 interactive_views = []
 sig_dfs_one_sample = {}
-for cond in ['ANA'] : #setup['conditions']: #'NHYPER']: #conditions:
+for cond in setup['conditions']: #'NHYPER']: #conditions:
     print('----------------------------------------------------')
     print(cond)
 
@@ -352,7 +361,7 @@ for cond in ['ANA'] : #setup['conditions']: #'NHYPER']: #conditions:
         cmap = 'Reds'
     )
     interactive_views.append(interactive_view)
-    interactive_view.save_as_html(os.path.join(clean_save_to, f'{title_view}.html'))
+    # interactive_view.save_as_html(os.path.join(clean_save_to, f'{title_view}.html'))
 
 
 #frontal = PFC
@@ -370,7 +379,7 @@ reload(isc_utils)
 result_key = 'isc_results'
 interactive_views = {}
 # all_conditions = ['all_sugg', 'modulation'] #'neutral']
-combined_conditions = ['all_sugg', 'ana_run', 'hyper_run']#setup['combined_conditions'] #['all_sugg', 'modulation', 'neutral']
+combined_conditions = ['all_sugg', 'ana_run', 'hyper_run', 'neutral']#setup['combined_conditions'] #['all_sugg', 'modulation', 'neutral']
 # n_scans = [468, 200, 268] #[438, 188, 250]
 views = {}
 sig_df_conditions = {}
@@ -476,7 +485,7 @@ for i, cond in enumerate(combined_conditions):
                             )
     interactive_views[cond] = interactive_view
     # interactive_view.save_as_html(os.path.join(clean_save_to, f'{title_view}.html'))
-    views[cond].save_as_html(os.path.join(clean_save_to, f'{save_name}.html'))
+    # views[cond].save_as_html(os.path.join(clean_save_to, f'{save_name}.html'))
 
 #%%
 reload(visu_utils)
@@ -555,7 +564,7 @@ plt.show()
 # Difference (Permutation) per condition visualization
 result_key = 'cond_contrast_permutation'
 # conditions = ['Hyper', 'Ana', 'NHyper', 'NAna']
-contrasts = ['ana_run-hyper_run', 'Ana-Hyper'] #, 'NAna-NHyper']
+contrasts = ['ana_run-hyper_run', 'Ana-Hyper'] if 'single-trial' not in model_name else ['Ana-N_Ana', 'Hyper-N_Hyper']
 n_perm = setup['n_perm']
 # contrasts = ['Ana-N_Ana', 'Hyper-N_Hyper', 'N_ANA1_instrbk_1-N_HYPER1_instrbk_1']
 
@@ -580,7 +589,7 @@ for i, cont in enumerate(contrasts):
     distribution = isc_contrast['distribution']      
     fdr_p = isc_utils.fdr(p_values, q=0.05)
     # unc_p = 0.05
-
+ 
     reload(visu_utils)
     print(f'FDR thresh : {fdr_p}')
     diff_img, diff_thresh, sig_labels = visu_utils.project_isc_to_brain_perm(
@@ -593,7 +602,8 @@ for i, cont in enumerate(contrasts):
         title = f"Difference in ISC between {cont}",
         save_path=None,
         show=True,
-        color='Reds'
+         display_mode='x',
+        color='coolwarm'
     )
     p_mask= p_values < fdr_p
     # sig_labels = [labels[i] for i in range(len(labels)) if p_mask[i]]
@@ -602,15 +612,14 @@ for i, cont in enumerate(contrasts):
     views[cont] = view_img_on_surf(diff_img, threshold=diff_thresh, surf_mesh='fsaverage')
     sig_rois[cont] = sig_labels
 
-
     interactive_view = view_img(
             diff_img,
             threshold=diff_thresh,
             title=f"Median ISC {cont} (FDR<.05)",
-            cmap='Reds'
+            cmap='coolwarm'
         )
     interactive_views.append(interactive_view)
-    interactive_view.save_as_html(os.path.join(clean_save_to, f'{cont}_all_subjs.html'))
+    # interactive_view.save_as_html(os.path.join(clean_save_to, f'{cont}_all_subjs.html'))
 
 #%%
 sig_rois['Ana-Hyper'].sort_values(by='Difference', ascending=False)
@@ -647,15 +656,12 @@ for i in range(len(roi_focus)):
     visu_utils.jointplot(x, y, x_label='Ana-Hyper ISC',title = list(top5_sig_regions['ROI'])[i], y_label='SHSS')
 
 
-# %%
-
-
 #%%
 #=======================
 # Difference for high vs low SHSS
 result_key = 'cond_contrast_permutation'
 # conditions = ['Hyper', 'Ana', 'NHyper', 'NAna']
-contrasts = ['Hyper-Ana', 'Ana-Hyper', 'NHyper-NAna']
+contrasts = ['Hyper-Ana', 'Ana-Hyper', 'NHyper-NAna',] if 'single-trial' not in model_name else ['Ana-N_Ana', 'Hyper-N_Hyper']
 
 reload(visu_utils)
 n_scans = [94, 94, 125]
@@ -753,9 +759,8 @@ plot_stat_map(
 reload(isc_utils)
 # QUESTION : does ISC differ as a function of SHHS score (median split)?
 result_key = 'group_permutation_results'
-conditions = ['Hyper', 'Ana', 'NHyper', 'NAna']
-conditions = ['ana_run'] #'all_sugg', 'ANA'] #, 'neutral', 'modulation'] #, 'HYPER', 'ANA']
-
+conditions = conditions = ['ANA', 'HYPER']
+n_perm = 5000
 behav_ls = [
     'Chge_hypnotic_depth_median_grp', 'SHSS_score_median_grp', 'raw_change_HYPER_median_grp',
     'raw_change_ANA_median_grp', 'total_chge_pain_hypAna_median_grp',
@@ -763,6 +768,8 @@ behav_ls = [
 ]
 behav_ls = ['raw_change_HYPER_median_grp', 'raw_change_ANA_median_grp', 'total_chge_pain_hypAna_median_grp']
 behav_ls = ['Chge_hypnotic_depth_median_grp', 'Abs_diff_automaticity_median_grp','Mental_relax_absChange_median_grp' ] #, 'Abs_diff_automaticity_median_grp'] #, 'SHSS_score_median_grp', 'total_chge_pain_hypAna_median_grp'] #, 'SHSS_score', 'Abs_diff_automaticity', 'total_chge_pain_hypAna']
+behav_ls = ['SHSS_score_median_grp']
+behav_ls = ['total_chge_pain_hypAna_median_grp','raw_change_ANA_median_grp']
 
 sig_rois_cond = {}
 views = {}
@@ -782,18 +789,20 @@ for cond in conditions:
         distribution = isc_group[y]['distribution'] 
 
         fdr_p = isc_utils.fdr(p_values, q=0.05)
-        # unc_p = 0.01
+        unc_p = 0.05
         print(f'FDR thresh : {fdr_p}')
         reload(visu_utils)
 
+        title = f"{cond} diff for {y} unc. p < {unc_p}"
         cut_coords = (5)
         diff_img, diff_thresh, sig_labels = visu_utils.project_isc_to_brain_perm(
             atlas_img=atlas,
             isc_median=observed_diff,
             atlas_labels=id_labels_dct,
+            roi_coords = roi_coords,
             p_values=p_values,
             p_threshold=fdr_p,
-            title = None,# f"Difference in ISC for {cond} high SHSS > low SHSS (p unc. < {unc_p})",
+            title = title,# f"Difference in ISC for {cond} high SHSS > low SHSS (p unc. < {unc_p})",
             save_path=None,
             show=True,
             display_mode='x',
@@ -801,8 +810,20 @@ for cond in conditions:
         )
         sig_rois_cond[cond][y] = sig_labels
         print(sig_labels)
-        views[cond][y] = plotting.view_img(diff_img, threshold=diff_thresh, title=f"grp diff {cond} {y}")
+        views[cond][y] = plotting.view_img(diff_img,  title=f"grp diff {cond} {y}")
         # view_img_on_surf(diff_img, threshold=diff_thresh, surf_mesh='fsaverage')
+
+#%%
+# combine unc. p < 0.05 table for Ana and Hyper to get ROI that interact with SHSS
+
+ana_unc05_shss = sig_rois_cond['ANA']['SHSS_score_median_grp']
+hyper_unc05_shss = sig_rois_cond['HYPER']['SHSS_score_median_grp']
+
+unc05_ana_hyper_grp_contrast = pd.concat([ana_unc05_shss, hyper_unc05_shss], axis=0).sort_values(by='ROI', ascending=True)
+
+save_to = '/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/msc_output'
+unc05_ana_hyper_grp_contrast.to_csv(os.path.join(save_to, 'shss_median-split_ana_concat_hyper_unc05.csv'), index=False)
+
 
     # SHSS : x = 14, 52
 # %%
