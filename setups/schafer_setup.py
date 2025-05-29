@@ -6,8 +6,8 @@ from setups.setup_base import ExperimentSetup
 def init():
     setup = ExperimentSetup()
 
-    setup.atlas_name = "schafer-200-2mm"
-    setup.model_id = 'model5-with-subcort'
+    setup.atlas_name = "schafer_tian-200-2mm"
+    setup.model_id = 'model1-runs'
     setup.model_is = 'sugg' #!!
     setup.apply_mask = 'whole-brain'
     
@@ -17,8 +17,8 @@ def init():
     setup.do_pairwise = True
     setup.do_isfc = False
     setup.do_contrast_permutation = True
-    setup.do_group_permutation = True
-    setup.do_shss_split = False # median split and perform 1 sample test + contrast ISC
+    setup.do_group_permutation_from_median = True
+    setup.do_low_high_shss_analyses = False # median split and perform 1 sample test + contrast ISC
     setup.do_rsa = False
 
 

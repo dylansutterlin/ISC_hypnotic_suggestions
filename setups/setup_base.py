@@ -32,11 +32,17 @@ class ExperimentSetup():
         self.do_isfc = False
         self.do_isc_analyses = True
         self.do_contrast_permutation = True
-        self.contrast_conditions = ['Hyper-Ana', 'Ana-Hyper', 'NAna-NHyper', 'ana_run-hyper_run']
-        self.contrast_to_test = [self.conditions[0:2], self.conditions[0:2][::-1], self.conditions[2:4], self.combined_conditions[3:]]
+        self.contrast_conditions = ['Ana-Hyper', 'NAna-NHyper', 'ana_run-hyper_run']
+        self.contrast_to_test = [self.conditions[0:2][::-1], self.conditions[2:4], self.combined_conditions[3:]]
         
-        self.do_group_permutation = True # median split : ISC grp1 > ISC grp2
-        self.do_shss_split = True # median split and perform 1 sample test + contrast ISC
+        self.do_group_permutation_from_median = True # median split : ISC grp1 > ISC grp2
+        self.y_variables_to_median_split = ['Chge_hypnotic_depth','SHSS_score',
+                                             'raw_change_HYPER', 'raw_change_ANA',
+                                               'total_chge_pain_hypAna',
+                                               'Mental_relax_absChange',
+                                                 'Abs_diff_automaticity']
+
+        self.do_low_high_shss_analyses = True # median split and perform 1 sample test + contrast ISC for each group SEPARATELY
         self.do_rsa = True
     
         self.n_boot = 5000

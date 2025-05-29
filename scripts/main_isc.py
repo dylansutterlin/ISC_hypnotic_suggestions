@@ -76,8 +76,9 @@ keep_n_confouds =  setup.keep_n_conf
 conditions = setup.conditions
 transform_imgs = setup.transform_imgs
 do_isc_analyses = setup.do_isc_analyses
+do_group_permutation_from_median = setup.do_group_permutation_from_median
 
-do_shss_split = setup.do_shss_split
+do_low_high_shss_analyses = setup.do_low_high_shss_analyses
 do_rsa = setup.do_rsa
 
 n_boot = setup.n_boot
@@ -332,11 +333,7 @@ sub_check['APM_behav'] = APM_subjects
 phenotype =pd.read_csv(behav_path, index_col=0)
 phenotype.head()
 # y_interest = ['SHSS_score', 'total_chge_pain_hypAna', 'Abs_diff_automaticity', ]
-y_interest = [
-    'Chge_hypnotic_depth', 'SHSS_score', 'raw_change_HYPER',
-    'raw_change_ANA', 'total_chge_pain_hypAna',
-    'Mental_relax_absChange', 'Abs_diff_automaticity'
-]
+y_interest = setup.y_variables_to_median_split 
 X_pheno, group_labels_df, sub_check= isc_utils.load_process_behav(phenotype, y_interest, setup, sub_check)
 #X_pheno includes group labels_df!! 
 setup.group_labels = group_labels_df
@@ -357,8 +354,8 @@ if transform_imgs == True:
         masker = voxel_masker.obj
     elif atlas_name == 'Difumo256':
         masker = NiftiMapsMasker(maps_img=atlas,mask_img = resamp_mask,  standardize=True, memory='nilearn_cache', verbose=5, n_jobs= 1)
-    elif atlas_name.split('-')[0] in ['schafer', 'SENSAAS']  : # == f'schafer{n_rois}_2mm':
-        masker = NiftiLabelsMasker(labels_img=atlas, labels = atlas_labels, mask_img=resamp_mask,resampling_target='data', standardize=True,high_variance_confounds=False,standardize_confounds=True,keep_masked_labels=False, memory='nilearn_cache', verbose=5, n_jobs= 1)
+    elif atlas_name.split('-')[0] in ['schafer','schafer_tian', 'SENSAAS']  : # == f'schafer{n_rois}_2mm':
+        masker = NiftiLabelsMasker(labels_img=atlas, labels = atlas_labels, mask_img=resamp_mask,resampling_target='data', standardize=True,high_variance_confounds=False,standardize_confounds=True,keep_masked_labels=False, memory='nilearn_cache', verbose=5, n_jobs= 32)
 
     #masker = MultiNiftiMapsMasker(maps_img=atlas, standardize=False, memory='nilearn_cache', verbose=5, n_jobs= 1)
     #masker = NiftiMasker(verbose=5)
@@ -374,18 +371,13 @@ if transform_imgs == True:
         #qc_utils.assert_same_affine(concatenated_subjects)
 
 	    #print(f'fitting images for condition : {cond} with shape {concatenated_subjects[subjects[0]][0].shape}')
-        if atlas_name.split('-')[0] in ['voxelWise', 'schafer', 'SENSAAS'] : # in atlas_name: # == f'schafer{n_rois}_2mm':
-            # ls_voxel_wise = [masker.fit_transform(concatenated_subjects[sub],
-            #                                        confounds= confounds_ls[i][cond])
-            #                                          for i, sub in enumerate(subjects)
-            # ]
-            
+        if atlas_name.split('-')[0] in ['voxelWise', 'schafer','schafer_tian', 'SENSAAS'] : # in atlas_name: # == f'schafer{n_rois}_2mm':
+
             print(f'Fitting {atlas_name} masker for {cond}')
             ls_voxel_wise = []
             fitted_maskers[cond] = []
             
             for i, sub in enumerate(subjects):
-
                 if reg_conf == True:
                     conf = confounds_ls[i][cond][:, :keep_n_confouds]
                 else: conf = None
@@ -510,7 +502,7 @@ if do_isc_analyses:
         # Convert list of 2D arrays to 3D array (n_TRs, n_voxels, n_subjects)
         print(data.shape)
 
-        isc_results[cond] = isc_utils.isc_1sample(data, pairwise=do_pairwise,n_boot = n_boot, summary_statistic=None)
+        isc_results[cond] = isc_utils.isc_1sample(data, pairwise=do_pairwise,n_boot = n_boot,side ='right', summary_statistic=None)
 
         # save results
         save_path = os.path.join(results_dir, cond, f"isc_results_{cond}_{n_boot}boot_pairWise{do_pairwise}.pkl")
@@ -548,7 +540,7 @@ if do_isc_analyses:
         # n_sub = combined_data.shape[-1]
         # isc_combined = isc(combined_data, pairwise=do_pairwise, summary_statistic=None)
 
-        isc_results[comb_cond] = isc_utils.isc_1sample(combined_data, pairwise=do_pairwise,n_boot = n_boot, summary_statistic=None)
+        isc_results[comb_cond] = isc_utils.isc_1sample(combined_data, pairwise=do_pairwise,n_boot = n_boot, side= 'right', summary_statistic=None)
 
         # save results
         save_path = os.path.join(concat_cond_save, f"isc_results_{comb_cond}_{n_boot}boot_pairWise{do_pairwise}.pkl")
@@ -572,7 +564,7 @@ if do_isfc:
     os.makedirs(isfc_save_folder, exist_ok=True)
     result_paths['isfc_results'] = {}
 
-    for cond in ['all_sugg', 'ana_run']: #conditions: 
+    for cond in combined_conditions: # vs block wise conditions! 
 
         start_cond_time = time.time()
         print(f' Performing ISFC for condition: {cond}')
@@ -615,7 +607,7 @@ if do_isfc:
             # Run permutation test per ROI pair (e.g., vectorized ISFC values)
             isfc_permutation_group_results[cond][var] = isc_utils.group_permutation(
                 isfc, group_assignment,
-                n_perm=5,
+                n_perm=n_perm,
                 do_pairwise=do_pairwise, 
                 side='two-sided',
                 summary_statistic='median'
@@ -684,7 +676,7 @@ if do_isfc:
 #%% 
 summary_stat = 'median'
 
-do_contrast_permutation = True
+do_contrast_permutation = setup.do_contrast_permutation
 if do_contrast_permutation:
     # Paired sample permutation test
     # contrast_conditions = ['Hyper-Ana', 'Ana-Hyper', 'NAna-NHyper', 'ana_run-hyper_run']
@@ -693,15 +685,16 @@ if do_contrast_permutation:
     contrast_to_test = setup.contrast_to_test
 
     if 'single-trial' in setup.model_id:
-        contrast_conditions = ['N_ANA1_instrbk_1-N_HYPER1_instrbk_1', 'Ana-N_Ana', 'Hyper-N_Hyper'] #, 'Ana-N_Ana', 'Hyper-N_HYPER']
 
         Ana_trials = ['ANA1_instrbk_1', 'ANA2_instrbk_1']
         N_Ana_trials = ['N_ANA1_instrbk_1', 'N_ANA2_instrbk_1', 'N_ANA3_instrbk_1']
         Hyper_trials = ['HYPER1_instrbk_1', 'HYPER2_instrbk_1']
         N_Hyper_trials = ['N_HYPER1_instrbk_1', 'N_HYPER2_instrbk_1', 'N_HYPER3_instrbk_1']
         
-        contrast_to_test = [['N_ANA1_instrbk_1', 'N_HYPER1_instrbk_1'], [Ana_trials, N_Ana_trials], [Hyper_trials, N_Hyper_trials]]
-                            
+        contrast_conditions = ['Ana-N_Ana', 'Hyper-N_Hyper'] #, 'Ana-N_Ana', 'Hyper-N_HYPER']
+        # contrast_to_test = [['N_ANA1_instrbk_1', 'N_HYPER1_instrbk_1'], [Ana_trials, N_Ana_trials], [Hyper_trials, N_Hyper_trials]]
+        contrast_to_test = [[Ana_trials, N_Ana_trials], [Hyper_trials, N_Hyper_trials]]
+                 
     isc_permutation_cond_contrast = {}
     contrast_perm_save = os.path.join(results_dir, 'cond_contrast_permutation')
     os.makedirs(contrast_perm_save, exist_ok=True)
@@ -721,8 +714,8 @@ if do_contrast_permutation:
         elif 'single-trial' in setup.model_id:
             
             if contrast == 'Ana-N_Ana':  # cont idx 1
-                tr_trim1 = [50, 50]
-                tr_trim2 = [34, 33, 33]
+                tr_trim1 = [50, 50] #real TRs : Ana : 53, 50
+                tr_trim2 = [34, 33, 33] # real TRs : N_Ana : 42,46,46
 
                 all_trials_trimed1 = []
                 for i, trial in enumerate(Ana_trials):  # modulation trials
@@ -740,10 +733,11 @@ if do_contrast_permutation:
                 transformed_data_per_cond['N_Ana_trimmed100'] = task2_data
 
             elif contrast == 'Hyper-N_Hyper':  # cont idx 2
-                tr_trim1 = [51, 49]
-                tr_trim2 = [34, 33, 33]
 
+                tr_trim1 = [51, 49] # real TRs Hyper : 51, 49
+                tr_trim2 = [34, 33, 33] # real TRs N_Hyper : 
                 all_trials_trimmed1 = []
+
                 for i, trial in enumerate(Hyper_trials):  # modulation trials
                     trial_data = transformed_data_per_cond[trial]
                     all_trials_trimmed1.append(trial_data[:tr_trim1[i], :, :])
@@ -760,9 +754,11 @@ if do_contrast_permutation:
                 
             combined_data = np.concatenate([task1_data, task2_data], axis=2)
 
+        # elif contrast == "ana_run-hyper_run":
+
         else: 
             # here we need to comcat the data along the subject axis, like repeated measures
-            # and this subjects is taken into account in the permutation. See brainIAK.
+            # and subject is taken into account in the permutation. See brainIAK.
             combined_data_ls = [transformed_data_per_cond[task] for task in contrast_to_test[i]]
             combined_data = np.concatenate(combined_data_ls, axis=2)
 
@@ -775,6 +771,7 @@ if do_contrast_permutation:
         isc_permutation_cond_contrast[contrast] = isc_utils.group_permutation(isc_grouped, group_ids, n_perm, do_pairwise, side = 'two-sided', summary_statistic=summary_stat)
         diff_vector = isc_permutation_cond_contrast[contrast]['observed_diff']
         print(f'Max & min ISC diff : {np.max(diff_vector)}, {np.min(diff_vector)}')
+
         save_path = os.path.join(contrast_perm_save, f"isc_results_{contrast}_{n_perm}perm_pairWise{do_pairwise}.pkl")
         isc_utils.save_data(save_path, isc_permutation_cond_contrast[contrast])
         result_paths["condition_contrast_results"][contrast] = save_path
@@ -782,7 +779,6 @@ if do_contrast_permutation:
         print(f'     ... done in {time.time() - start_cond_time:.2f} sec')
 
 #%%
-do_shss_split = setup.do_shss_split
 
 if 'single-trial' in setup.model_id:
     contrast_conditions = ['N_ANA1_instrbk_1-N_HYPER1_instrbk_1', 'Ana-N_Ana', 'Hyper-N_Hyper'] #, 'Ana-N_Ana', 'Hyper-N_HYPER']
@@ -793,7 +789,7 @@ else:
     contrast_conditions = ['Hyper-Ana', 'Ana-Hyper', 'NHyper-NAna']
     contrast_to_test = [conditions[0:2], conditions[0:2][::-1], conditions[2:4]]
 
-if do_shss_split:
+if do_low_high_shss_analyses:
 
     shss_grps = ['low_shss', 'high_shss']
     isc_permutation_cond_contrast = {}
@@ -929,9 +925,8 @@ if do_shss_split:
 
 # ------------
 # Perform permutation based on group labels
-do_group_permutation = True
 
-if do_group_permutation:
+if do_group_permutation_from_median:
     reload(isc_utils)
 
     isc_permutation_group_results = {}
