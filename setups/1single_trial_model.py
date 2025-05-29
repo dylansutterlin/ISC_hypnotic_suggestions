@@ -38,7 +38,7 @@ def init():
     setup.pre_computed = False #'model5_sugg_schafer-200-2mm_mask-whole-brain_preproc_reg-mvmnt-True-6'
     setup.do_isc_analyses = True 
     setup.do_pairwise = True
-    setup.do_isfc = True
+    setup.do_isfc = False
     setup.do_contrast_permutation = True
     setup.do_group_permutation = True
     setup.do_shss_split = False 

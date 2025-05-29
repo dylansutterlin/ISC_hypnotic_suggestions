@@ -12,7 +12,7 @@ def init():
     setup.exclude_sub = []
     setup.keep_n_sub = 6  # Set to None to include all subjects
 
-    setup.atlas_name = "schafer-200-2mm" #voexelWise 
+    setup.atlas_name = "schafer_tian-200-2mm" #voexelWise 
     setup.apply_mask = 'whole-brain' #'lanA800'
     setup.prob_threshold = 0.30
 
@@ -38,7 +38,7 @@ def init():
     setup.pre_computed = False #'model6_sugg_6-sub_schafer-200-2mm_mask-whole-brain_pairWise-False_preproc_reg-mvmnt-True-8'
     setup.do_isc_analyses = True 
     setup.do_group_permutation = True
-    setup.do_isfc = False
+    setup.do_isfc = True
     setup.do_shss_split = True 
     setup.do_rsa = False  
 
