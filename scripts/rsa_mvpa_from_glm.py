@@ -133,70 +133,18 @@ print(len(atlas_labels), len(roi_index), len(coords))
 # mULTIVARIATE BEHAVIORAL
 #==========================
 from sklearn.preprocessing import StandardScaler
+from src import preproc_utils
+import seaborn as sns
+import statsmodels.api as sm
 
-
+reload(preproc_utils)
 xlsx_path = r'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/masks/Hypnosis_variables_20190114_pr_jc.xlsx'
 subjects = list(setup['subjects'])
 apm_subjects = ['APM' + subj[4:] for subj in subjects]
 print(apm_subjects)
 
-# def load_process_y(xlsx_path, subjects):
-'''Load behavioral variables from xlsx file and process them for further analysis
-'''
+Y = preproc_utils.load_process_y_extended(xlsx_path, subjects)
 
-# dependant variables
-original_y = rawY = pd.read_excel(xlsx_path, sheet_name=0, index_col=1, header=2)
-rawY = pd.read_excel(xlsx_path, sheet_name=0, index_col=1, header=2).iloc[
-    2:, [4,5,6,7,8,9,10,11,12, 17, 18, 19, 38, 48, 65, 67]
-]
-
-columns_of_interest = [
-    "SHSS_score",
-    "VAS_Nana_Int",
-    "VAS_Ana_Int",
-    "VAS_Nhyper_Int",
-    "VAS_Hyper_Int",
-    "VAS_Nana_UnP",
-    "VAS_Ana_UnP",
-    "VAS_Nhyper_UnP",
-    "VAS_Hyper_UnP",
-    "raw_change_ANA",
-    "raw_change_HYPER",
-    "total_chge_pain_hypAna",
-    "Chge_hypnotic_depth",
-    "Mental_relax_absChange",
-    "Automaticity_post_ind",
-    "Abs_diff_automaticity"]
-
-rawY.columns = columns_of_interest
-cleanY = rawY.iloc[:-6, :]  # remove sub04, sub34 and last 6 rows
-cutY = cleanY.drop(["APM04*", "APM34*"])
-
-filledY = cutY.fillna(cutY.astype(float).mean()).astype(float)
-filledY["SHSS_groups"] = pd.cut(
-    filledY["SHSS_score"], bins=[0, 4, 8, 12], labels=["0", "1", "2"]
-)  # encode 3 groups for SHSS scores
-
-# bin_edges = np.linspace(min(data_column), max(data_column), 4) # 4 bins
-filledY["auto_groups"] = pd.cut(
-    filledY["Abs_diff_automaticity"],
-    bins=np.linspace(
-        min(filledY["Abs_diff_automaticity"]) - 1e-10,
-        max(filledY["Abs_diff_automaticity"]) + 1e-10,
-        4,
-    ),
-    labels=["0", "1", "2"],
-)
-
-# rename 'APM_XX_HH' to 'APMXX' format, for compatibility with Y.rows
-subjects_rewritten = ["APM" + s.split("-")[1] for s in subjects]
-
-# reorder to match subjects order
-Y = pd.DataFrame(columns=filledY.columns)
-for namei in subjects_rewritten: 
-    row = filledY.loc[namei]
-    Y.loc[namei] = row
-    
 sugg_cols = [
     "SHSS_score",
     "Chge_hypnotic_depth",
@@ -210,12 +158,12 @@ scaler = StandardScaler()
 Y_sugg = scaler.fit_transform(np.array(Y[sugg_cols].values, dtype=float))
 Y_pain = scaler.fit_transform(np.array(Y[pain_cols].values, dtype=float))
 
-plt.figure()
+plt.figure(figsize=(12, 6))
 plt.imshow(Y_sugg)
 plt.colorbar(label='scores')
 plt.xticks(np.arange(len(sugg_cols)), sugg_cols, rotation=45, ha='right')
 plt.yticks(np.arange(Y.shape[0]), Y.index)
-plt.title('Behavioral Features Heatmap')
+plt.title('Hypnotic features response patterns')
 plt.tight_layout()
 
 plt.figure()
@@ -233,6 +181,101 @@ cosine_sim_pain = isc_utils.compute_behav_similarity(Y_pain, metric='cosine', ve
 cosine_vec_sugg = isc_utils.compute_behav_similarity(Y_sugg, metric='cosine', vectorize=True)
 cosine_vec_pain = isc_utils.compute_behav_similarity(Y_pain, metric='cosine', vectorize=True)
 
+# plot cosine_sim_sugg heatmap
+plt.figure(figsize=(10, 8))
+sns.heatmap(
+    cosine_sim_sugg,
+    annot=False,
+    fmt=".2f",
+    cmap="coolwarm",
+    vmin=-1,
+    vmax=1,
+    xticklabels=Y.index,
+    yticklabels=Y.index,
+    square=True,
+    cbar_kws={'label': 'Cosine Similarity', 'shrink': 0.8}  # Adjust shrink to control size
+)
+cbar = plt.gca().collections[0].colorbar
+cbar.ax.tick_params(labelsize=15)  # Increase the fontsize of the color bar
+cbar.set_label('Cosine Similarity', fontsize=18)  # Increase the label size
+plt.title('Pairwise subject Cosine Similarity of hypnotic pattern responses', fontsize=22)
+plt.xticks(rotation=45, ha='right', fontsize=15)
+plt.yticks(rotation=0, fontsize=15)
+plt.tight_layout()
+plt.show()
+#------------
+import scipy.cluster.hierarchy as sch
+
+# compute and apply clustering order
+link = sch.linkage(cosine_sim_sugg, method='average')
+order = sch.dendrogram(link, no_plot=True)['leaves']
+sim_ord = cosine_sim_sugg[np.ix_(order, order)]
+labels_ord = Y.index[order]
+
+# plot
+plt.figure(figsize=(10,8))
+sns.heatmap(sim_ord,
+            cmap='coolwarm', vmin=-1, vmax=1,
+            xticklabels=labels_ord, yticklabels=labels_ord,
+            square=True, cbar_kws={'label':'Cosine Similarity','shrink':0.8})
+cbar = plt.gca().collections[0].colorbar
+cbar.ax.tick_params(labelsize=15)
+cbar.set_label('Cosine Similarity', fontsize=18)
+plt.title('Pairwise subject Cosine Similarity of hypnotic pattern responses', fontsize=22)
+plt.xticks(rotation=45, ha='right', fontsize=15)
+plt.yticks(rotation=0, fontsize=15)
+plt.tight_layout()
+plt.show()
+#---------------------
+
+
+#cov matrix Y_sugg
+corr_matrix_sugg = np.corrcoef(Y_sugg, rowvar=False)
+np.fill_diagonal(corr_matrix_sugg, 0)
+
+plt.figure(figsize=(10, 8))
+sns.heatmap(
+    corr_matrix_sugg,
+    annot=True,
+    fmt=".2f",
+    cmap="coolwarm",
+    vmin=-1,
+    vmax=1,
+    xticklabels=sugg_cols,
+    yticklabels=sugg_cols,
+    square=True,
+    cbar_kws={'label': 'Correlation', 'shrink': 0.8}  # Adjust shrink to control size
+)
+cbar = plt.gca().collections[0].colorbar
+cbar.ax.tick_params(labelsize=15)  # Increase the fontsize of the color bar
+cbar.set_label('Correlation', fontsize=18)  # Increase the label size
+plt.title('Correlation Matrix of hypnotic features', fontsize=22)
+plt.xticks(rotation=45, ha='right', fontsize=15)
+plt.yticks(rotation=0, fontsize=15)
+
+# Remove text in diagonal elements
+for i in range(len(sugg_cols)):
+    plt.gca().texts[i * (len(sugg_cols) + 1)].set_text('')
+
+plt.tight_layout()
+plt.show()
+
+VD = Y['total_chge_pain_hypAna'].apply(pd.to_numeric, errors='coerce')
+X = pd.DataFrame(Y_sugg, index=Y.index).apply(pd.to_numeric, errors='coerce')
+X = sm.add_constant(X)  # adds a column "const" for the intercept
+X.columns = ['const'] + sugg_cols
+
+model = sm.OLS(VD, X).fit()
+
+print(model.summary())
+coeffs = model.params
+pvals  = model.pvalues
+print("\nCoefficients:\n", coeffs)
+print("\nP-values:\n", pvals)
+
+# 6) And some key statistics:
+print(f"\nR² = {model.rsquared:.3f}, adj. R² = {model.rsquared_adj:.3f}")
+print(f"F-statistic = {model.fvalue:.2f}, p(F) = {model.f_pvalue:.3g}")
 
 #%%
 # RSA
@@ -325,6 +368,7 @@ conditions = ['modulation_sugg', 'HYPER_sugg', 'ANA_sugg', 'neutral_sugg']
 n_perm_rsa = 5000
 results_dct = {}
 
+#%%
 for cond in tqdm(conditions):
     print('Performing RSA on : ', cond)
     # load maps 
@@ -377,48 +421,95 @@ print(f'Saved RSA results to {save_to}')
 print('-----Done with rsa!-----')
 
 # %%
+# VISUALIZE RSA
+from src import isc_utils
+res_path = r'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/RSA/mvpa_IS-RSA_sugg/IS-RSA_mvpa_suggestion_tian2165000perm.pkl'
 
-#  print('cond', cond)
-#     rsa_df = rsa_isc_sugg[cond].sort_index(ascending=True) # to match the atlas labels
+rsa_dict = isc_utils.load_pickle(res_path)
 
-#     # === Prepare variables for projection ===
-#     correlations = rsa_df['spearman_r'].values
-#     p_values = rsa_df['p_values'].values
-#     roi_labels = rsa_df['ROI'].values  # assumes label matches atlas
-#     fdr_p = isc_utils.fdr(p_values, q=0.05)
-#     print(f'FDR threshold: {fdr_p:.4f}')
+views_mvpa = {}
+for cond in conditions:
+    print('cond', cond)
+    rsa_df = rsa_dict[cond].sort_index(ascending=True) 
 
-#     # === Map ROI label names to atlas index ===
-#     label_to_index = {label: idx for idx, label in enumerate(labels)}
-#     roi_indices = [label_to_index[roi] for roi in roi_labels]
+    # === Prepare variables for projection ===
+    correlations = rsa_df['spearman_r'].values
+    p_values = rsa_df['p_values'].values
+    roi_labels = rsa_df['ROI'].values  # assumes label matches atlas
+    fdr_p = isc_utils.fdr(p_values, q=0.05)
+    print(f'FDR threshold: {fdr_p:.4f}')
 
-#     # === Create full-length arrays aligned with atlas ===
-#     # full_r_values = np.zeros(len(labels))
-#     # full_p_values = np.ones(len(labels))
+    title = f"Multivariate IS-RSA during {cond}"
 
-#     # for idx, roi_idx in enumerate(roi_indices):
-#     #     full_r_values[roi_idx] = correlations[idx]
-#     #     full_p_values[roi_idx] = p_values[idx]
+    # === Visualize with your existing function ===
+    rsa_img, rsa_thresh, sig_labels = visu_utils.project_isc_to_brain_perm(
+        atlas_img=atlas,
+        isc_median=correlations,
+        atlas_labels=labels_roi_dct,
+        roi_coords = coords,
+        p_values=p_values,
+        p_threshold=fdr_p, #!!
+        title=title, #"RSA-ISC: Suggestion-Pain Similarity (FDR<.05)",
+        save_path=None,
+        show=True,
+        display_mode='x',
+        cut_coords_plot=None, #(-52, -40, 34),
+        color='Reds'
+    )
 
-#     unc_p = 0.01
-#     # === Visualize with your existing function ===
-#     rsa_img, rsa_thresh, sig_labels = visu_utils.project_isc_to_brain_perm(
-#         atlas_img=atlas,
-#         isc_median=correlations,
-#         atlas_labels=atlas_labels,
-#         roi_coords = coords,
-#         p_values=p_values,
-#         p_threshold=fdr_p, #!!
-#         title=None, #"RSA-ISC: Suggestion-Pain Similarity (FDR<.05)",
-#         save_path=None,
-#         show=True,
-#         display_mode='x',
-#         cut_coords_plot=None, #(-52, -40, 34),
-#         color='Reds'
-#     )
+    views_mvpa[cond] = plotting.view_img(rsa_img, threshold=rsa_thresh, title=f"RSA suggestion - pain similarity {cond}", colorbar=True,symmetric_cmap=False, cmap = 'Reds')
+
+
+
+# %%
+#===========================
+# ISC - RSA!!
+#===========================
+reload(visu_utils)
+
+rsa_path = '/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/RSA/2025-05-21_23'
+rsa_path = '/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/RSA/tian2162025-05-22_23'
+# rsa_isc = isc_utils.load_pickle(os.path.join(save_path, f'rsa_isc_pain-behav_sugg-pain_{n_perm_rsa}perm.pkl'))
+# rsa_isc = isc_utils.load_pickle('/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/RSA/rsa_pain-behav_sugg-pain_10000perm.pkl')
+rsa_isc_sugg = isc_utils.load_pickle(os.path.join(rsa_path, 'rsa_cosine-behav_isc-sugg5000perm.pkl' ))
+rsa_isc_pain = isc_utils.load_pickle(os.path.join(rsa_path, 'rsa_cosine-behav_isc-pain5000perm.pkl' ))
+
+#%%
+for key in rsa_isc_sugg.keys():
+
+    views={}
+    for cond in ['ANA']: #, 'HYPER', 'all_sugg', 'neutral']:
+
+        print('cond', cond)
+        rsa_df = rsa_isc_sugg[key][cond].sort_index(ascending=True) # to match the atlas labels
+
+        # === Prepare variables for projection ===
+        correlations = rsa_df['spearman_r'].values
+        p_values = rsa_df['p_values'].values
+        roi_labels = rsa_df['ROI'].values  # assumes label matches atlas
+        fdr_p = isc_utils.fdr(p_values, q=0.05)
+        print(f'FDR threshold: {fdr_p:.4f}')
+
+        title = f"ISC-RSA during {cond}"
+        # === Visualize with your existing function ===
+        rsa_img, rsa_thresh, sig_labels = visu_utils.project_isc_to_brain_perm(
+            atlas_img=atlas,
+            isc_median=correlations,
+            atlas_labels=id_labels_dct, #!!!!!!
+            roi_coords = coords,
+            p_values=p_values,
+            p_threshold=0.01, #!!
+            title=title, #"RSA-ISC: Suggestion-Pain Similarity (FDR<.05)",
+            save_path=None,
+            show=True,
+            display_mode='x',
+            cut_coords_plot=None, #(-52, -40, 34),
+            color='Reds'
+        )
+        if sig_labels.shape[0] > 0:
+            sig_labels.columns = ['Region', 'Spearman rho', 'p-value', 'Coordinatate (X,Y,Z)']
+
+        views[cond] = plotting.view_img(rsa_img, threshold=rsa_thresh, title=f"RSA suggestion - pain similarity {cond}", colorbar=True,symmetric_cmap=False, cmap = 'Reds')
+
     
-#     views[cond] = plotting.view_img(rsa_img, threshold=rsa_thresh, title=f"RSA suggestion - pain similarity {cond}", colorbar=True,symmetric_cmap=False, cmap = 'Reds')
-
-
-
 # %%
