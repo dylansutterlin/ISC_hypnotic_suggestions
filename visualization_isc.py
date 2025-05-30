@@ -30,6 +30,7 @@ reload(isc_utils)
 # %% Load the data
 model_names = {
     'model1_sugg_200': 'model1_sugg_23-sub_schafer-200-2mm_mask-whole-brain_pairWise-True_preproc_reg-mvmnt-True-8',
+    'model1_sugg_run' : 'model1-runs_sugg_23-sub_schafer_tian-200-2mm_mask-whole-brain_pairWise-True_preproc_reg-mvmnt-True-8',
     'model1_sugg_200_run' : 'model1-ext-conds_sugg_23-sub_schafer-200-2mm_mask-whole-brain_pairWise-True_preproc_reg-mvmnt-True-8',
     'model1-6': 'model1_sugg_23-sub_schafer-200-2mm_mask-whole-brain_pairWise-True_preproc_reg-mvmnt-True-6',
     'model2_sugg_loo': 'model2_sugg_23-sub_schafer-200-2mm_mask-whole-brain_pairWise-False_preproc_reg-mvmnt-True-8',
@@ -59,6 +60,7 @@ model_is = 'model3_shock_200'
 model_is = 'model1_sugg_200_run'
 model_is = 'model3_shock_200_run'
 model_is = 'model1_sugg_200'
+model_is = 'model1_sugg_run'
 
 ref_preproc_models = { 'model2' : model_names['model1_sugg_200']}
 ref_model_name = ref_preproc_models['model2']
@@ -158,78 +160,9 @@ subjects = list(setup['subjects'])
 apm_subjects = ['APM' + subj[4:] for subj in subjects]
 print(apm_subjects)
 
-# def load_process_y(xlsx_path, subjects):
-'''Load behavioral variables from xlsx file and process them for further analysis
-'''
+from src import preproc_utils
 
-# dependant variables
-original_y = rawY = pd.read_excel(xlsx_path, sheet_name=0, index_col=1, header=2)
-
-# Display the full width of the dataframe
-pd.set_option('display.max_columns', None)
-original_y
-
-#%%
-rawY = pd.read_excel(xlsx_path, sheet_name=0, index_col=1, header=2).iloc[
-    2:, [4,5,6,7,8,9,10,11,12, 17, 18, 19, 38, 48, 65, 67]
-]
-columns_of_interest = [
-    "SHSS_score",
-    "raw_change_ANA",
-    "raw_change_HYPER",
-    "total_chge_pain_hypAna",
-    "Chge_hypnotic_depth",
-    "Mental_relax_absChange",
-    "Automaticity_post_ind",
-    "Abs_diff_automaticity",
-]
-columns_of_interest = [
-    "SHSS_score",
-    "VAS_Nana_Int",
-    "VAS_Ana_Int",
-    "VAS_Nhyper_Int",
-    "VAS_Hyper_Int",
-    "VAS_Nana_UnP",
-    "VAS_Ana_UnP",
-    "VAS_Nhyper_UnP",
-    "VAS_Hyper_UnP",
-    "raw_change_ANA",
-    "raw_change_HYPER",
-    "total_chge_pain_hypAna",
-    "Chge_hypnotic_depth",
-    "Mental_relax_absChange",
-    "Automaticity_post_ind",
-    "Abs_diff_automaticity"]
-
-rawY.columns = columns_of_interest
-cleanY = rawY.iloc[:-6, :]  # remove sub04, sub34 and last 6 rows
-cutY = cleanY.drop(["APM04*", "APM34*"])
-
-filledY = cutY.fillna(cutY.astype(float).mean()).astype(float)
-filledY["SHSS_groups"] = pd.cut(
-    filledY["SHSS_score"], bins=[0, 4, 8, 12], labels=["0", "1", "2"]
-)  # encode 3 groups for SHSS scores
-
-# bin_edges = np.linspace(min(data_column), max(data_column), 4) # 4 bins
-filledY["auto_groups"] = pd.cut(
-    filledY["Abs_diff_automaticity"],
-    bins=np.linspace(
-        min(filledY["Abs_diff_automaticity"]) - 1e-10,
-        max(filledY["Abs_diff_automaticity"]) + 1e-10,
-        4,
-    ),
-    labels=["0", "1", "2"],
-)
-
-# rename 'APM_XX_HH' to 'APMXX' format, for compatibility with Y.rows
-subjects_rewritten = ["APM" + s.split("-")[1] for s in subjects]
-
-# reorder to match subjects order
-Y = pd.DataFrame(columns=filledY.columns)
-for namei in subjects_rewritten: 
-    row = filledY.loc[namei]
-    Y.loc[namei] = row
-
+Y = preproc_utils.load_process_y(xlsx_path, subjects)
 #%%
 import matplotlib.pyplot as plt
 behav_corr_df = Y
@@ -759,8 +692,8 @@ plot_stat_map(
 reload(isc_utils)
 # QUESTION : does ISC differ as a function of SHHS score (median split)?
 result_key = 'group_permutation_results'
-conditions = conditions = ['ANA', 'HYPER']
-n_perm = 5000
+conditions = ['ANA', 'HYPER'] # 'ana_run', 'hyper_run']
+n_perm = 10000
 behav_ls = [
     'Chge_hypnotic_depth_median_grp', 'SHSS_score_median_grp', 'raw_change_HYPER_median_grp',
     'raw_change_ANA_median_grp', 'total_chge_pain_hypAna_median_grp',
@@ -768,8 +701,7 @@ behav_ls = [
 ]
 behav_ls = ['raw_change_HYPER_median_grp', 'raw_change_ANA_median_grp', 'total_chge_pain_hypAna_median_grp']
 behav_ls = ['Chge_hypnotic_depth_median_grp', 'Abs_diff_automaticity_median_grp','Mental_relax_absChange_median_grp' ] #, 'Abs_diff_automaticity_median_grp'] #, 'SHSS_score_median_grp', 'total_chge_pain_hypAna_median_grp'] #, 'SHSS_score', 'Abs_diff_automaticity', 'total_chge_pain_hypAna']
-behav_ls = ['SHSS_score_median_grp']
-behav_ls = ['total_chge_pain_hypAna_median_grp','raw_change_ANA_median_grp']
+behav_ls = ['total_chge_pain_hypAna_median_grp']
 
 sig_rois_cond = {}
 views = {}
@@ -793,7 +725,7 @@ for cond in conditions:
         print(f'FDR thresh : {fdr_p}')
         reload(visu_utils)
 
-        title = f"{cond} diff for {y} unc. p < {unc_p}"
+        title = f"{cond} diff for {y} (FDR < 0.05)"
         cut_coords = (5)
         diff_img, diff_thresh, sig_labels = visu_utils.project_isc_to_brain_perm(
             atlas_img=atlas,
