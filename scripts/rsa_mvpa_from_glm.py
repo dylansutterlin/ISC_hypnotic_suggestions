@@ -397,8 +397,8 @@ from tqdm import tqdm
 mvpa_save_to = os.path.join(results_dir, 'mvpa_similarity')
 os.makedirs(mvpa_save_to, exist_ok=True)
 
-conditions = ['modulation_sugg', 'HYPER_sugg', 'ANA_sugg', 'neutral_sugg']
-n_perm_rsa = 5000
+conditions = ['ANA_sugg_minus_N_ANA_sugg', 'HYPER_sugg_minus_N_HYPER_sugg'] #, 'modulation_sugg', 'HYPER_sugg', 'ANA_sugg', 'neutral_sugg', 'ana_run_sugg', 'hyper_run_sugg']
+n_perm_rsa = 10000
 
 # UNIVARIATE pairwise similarities : NN & AnnaK 
 y = Y['SHSS_score'].values
@@ -461,7 +461,7 @@ for sim, behav_sim_vec_i in sim_model.items():
         results_dct[sim][cond] = pd.DataFrame(rsa_rows).sort_values(by='spearman_r', ascending=False)
         print('Max r, mean and fdr', results_dct[sim][cond]['spearman_r'].max(), results_dct[sim][cond]['spearman_r'].mean(), isc_utils.fdr(results_dct[sim][cond]['p_values'].to_numpy()))
    
-save_path = f'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/RSA/mvpa_IS-RSA_sugg-pain'
+save_path = f'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/RSA/mvpa_IS-RSA_sugg-pain_contrast-based'
 os.makedirs(save_path, exist_ok=True)
 
 save_to = os.path.join(save_path, f'IS-RSA_mvpa_sugg_behav-sugg{n_perm_rsa}perm.pkl')
@@ -474,13 +474,25 @@ print(f'Saved RSA results to {save_to}')
 # SUGGEST MVPA IS-RSA 
 # goal : test regions that have consistent mvpa across suggestion to pain
 
+sugg_pain_conditions = {'ANA_sugg_minus_N_ANA_sugg': 'ANA_shock_minus_N_ANA_shock',
+                        'HYPER_sugg_minus_N_HYPER_sugg': 'HYPER_shock_minus_N_HYPER_shock'
+}
+
+                    #     'modulation_sugg': 'modulation_shock',
+                    #     'HYPER_sugg': 'HYPER_shock',
+                    #    'ANA_sugg': 'ANA_shock',
+                    #    'neutral_sugg': 'neutral_shock',
+                    #    'ana_run_sugg' : 'ana_run_shock',
+                    #    'hyper_run_sugg': 'hyper_run_shock'}
 
 results_dct = {}
 
-for cond in tqdm(conditions):
-    print('Performing RSA on : ', cond)
+for cond_sugg, cond_shock in tqdm(sugg_pain_conditions.items()):
+    cond = cond_sugg
+
+    print('Performing RSA on : ', cond_sugg, 'with shock condition:', cond_shock)
     # load maps 
-    all_shock_maps = glob(os.path.join(model_res, 'all_shock', 'firstlev_localizer_*.nii.gz'))
+    shock_maps = glob(os.path.join(model_res,'first_level', cond_shock, 'firstlev_localizer_*.nii.gz'))
     sugg_maps = glob(os.path.join(model_res,'first_level', cond, 'firstlev_localizer_*.nii.gz'))
 
     def build_subject_dict(file_list):
@@ -493,7 +505,7 @@ for cond in tqdm(conditions):
         return subject_dict
 
     sugg_dict = build_subject_dict(sugg_maps) # not sorted!!
-    shock_dict = build_subject_dict(all_shock_maps)
+    shock_dict = build_subject_dict(shock_maps)
     subjects = sorted(set(sugg_dict) & set(shock_dict))
 
     # mvpa similarity
@@ -506,7 +518,7 @@ for cond in tqdm(conditions):
 
 
     # RSA computation + perm
-    rsa_rows = [] # build df 
+    rsa_rows = [] # build df    
     for roi_idx, roi in enumerate(sugg_vec_similarity_df.columns):
 
         mvpa_sim_vec_sugg = sugg_vec_similarity_df[roi].values
@@ -528,10 +540,71 @@ for cond in tqdm(conditions):
 save_path = f'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/RSA/mvpa_IS-RSA_sugg-pain'
 os.makedirs(save_path, exist_ok=True)
 
-save_to = os.path.join(save_path, f'IS-RSA_mvpa_sugg_mvpa-pain{n_perm_rsa}perm.pkl')
+save_to = os.path.join(save_path, f'IS-RSA_mvpa_sugg_mvpa-pain-allshocks{n_perm_rsa}perm.pkl')
 isc_utils.save_data(save_to, results_dct)
 print(f'Saved RSA results to {save_to}')
 
+
+#%%
+# MVPA SUGG-PAIN for matched conditions (vs all shocks)
+
+# results_dct = {}
+# shock_cond = 'all_shock' # all shocks, to match with suggestion conditions
+
+# for cond in tqdm(conditions):
+#     print('Performing RSA on : ', cond)
+#     # load maps 
+#     all_shock_maps = glob(os.path.join(model_res, 'first_level', shock_cond, 'firstlev_localizer_*.nii.gz'))
+#     sugg_maps = glob(os.path.join(model_res,'first_level', cond, 'firstlev_localizer_*.nii.gz'))
+
+#     def build_subject_dict(file_list):
+#         """Build a dict: {subject_id: filepath} from a list of NIfTI file paths."""
+#         subject_dict = {}
+#         for path in file_list:
+#             fname = os.path.basename(path)
+#             subj_id = fname.split('_')[-1].replace('.nii.gz', '')  # expects '..._sub-01.nii.gz'
+#             subject_dict[subj_id] = path
+#         return subject_dict
+
+#     sugg_dict = build_subject_dict(sugg_maps) # not sorted!!
+#     shock_dict = build_subject_dict(all_shock_maps)
+#     subjects = sorted(set(sugg_dict) & set(shock_dict))
+
+#     # mvpa similarity
+#     sugg_similarity_matrices_dct, sugg_vec_similarity_df = compute_inter_subject_mvpa_similarity(
+#         sugg_dict, atlas_img=ATLAS, labels_roi_dct = labels_roi_dct
+#     )
+#     pain_similarity_matrices_dct, pain_vec_similarity_df = compute_inter_subject_mvpa_similarity(
+#         shock_dict, atlas_img=ATLAS, labels_roi_dct = labels_roi_dct
+#     )
+
+
+#     # RSA computation + perm
+#     rsa_rows = [] # build df    
+#     for roi_idx, roi in enumerate(sugg_vec_similarity_df.columns):
+
+#         mvpa_sim_vec_sugg = sugg_vec_similarity_df[roi].values
+#         mvpa_sim_vec_pain = pain_vec_similarity_df[roi].values
+#         r, p, dist = isc_utils.matrix_permutation(mvpa_sim_vec_sugg, mvpa_sim_vec_pain, n_permute=n_perm_rsa, metric="spearman", how="upper", tail=1, return_perms=True)
+
+#         rsa_rows.append({
+#             'ROI': roi,
+#             'spearman_r': r,
+#             'p_values': round(p, 5),
+#             'x': coords[roi_idx][0],
+#             'y': coords[roi_idx][1],
+#             'z': coords[roi_idx][2]
+#         })
+
+#     results_dct[cond] = pd.DataFrame(rsa_rows).sort_values(by='spearman_r', ascending=False)
+#     print('Max r, mean and fdr', results_dct[cond]['spearman_r'].max(), results_dct[cond]['spearman_r'].mean(), isc_utils.fdr(results_dct[cond]['p_values'].to_numpy()))
+
+# save_path = f'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/RSA/mvpa_IS-RSA_sugg-pain'
+# os.makedirs(save_path, exist_ok=True)
+
+# save_to = os.path.join(save_path, f'IS-RSA_mvpa_sugg_mvpa-pain{n_perm_rsa}perm.pkl')
+# isc_utils.save_data(save_to, results_dct)
+# print(f'Saved RSA results to {save_to}')
 
 
 
@@ -540,14 +613,26 @@ print('-----Done with MVPA IS-rsa!-----')
 # %%
 # # VISUALIZE RSA
 # from src import isc_utils
+# from nilearn.glm.thresholding import threshold_stats_img
+
 # res_path = r'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/RSA/mvpa_IS-RSA_sugg/IS-RSA_mvpa_suggestion_tian2165000perm.pkl'
+# res_path = r'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/RSA/mvpa_IS-RSA_sugg-pain/IS-RSA_mvpa_sugg_mvpa-pain10000perm.pkl'
+
+# res_path = r'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/RSA/mvpa_IS-RSA_sugg-pain/IS-RSA_mvpa_sugg_behav-sugg10000perm.pkl'
 
 # rsa_dict = isc_utils.load_pickle(res_path)
+# #visu second level maps 
+# # pain_cont_dict = isc_utils.load_pickle('/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/GLM/model3_final-isc_23subjects_nuis_nodrift_31-03-25/second_level/ANA_shock_minus_N_ANA_shock_all_effects.pkl')
+# # sugg_cont_dict = isc_utils.load_pickle('/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/GLM/model3_final-isc_23subjects_nuis_nodrift_31-03-25/second_level/ANA_sugg_minus_N_ANA_sugg_all_effects.pkl')
+
+# # plotting.view_img(sugg_cont_dict['z_score'], threshold=3, title='ANA suggestion - neutral suggestion', colorbar=True)
+# # plotting.view_img(pain_cont_dict['z_score'], threshold=3, title='ANA shock - neutral shock', colorbar=True)
+
 
 # views_mvpa = {}
 # for cond in conditions:
 #     print('cond', cond)
-#     rsa_df = rsa_dict[cond].sort_index(ascending=True) 
+#     rsa_df = rsa_dict['euclidean'][cond].sort_index(ascending=True) 
 
 #     # === Prepare variables for projection ===
 #     correlations = rsa_df['spearman_r'].values
@@ -556,7 +641,7 @@ print('-----Done with MVPA IS-rsa!-----')
 #     fdr_p = isc_utils.fdr(p_values, q=0.05)
 #     print(f'FDR threshold: {fdr_p:.4f}')
 
-#     title = f"Multivariate IS-RSA during {cond}"
+#     title = f"Multivariate IS-RSA during {cond} (FDR<.05)"
 
 #     # === Visualize with your existing function ===
 #     rsa_img, rsa_thresh, sig_labels = visu_utils.project_isc_to_brain_perm(
