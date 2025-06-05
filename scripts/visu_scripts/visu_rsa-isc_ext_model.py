@@ -50,7 +50,6 @@ model_sugg = model_names['model1_sugg_200_run']
 model_pain = model_names['model3_shock_200_run']
 
 
-
 project_dir = "/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions"
 results_dir = os.path.join(project_dir, f'results/imaging/ISC/{model_sugg}')
 setup = isc_utils.load_json(os.path.join(results_dir, "setup_parameters.json"))
