@@ -93,7 +93,9 @@ def load_process_y(xlsx_path, subjects):
 
     # rename 'APM_XX_HH' to 'APMXX' format, for compatibility with Y.rows
     #subjects_rewritten = ["APM" + s.split("_")[1] for s in subjects]
-    subjects_rewritten = subjects
+
+    subjects_rewritten = ["APM" + s.split("-")[1] for s in subjects]
+
     # reorder to match subjects order
     Y = pd.DataFrame(columns=filledY.columns)
     for namei in subjects_rewritten: 
@@ -101,6 +103,74 @@ def load_process_y(xlsx_path, subjects):
         Y.loc[namei] = row
 
     return Y
+
+# def load_process_y_extended(xlsx_path, subjects):
+
+#     '''Load behavioral variables from xlsx file and process them for further analysis
+#     '''
+#     # dependant variables
+#     rawY = pd.read_excel(xlsx_path, sheet_name=0, index_col=1, header=2)
+#     rawY = pd.read_excel(xlsx_path, sheet_name=0, index_col=1, header=2).iloc[
+#         2:, [4,5,6,7,8,9,10,11,12, 17, 18, 19, 38, 48, 65, 67]
+#     ]
+
+#     columns_of_interest = [
+#         "SHSS_score",
+#         "VAS_Nana_Int",
+#         "VAS_Ana_Int",
+#         "VAS_Nhyper_Int",
+#         "VAS_Hyper_Int",
+#         "VAS_Nana_UnP",
+#         "VAS_Ana_UnP",
+#         "VAS_Nhyper_UnP",
+#         "VAS_Hyper_UnP",
+#         "raw_change_ANA",
+#         "raw_change_HYPER",
+#         "total_chge_pain_hypAna",
+#         "Chge_hypnotic_depth",
+#         "Mental_relax_absChange",
+#         "Automaticity_post_ind",
+#         "Abs_diff_automaticity"]
+
+#     rawY.columns = columns_of_interest
+#     cleanY = rawY.iloc[:-6, :]  # remove sub04, sub34 and last 6 rows
+#     cutY = cleanY.drop(["APM04*", "APM34*"])
+
+#     filledY = cutY.fillna(cutY.astype(float).mean()).astype(float)
+#     filledY["SHSS_groups"] = pd.cut(
+#         filledY["SHSS_score"], bins=[0, 4, 8, 12], labels=["0", "1", "2"]
+#     )  # encode 3 groups for SHSS scores
+
+#     # bin_edges = np.linspace(min(data_column), max(data_column), 4) # 4 bins
+#     filledY["auto_groups"] = pd.cut(
+#         filledY["Abs_diff_automaticity"],
+#         bins=np.linspace(
+#             min(filledY["Abs_diff_automaticity"]) - 1e-10,
+#             max(filledY["Abs_diff_automaticity"]) + 1e-10,
+#             4,
+#         ),
+#         labels=["0", "1", "2"],
+#     )
+
+#     # rename 'APM_XX_HH' to 'APMXX' format, for compatibility with Y.rows
+#     subjects_rewritten_APM = ["APM" + s.split("-")[1] for s in subjects]
+
+#     #check that AMP subjects == subjects
+#     for sub_apm, sub_bids in zip(subjects_rewritten_APM, subjects):
+#         apm_id = sub_apm[3:]
+#         sub_id = sub_bids.split("-")[1]
+#         if apm_id != sub_id:
+#             print(f"Mismatch between APM subject {apm_id} and BIDS subject {sub_id}")
+
+#     # reorder to match subjects order
+#     Y = pd.DataFrame(columns=filledY.columns)
+#     for namei in subjects_rewritten_APM: 
+#         row = filledY.loc[namei]
+#         Y.loc[namei] = row
+
+#     #rename index with subjects
+#     Y.index = subjects
+#     return Y
 
 
 def extract_timeseries_and_generate_individual_reports(subjects, func_list, atlas_masker_to_fit, masker_name, save_path, confounds = None,confounf_files= None, condition_name="Analgesia", do_heatmap = True):

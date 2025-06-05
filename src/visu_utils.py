@@ -449,6 +449,8 @@ def project_isc_to_brain_perm(atlas_img, isc_median, atlas_labels,roi_coords, p_
 
     # Create an empty volume to store ISC values
     isc_vol = np.zeros_like(atlas_data, dtype=float)
+    img_unthresholded = np.zeros_like(atlas_data, dtype=float)
+
     sig_labels_data = []
     sig_min_isc = []
 
@@ -470,12 +472,14 @@ def project_isc_to_brain_perm(atlas_img, isc_median, atlas_labels,roi_coords, p_
                 "Atlas Label": label,
                 "r Difference": round(isc_median[i], 4),
                 "p-value": f"{p_values[i]:.5f}",
-                "Coordinates": tuple(np.round(roi_coords[i], 2))
+                "Coordinates": tuple(np.round(roi_coords[i], 0).astype(int))
             })
-    
+
+        img_unthresholded[roi_mask] = np.arctanh(isc_median[i])
 
     # Create a Nifti image for the ISC projection
     isc_img = nib.Nifti1Image(isc_vol, atlas_img.affine, atlas_img.header)
+    z_img_unthresholded = nib.Nifti1Image(img_unthresholded, atlas_img.affine, atlas_img.header)
 
     if len(sig_min_isc) > 0:
         min_sig_thresh = np.min(np.abs(sig_min_isc)) -0.01
@@ -512,7 +516,7 @@ def project_isc_to_brain_perm(atlas_img, isc_median, atlas_labels,roi_coords, p_
             cmap=color,
             draw_cross=False
         )
-    return isc_img, min_sig_thresh, pd.DataFrame(sig_labels_data)
+    return isc_img, min_sig_thresh, pd.DataFrame(sig_labels_data), z_img_unthresholded
 
 
 import seaborn as sns
