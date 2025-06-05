@@ -537,10 +537,8 @@ for cond_sugg, cond_shock in tqdm(sugg_pain_conditions.items()):
     results_dct[cond] = pd.DataFrame(rsa_rows).sort_values(by='spearman_r', ascending=False)
     print('Max r, mean and fdr', results_dct[cond]['spearman_r'].max(), results_dct[cond]['spearman_r'].mean(), isc_utils.fdr(results_dct[cond]['p_values'].to_numpy()))
 
-save_path = f'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/RSA/mvpa_IS-RSA_sugg-pain'
-os.makedirs(save_path, exist_ok=True)
 
-save_to = os.path.join(save_path, f'IS-RSA_mvpa_sugg_mvpa-pain-allshocks{n_perm_rsa}perm.pkl')
+save_to = os.path.join(save_path, f'IS-RSA_mvpa_sugg_mvpa-pain-matched-shocks{n_perm_rsa}perm.pkl')
 isc_utils.save_data(save_to, results_dct)
 print(f'Saved RSA results to {save_to}')
 
@@ -611,56 +609,54 @@ print(f'Saved RSA results to {save_to}')
 print('-----Done with MVPA IS-rsa!-----')
 
 # %%
-# # VISUALIZE RSA
-# from src import isc_utils
-# from nilearn.glm.thresholding import threshold_stats_img
+# VISUALIZE RSA
+from src import isc_utils
+from nilearn.glm.thresholding import threshold_stats_img
 
-# res_path = r'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/RSA/mvpa_IS-RSA_sugg/IS-RSA_mvpa_suggestion_tian2165000perm.pkl'
-# res_path = r'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/RSA/mvpa_IS-RSA_sugg-pain/IS-RSA_mvpa_sugg_mvpa-pain10000perm.pkl'
-
-# res_path = r'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/RSA/mvpa_IS-RSA_sugg-pain/IS-RSA_mvpa_sugg_behav-sugg10000perm.pkl'
-
-# rsa_dict = isc_utils.load_pickle(res_path)
-# #visu second level maps 
-# # pain_cont_dict = isc_utils.load_pickle('/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/GLM/model3_final-isc_23subjects_nuis_nodrift_31-03-25/second_level/ANA_shock_minus_N_ANA_shock_all_effects.pkl')
-# # sugg_cont_dict = isc_utils.load_pickle('/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/GLM/model3_final-isc_23subjects_nuis_nodrift_31-03-25/second_level/ANA_sugg_minus_N_ANA_sugg_all_effects.pkl')
-
-# # plotting.view_img(sugg_cont_dict['z_score'], threshold=3, title='ANA suggestion - neutral suggestion', colorbar=True)
-# # plotting.view_img(pain_cont_dict['z_score'], threshold=3, title='ANA shock - neutral shock', colorbar=True)
+res_path = '/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/RSA/mvpa_IS-RSA_sugg-pain_contrast-based/IS-RSA_mvpa_sugg_mvpa-pain-matched-shocks10000perm.pkl'
+rsa_dict = isc_utils.load_pickle(res_path)
 
 
-# views_mvpa = {}
-# for cond in conditions:
-#     print('cond', cond)
-#     rsa_df = rsa_dict['euclidean'][cond].sort_index(ascending=True) 
+views_mvpa = {}
+for cond in conditions:
+    print('cond', cond)
+    rsa_df = rsa_dict[cond].sort_index(ascending=True) 
 
-#     # === Prepare variables for projection ===
-#     correlations = rsa_df['spearman_r'].values
-#     p_values = rsa_df['p_values'].values
-#     roi_labels = rsa_df['ROI'].values  # assumes label matches atlas
-#     fdr_p = isc_utils.fdr(p_values, q=0.05)
-#     print(f'FDR threshold: {fdr_p:.4f}')
+    # === Prepare variables for projection ===
+    correlations = rsa_df['spearman_r'].values
+    p_values = rsa_df['p_values'].values
+    roi_labels = rsa_df['ROI'].values  # assumes label matches atlas
+    fdr_p = isc_utils.fdr(p_values, q=0.05)
+    print(f'FDR threshold: {fdr_p:.4f}')
 
-#     title = f"Multivariate IS-RSA during {cond} (FDR<.05)"
+    title = f"Multivariate IS-RSA during {cond} (FDR<.05)"
 
-#     # === Visualize with your existing function ===
-#     rsa_img, rsa_thresh, sig_labels = visu_utils.project_isc_to_brain_perm(
-#         atlas_img=atlas,
-#         isc_median=correlations,
-#         atlas_labels=labels_roi_dct,
-#         roi_coords = coords,
-#         p_values=p_values,
-#         p_threshold=fdr_p, #!!
-#         title=title, #"RSA-ISC: Suggestion-Pain Similarity (FDR<.05)",
-#         save_path=None,
-#         show=True,
-#         display_mode='x',
-#         cut_coords_plot=None, #(-52, -40, 34),
-#         color='Reds'
-#     )
+    # === Visualize with your existing function ===
+    rsa_img, rsa_thresh, sig_labels = visu_utils.project_isc_to_brain_perm(
+        atlas_img=atlas,
+        isc_median=correlations,
+        atlas_labels=labels_roi_dct,
+        roi_coords = coords,
+        p_values=p_values,
+        p_threshold=fdr_p, #!!
+        title=title, #"RSA-ISC: Suggestion-Pain Similarity (FDR<.05)",
+        save_path=None,
+        show=True,
+        display_mode='x',
+        cut_coords_plot=None, #(-52, -40, 34),
+        color='Reds'
+    )
 
-#     views_mvpa[cond] = plotting.view_img(rsa_img, threshold=rsa_thresh, title=f"RSA suggestion - pain similarity {cond}", colorbar=True,symmetric_cmap=False, cmap = 'Reds')
+    views_mvpa[cond] = plotting.view_img(rsa_img, threshold=rsa_thresh, title=f"RSA suggestion - pain similarity {cond}", colorbar=True,symmetric_cmap=False, cmap = 'Reds')
 
+
+# SUPP VISU MVPA PATTERNs that show sig RS
+#visu second level maps 
+pain_cont_dict = isc_utils.load_pickle('/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/GLM/model3_final-isc_23subjects_nuis_nodrift_31-03-25/second_level/ANA_shock_minus_N_ANA_shock_all_effects.pkl')
+sugg_cont_dict = isc_utils.load_pickle('/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/GLM/model3_final-isc_23subjects_nuis_nodrift_31-03-25/second_level/ANA_sugg_minus_N_ANA_sugg_all_effects.pkl')
+
+# plotting.view_img(sugg_cont_dict['z_score'], threshold=3, title='ANA suggestion - neutral suggestion', colorbar=True)
+# plotting.view_img(pain_cont_dict['z_score'], threshold=3, title='ANA shock - neutral shock', colorbar=True)
 
 
 # # %%
