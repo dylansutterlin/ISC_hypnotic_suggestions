@@ -13,8 +13,10 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from scipy.stats import spearmanr
 from tqdm import tqdm
-from src import isc_utils
+import sys
+import shutil
 
+from src import isc_utils
 import src.isc_utils as isc_utils
 import src.visu_utils as visu_utils
 from importlib import reload
@@ -47,7 +49,6 @@ model_sugg = model_names['model1_sugg_200_run']
 model_pain = model_names['model3_shock_200_run']
 
 
-
 project_dir = "/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions"
 results_dir = os.path.join(project_dir, f'results/imaging/ISC/{model_sugg}')
 setup = isc_utils.load_json(os.path.join(results_dir, "setup_parameters.json"))
@@ -63,8 +64,15 @@ conditions = ['ANA', 'HYPER', 'ana_run', 'hyper_run']
 sim_model = 'euclidean'
 n_perm = setup['n_perm'] # to load isc results
 n_perm_rsa = 10000
-n_tail_rsa = 1 # hypothesize that only pos. associations are of interest
+n_tail_rsa = 2 # hypothesize that only pos. associations are of interest
 n_jobs = 32 
+
+# Save script copy in results folder --> saved at the end if all ran well!
+current_script_path = os.path.abspath(sys.argv[0])
+script_name = os.path.basename(current_script_path)
+copy_name = f"ran_with_{script_name}"
+destination_path = os.path.join(save_path, copy_name)
+
 #%%
 #================================
 # BEHAHVIORAL DATA
@@ -80,33 +88,46 @@ print(apm_subjects)
 
 Y = preproc_utils.load_process_y(xlsx_path, subjects)
 
-corr_matrix = Y.corr()
+#cov matrix Y_sugg
+corr_matrix_sugg = np.corrcoef(np.array(Y).astype(float), rowvar=False)
+np.fill_diagonal(corr_matrix_sugg, 0)
 
 plt.figure(figsize=(10, 8))
-sns.heatmap(corr_matrix, annot=True, fmt='.2f', cmap='coolwarm', square=True,
-            linewidths=0.5, cbar_kws={'label': 'Pearson r'})
+sns.heatmap(
+    corr_matrix_sugg,
+    annot=True,
+    fmt=".2f",
+    cmap="coolwarm",
+    vmin=-1,
+    vmax=1,
+    xticklabels=Y.columns,
+    yticklabels=Y.columns,
+    square=True,
+    cbar_kws={'label': 'Correlation', 'shrink': 0.8}  # Adjust shrink to control size
+)
+cbar = plt.gca().collections[0].colorbar
+cbar.ax.tick_params(labelsize=15)  # Increase the fontsize of the color bar
+cbar.set_label('Correlation', fontsize=18)  # Increase the label size
+plt.title('Correlation Matrix of hypnotic features', fontsize=22)
+plt.xticks(rotation=45, ha='right', fontsize=15)
+plt.yticks(rotation=0, fontsize=15)
 
-plt.title('Correlation Matrix of Behavioral Variables', fontsize=14)
-plt.xticks(rotation=45, ha='right')
-plt.tight_layout()
-plt.show()
 
 #%%
 
 y_conditions = ['SHSS_score', 'raw_change_ANA', 'raw_change_HYPER', 'total_chge_pain_hypAna']
 
-
-def plot_simmat(simmat, sim_method = 'Eucledian',title_id = 'SHSS', y_name = 'SHSS_score', cmap= 'coolwarm'):
+def plot_simmat(simmat, title,title_id = 'SHSS', y_name = 'SHSS_score', cmap= 'coolwarm'):
     plt.figure(figsize=(10, 8))
-    plt.imshow(simmat, vmin= -np.max(simmat), vmax=np.max(simmat), cmap=cmap)
+    plt.imshow(simmat, vmin= np.min(simmat), vmax=np.max(simmat), cmap=cmap)
     plt.colorbar(label='Similarity')
-    plt.title(f'{sim_method} {title_id} similarity matrix', fontsize=24)
+    plt.title(title, fontsize=24)
     plt.xlabel(f'Subject ranked on {y_name}', fontsize=20)
     plt.ylabel(f'Subject ranked on {y_name}', fontsize=20)
     plt.show()
 
 for metric in ['euclidean', 'annak']:
-    for y_name in ['SHSS_score']:
+    for y_name in ['SHSS_score', 'total_chge_pain_hypAna']:
 
         y = Y[y_name].values
         y = (y - np.mean(y)) / np.std(y)
@@ -115,7 +136,8 @@ for metric in ['euclidean', 'annak']:
         ranks = np.argsort(y)         # gives indices that sort behavior low → high
         sim_ranked = sim_behav[np.ix_(ranks, ranks)]
 
-        plot_simmat(sim_ranked, sim_method = 'Eucledian', y_name = y_name)
+        title = f'{metric}-based {y_name} similarity matrix'
+        plot_simmat(sim_ranked, title = title, y_name = y_name)
    
 #%%
 #================================
@@ -168,8 +190,8 @@ cosine_vec_sugg = isc_utils.compute_behav_similarity(Y_sugg, metric='cosine', ve
 cosine_sim_pain = isc_utils.compute_behav_similarity(Y_pain, metric='cosine', vectorize=False)
 cosine_vec_pain = isc_utils.compute_behav_similarity(Y_pain, metric='cosine', vectorize=True)
 
-plot_simmat(cosine_sim_sugg, sim_method = 'Cosine', title_id = 'SUGG', y_name = 'SHSS_score', cmap= 'coolwarm')
-plot_simmat(cosine_sim_pain, sim_method = 'Cosine', title_id = 'PAIN', y_name = 'raw_change_HYPER', cmap= 'coolwarm')
+plot_simmat(cosine_sim_sugg, title = 'Cosine', title_id = 'SUGG', y_name = 'SHSS_score', cmap= 'coolwarm')
+plot_simmat(cosine_sim_pain, title = 'Cosine', title_id = 'PAIN', y_name = 'raw_change_HYPER', cmap= 'coolwarm')
 
 
 # UNIVARIATE pairwise similarities : NN & AnnaK 
@@ -203,7 +225,7 @@ print(f"Spearman correlation between uni - multivariate PAIN var.: {r:.4f}, p-va
 #================================
 #Atlas
 #================================
-SCHAEFER_ONLY = True
+SCHAEFER_ONLY = False
 
 atlas = nib.load('/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/masks/Tian2020_schaeffer200_subcortical16/combined_schaefer200_tian16_DSG.nii.gz')
 id_labels_dct = isc_utils.load_json('/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/masks/Tian2020_schaeffer200_subcortical16/roi_labels_dict_DSG.json')
@@ -228,10 +250,17 @@ else:
     atlas_masker = NiftiLabelsMasker(labels_img=atlas,atlas_labels = labels, standardize=False)
     atlas_masker.fit()
     atlas_labels = dict(zip(roi_index, labels))
-    labels = list(atlas_labels.values())
+    
 
 coords = find_parcellation_cut_coords(labels_img=atlas)
 
+df_labels_coords = pd.DataFrame(atlas_labels.items(), columns=['index', 'region'])
+df_labels_coords['coords'] = [coords[i] for i in range(len(coords))]
+
+#%%
+# plot specific ROIs 
+
+#%%
 # #%% VISU
 # from nilearn import plotting
 # reload(visu_utils)
@@ -281,11 +310,11 @@ coords = find_parcellation_cut_coords(labels_img=atlas)
 #=================================
 # IS-RSA for ISC-SUGGESTION  & ISC-PAIN
 
-do_brain_sugg_with_pain = False
+do_brain_sugg_with_pain = True
 if do_brain_sugg_with_pain:
 
-    model_sugg = model_names['model1_sugg_200_run']
-    model_pain = model_names['model3_shock_200_run']
+    # model_sugg = model_names['model1_sugg_200_run']
+    # model_pain = model_names['model3_shock_200_run']
 
     rsa_per_cond = {}
     for cond in conditions:
@@ -329,50 +358,51 @@ if do_brain_sugg_with_pain:
     print(f'Saved RSA results to {save_to}')
     print('-----Done with rsa!-----')
 
-#%% VISU
-from nilearn import plotting
-reload(visu_utils)
+# #%% VISU
+# from nilearn import plotting
+# reload(visu_utils)
 
-# rsa_isc = isc_utils.load_pickle('/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/RSA/isc-RSA_ext_conds_sugg-pain/rsa_isc-sugg_isc-pain_10000perm.pkl')
+# # rsa_isc = isc_utils.load_pickle('/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/RSA/isc-RSA_ext_conds_sugg-pain/rsa_isc-sugg_isc-pain_10000perm.pkl')
+# rsa_isc = isc_utils.load_pickle('/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/RSA/isc-RSA_ext_conds_sugg-pain/rsa_cosine-behav_isc-sugg10000perm.pkl')
 # rsa_isc = isc_utils.load_pickle('/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/RSA/2025-05-21_23/rsa_isc-sugg_isc-pain_5000perm.pkl')
-rsa_isc = isc_utils.load_pickle('/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/RSA/isc-RSA_ext_conds_sugg-pain/rsa_cosine-behav_isc-sugg10000perm.pkl')
+# rsa_isc = isc_utils.load_pickle('/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/RSA/isc-RSA_ext_conds_sugg-pain/rsa_isc-sugg_isc-pain_10000perm.pkl')
 
-views={}
-tables = {}
-for cond in ['HYPER', 'ANA', 'ana_run', 'hyper_run']: #, 'ANA', 'all_sugg', 'neutral']:
+# views={}
+# tables = {}
+# for cond in ['HYPER', 'ANA', 'ana_run', 'hyper_run']: #, 'ANA', 'all_sugg', 'neutral']:
 
-    print('cond', cond)
-    rsa_df = rsa_isc['sugg'][cond].sort_index(ascending=True) # to match the atlas labels
+#     print('cond', cond)
+#     rsa_df = rsa_isc[cond].sort_index(ascending=True) # to match the atlas labels
 
-    # === Prepare variables for projection ===
-    correlations = rsa_df['spearman_r'].values
-    p_values = rsa_df['p_values'].values
-    roi_labels = rsa_df['ROI'].values  # assumes label matches atlas
-    fdr_p = isc_utils.fdr(p_values, q=0.05)
-    print(f'FDR threshold: {fdr_p:.4f}')
+#     # === Prepare variables for projection ===
+#     correlations = rsa_df['spearman_r'].values
+#     p_values = rsa_df['p_values'].values
+#     roi_labels = rsa_df['ROI'].values  # assumes label matches atlas
+#     fdr_p = isc_utils.fdr(p_values, q=0.05)
+#     print(f'FDR threshold: {fdr_p:.4f}')
 
-    unc_p = 0.01
-    # === Visualize with your existing function ===
-    rsa_img, rsa_thresh, sig_labels = visu_utils.project_isc_to_brain_perm(
-        atlas_img=atlas,
-        isc_median=correlations,
-        atlas_labels=atlas_labels,
-        roi_coords = coords,
-        p_values=p_values,
-        p_threshold=fdr_p, #!!
-        title=None, #"RSA-ISC: Suggestion-Pain Similarity (FDR<.05)",
-        save_path=None,
-        show=True,
-        display_mode='x',
-        cut_coords_plot=None, #(-52, -40, 34),
-        color='Reds'
-    )
-    tables[cond] = sig_labels
-    views[cond] = plotting.view_img(rsa_img, threshold=rsa_thresh, title=f"RSA suggestion - pain similarity {cond}", colorbar=True,symmetric_cmap=False, cmap = 'Reds')
+#     unc_p = 0.01
+#     # === Visualize with your existing function ===
+#     rsa_img, rsa_thresh, sig_labels, _ = visu_utils.project_isc_to_brain_perm(
+#         atlas_img=atlas,
+#         isc_median=correlations,
+#         atlas_labels=atlas_labels,
+#         roi_coords = coords,
+#         p_values=p_values,
+#         p_threshold=fdr_p, #!!
+#         title=None, #"RSA-ISC: Suggestion-Pain Similarity (FDR<.05)",
+#         save_path=None,
+#         show=True,
+#         display_mode='x',
+#         cut_coords_plot=None, #(-52, -40, 34),
+#         color='Reds'
+#     )
+#     tables[cond] = sig_labels
+#     views[cond] = plotting.view_img(rsa_img,bg_img = bg_mni, threshold=rsa_thresh, title=f"RSA suggestion - pain similarity {cond}", colorbar=True,symmetric_cmap=False, cmap = 'Reds')
 
 # %%
 
-Specific_test = True
+Specific_test = False
 
 if Specific_test is False:
     reload(isc_utils)
@@ -467,179 +497,6 @@ if Specific_test is False:
 
     isc_utils.save_data(save_to, rsa_behav_per_cond)
     print(f'Saved RSA results to {save_to}')
-
-
-    #%%
-
-    # #VISU UNIVARIATE SHSS for run effect
-    # rsa_isc = isc_utils.load_pickle('/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/RSA/isc-RSA_ext_conds_sugg-pain/rsa_SHSS-behav_isc-sugg10000perm.pkl')
-    # n_perm = 10000
-
-    # # isc for visu
-    # isc_pairwise = {}
-    # for cond in ['ana_run', 'hyper_run']:
-    #     isc_path= f'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/ISC/{model_sugg}/concat_suggs_1samp_boot/isc_results_{cond}_{n_perm}boot_pairWiseTrue.pkl'
-    #     isc_pairwise[cond] = pd.DataFrame(isc_utils.load_pickle(isc_path)['isc'], columns=labels)
-
-    # y = Y['SHSS_score'].values
-    # y = (y - np.mean(y)) / np.std(y)
-    # sim_mat_behav_matrix = isc_utils.compute_behav_similarity(y, metric='euclidean', vectorize=False)
-    # sim_mat_behav_annak = isc_utils.compute_behav_similarity(y, metric='annak', vectorize=False)
-
-
-    # views={}
-    # tables = {'euclidian': {}, 'annak': {}}
-    # rsa_dfs = {'euclidian': {}, 'annak': {}}
-
-    # model = 'annak'
-
-    # for cond in ['ana_run', 'hyper_run'] : #['HYPER', 'ANA', 'all_sugg', 'neutral']:
-
-    #     print('cond', cond)
-    #     rsa_df = rsa_isc[model][cond].sort_index(ascending=True) # to match the atlas labels
-    #     rsa_dfs[model][cond] = rsa_df
-
-    #     # === Prepare variables for projection ===
-    #     correlations = rsa_df['spearman_r'].values
-    #     p_values = rsa_df['p_values'].values
-    #     roi_labels = rsa_df['ROI'].values  # assumes label matches atlas
-    #     fdr_p = isc_utils.fdr(p_values, q=0.05)
-    #     print(f'FDR threshold: {fdr_p:.4f}')
-
-    #     unc_p = 0.01
-    #     title = f"IS-RSA : Hypnotic susceptibility ~ {cond} (FDR<.05)"
-    #     # === Visualize with your existing function ===
-    #     rsa_img, rsa_thresh, sig_labels = visu_utils.project_isc_to_brain_perm(
-    #         atlas_img=atlas,
-    #         isc_median=correlations,
-    #         atlas_labels=atlas_labels,
-    #         roi_coords = coords,
-    #         p_values=p_values,
-    #         p_threshold=fdr_p, #!!
-    #         title=None, #"RSA-ISC: Suggestion-Pain Similarity (FDR<.05)",
-    #         save_path=None,
-    #         show=True,
-    #         display_mode='x',
-    #         cut_coords_plot=None, #(-52, -40, 34),
-    #         color='Reds'
-    #     )
-    #     if sig_labels is not None:
-    #         # sig_labels = pd.DataFrame(sig_labels, columns=['ROI', 'Label', 'spearman_r', 'p_values', 'Coordinates (X,Y,Z)'])
-    #         sig_labels.columns = ['ROI', 'Label', 'spearman_r', 'p_values', 'Coordinates (X,Y,Z)']
-    #     tables[model][cond] = sig_labels
-    #     views[cond] = plotting.view_img(rsa_img, threshold=rsa_thresh, title=f"RSA suggestion - pain similarity {cond}", colorbar=True,symmetric_cmap=False, cmap = 'Reds')
-
-    # #%%
-    # model = 'euclidian'
-    # tables_nn = {}
-    # for cond in ['ana_run', 'hyper_run'] : #['HYPER', 'ANA', 'all_sugg', 'neutral']:
-
-    #     print('cond', cond)
-    #     rsa_df = rsa_isc[model][cond].sort_index(ascending=True) # to match the atlas labels
-    #     rsa_dfs[model][cond] = rsa_df
-
-    #     # === Prepare variables for projection ===
-    #     correlations = rsa_df['spearman_r'].values
-    #     p_values = rsa_df['p_values'].values
-    #     roi_labels = rsa_df['ROI'].values  # assumes label matches atlas
-    #     fdr_p = isc_utils.fdr(p_values, q=0.05)
-    #     print(f'FDR threshold: {fdr_p:.4f}')
-
-    #     unc_p = 0.01
-    #     # === Visualize with your existing function ===
-    #     rsa_img, rsa_thresh, sig_labels = visu_utils.project_isc_to_brain_perm(
-    #         atlas_img=atlas,
-    #         isc_median=correlations,
-    #         atlas_labels=atlas_labels,
-    #         roi_coords = coords,
-    #         p_values=p_values,
-    #         p_threshold=unc_p, #!!
-    #         title=None, #"RSA-ISC: Suggestion-Pain Similarity (FDR<.05)",
-    #         save_path=None,
-    #         show=True,
-    #         display_mode='x',
-    #         cut_coords_plot=None, #(-52, -40, 34),
-    #         color='Reds'
-    #     )
-    #     if sig_labels.shape[0] > 0:
-    #         sig_labels.columns = ['ROI', 'Label', 'spearman_r', 'p_values', 'Coordinates (X,Y,Z)']
-        
-    #     tables_nn[cond] = sig_labels
-    #     views[cond] = plotting.view_img(rsa_img, threshold=rsa_thresh, title=f"RSA suggestion - pain similarity {cond}", colorbar=True,symmetric_cmap=False, cmap = 'Reds')
-
-    # #%%
-    # y_conditions = ['SHSS_score', 'raw_change_ANA', 'raw_change_HYPER', 'total_chge_pain_hypAna']
-
-
-
-    # for metric in ['euclidean', 'annak']:
-    #     for y_name in ['SHSS_score']:
-
-    #         y = Y[y_name].values
-    #         y = (y - np.mean(y)) / np.std(y)
-    #         sim_behav = isc_utils.compute_behav_similarity(y, metric=metric, vectorize=False)
-
-    #         ranks = np.argsort(y)         # gives indices that sort behavior low → high
-    #         sim_ranked = sim_behav[np.ix_(ranks, ranks)]
-
-    #         plot_simmat(sim_ranked, sim_method = metric, y_name = y_name)
-
-    # #%%
-    # # Visualize ISC matrix in ROI
-    # reload(visu_utils)
-    # reload(isc_utils)
-    # cond = 'ana_run'
-    # cmap = 'coolwarm' 
-
-    # sig_roi = tables['annak'][cond]
-
-    # # rsa_dfs['annak']
-    # roi_ranked_mat = {}
-    # for roi_idx, roi in zip(sig_roi['ROI'], sig_roi['Label']):
-        
-    #     isc_pairwise_roi = isc_pairwise[cond][roi]
-    #     isc_mat = isc_utils.vector_to_isc_matrix(isc_pairwise_roi, diag=0)
-        
-    #     ranked_isc_mat = isc_mat[np.ix_(ranks, ranks)]
-    #     roi_ranked_mat[roi] = ranked_isc_mat
-
-    #     plot_simmat(ranked_isc_mat, sim_method = 'ISC',title_id = roi, y_name = 'SHSS', cmap = cmap)
-
-    # ranked_behav_mat_annak = sim_mat_behav_annak[np.ix_(ranks, ranks)]
-
-    # plot_simmat(ranked_behav_mat_annak, sim_method = 'Annak', y_name = 'SHSS_score', cmap = cmap)
-
-
-    # #%%
-    # #plot NN ~ Annak correlation values
-    # reload(visu_utils)
-
-    # cond = 'ana_run'
-    # vec_rsa_nn = rsa_dfs['euclidian'][cond] 
-    # vec_rsa_annak = rsa_dfs['annak'][cond] 
-
-    # labels_map, yeo7_net = visu_utils.yeo_networks_from_schaeffer(labels)
-    # visu_utils.plot_scatter_legend(vec_rsa_nn['spearman_r'], vec_rsa_annak['spearman_r'], grp_id=yeo7_net, var_name=['Eucledian-based ISC ', 'AnnaK-based ISC'], title=f'Eucledian vs Annak-based IS-RSA per region ', save_path=None)
-
-    # #%%
-    # reload(visu_utils)
-
-    # for roi_idx, roi in zip(sig_roi['ROI'], sig_roi['Label']):
-        
-    #     isc_pairwise_roi = isc_pairwise[cond][roi]
-    #     isc_mat = isc_utils.vector_to_isc_matrix(isc_pairwise_roi, diag=0)
-        
-    #     ranked_isc_mat = isc_mat[np.ix_(ranks, ranks)]
-    #     roi_ranked_mat[roi] = ranked_isc_mat
-
-    #     median_per_row = np.median(ranked_isc_mat, axis=1)
-    #     ranked_shss = np.sort(y)
-        
-    #     visu_utils.jointplot(Y['SHSS_score'], median_per_row,
-    #                          x_label='SHSS score (ranked)', y_label=f'ISC {roi} (ranked)',
-    #                          title=f'ISC {roi} vs SHSS score')
-    # #%%
-
 
 #%%
 #=================================
@@ -783,9 +640,15 @@ isc_utils.save_data(save_to, rsa_behav_per_cond)
 print(f'Saved RSA results to {save_to}')
 
 
-
-
 #%%
+
+try:
+    shutil.copy(current_script_path, destination_path)
+    print(f"Script copied to: {destination_path}")
+except Exception as e:
+    print(f"Failed to copy script: {e}")
+
+
 print(f'Saved all RSA results to {save_path}')
 print('Done with all RSA!')
 # %%
