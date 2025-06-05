@@ -291,9 +291,6 @@ glm_info.group_contrast_files = group_contrast_files
 
 utils.save_pickle(os.path.join(glm_second_save, 'results_paths.pkl'), glm_info)
 
-
-# %%
-
 # %%
 
 # reload(qc_utils)
@@ -316,7 +313,6 @@ utils.save_pickle(os.path.join(glm_second_save, 'results_paths.pkl'), glm_info)
 # utils.save_pickle(os.path.join(setup.save_dir, 'GLM_results', 'NPS_dot_pain.pkl'), conditions_nps)
 #%%
 utils.save_json(os.path.join(setup.save_dir, 'GLM_results', 'glm_info.json'), glm_info)
-
 print("Done with all GLM processing!")
 # %%
 #============================
@@ -657,7 +653,6 @@ def extract_multivoxel_patterns_by_subject(sugg_dict, shock_dict, atlas_img, all
     similarity_df = pd.DataFrame.from_dict(similarity_dict, orient='index')
 
     return similarity_df
-
 
 from nilearn.image import load_img
 from sklearn.metrics.pairwise import cosine_similarity
