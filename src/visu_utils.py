@@ -366,10 +366,11 @@ def project_isc_to_brain(atlas_img, isc_median, atlas_labels,roi_coords, p_value
             sig_isc_values.append(isc_median[i])
 
             sig_labels_data.append({
-                "ROI": label,
+                "ROI": roi_idx,
+                "Label": label,
                 "ISC": round(isc_median[i], 2),
                 "p-value": round(p_values[i], 2),
-                "Coordinates": tuple(np.round(roi_coords[i], 2))
+                "Coordinates": tuple(np.round(roi_coords[i], 0).astype(int))
             })
             
         else:
@@ -413,7 +414,7 @@ def project_isc_to_brain(atlas_img, isc_median, atlas_labels,roi_coords, p_value
     return isc_img, min_sig, pd.DataFrame(sig_labels_data)
 
 
-def project_isc_to_brain_perm(atlas_img, isc_median, atlas_labels,roi_coords, p_values=None, p_threshold=0.01,title = '"ISC Median Values (Thresholded)',color='seismic', save_path=None, show=True, display_mode = 'z',cut_coords_plot = None):
+def project_isc_to_brain_perm(atlas_img, isc_median, atlas_labels,roi_coords, p_values=None, p_threshold=0.01,title = '"ISC Median Values (Thresholded)',color='seismic', save_path=None,save_fig_as = None, show=True, display_mode = 'z',cut_coords_plot = None):
     """
     Projects ISC values to brain space and optionally thresholds by significance.
 
@@ -503,7 +504,7 @@ def project_isc_to_brain_perm(atlas_img, isc_median, atlas_labels,roi_coords, p_
     if show:
         # plot_stat_map(isc_img, title=title, threshold=min_sig_thresh, vmax=max_diff, 
         #               colorbar=True, display_mode='x', cmap=color, cut_coords=6, draw_cross=False)
-        plot_stat_map(
+        im = plot_stat_map(
             isc_img,
             bg_img=bg_mni,
             title=title,
@@ -514,8 +515,14 @@ def project_isc_to_brain_perm(atlas_img, isc_median, atlas_labels,roi_coords, p_
             display_mode=display_mode,
             cut_coords=cut_coords_plot,
             cmap=color,
-            draw_cross=False
+            draw_cross=False,
+            
         )
+        plt.show()
+    if save_fig_as is not None:
+        plt.savefig(save_fig_as, dpi=1000, bbox_inches='tight')
+        print(f"ISC projection plot saved to {save_fig_as}")
+
     return isc_img, min_sig_thresh, pd.DataFrame(sig_labels_data), z_img_unthresholded
 
 
@@ -740,8 +747,8 @@ import matplotlib.pyplot as plt
 from scipy.stats import linregress
 
 def jointplot(x, y, x_label="X", y_label="Y", 
-              title=None, default_color=[0.2, 0.5, 1], 
-              density_color_x='#4c80ff', density_color_y='#fd6262'):
+              title=None, default_color=[0.2, 0.5, 1],
+              density_color_x='#4c80ff', density_color_y="#fd6262", alpha=1):
     """
     Create a jointplot with regression line for X and Y with KDE marginals.
 
@@ -769,10 +776,6 @@ def jointplot(x, y, x_label="X", y_label="Y",
     g : seaborn.axisgrid.JointGrid
         The seaborn jointplot object.
     """
-    #ensure np arrays
-    x = np.asarray(x, dtype=float)
-    y = np.asarray(y, dtype=float)
-
     # Handle NaNs
     valid_mask = ~np.isnan(x) & ~np.isnan(y)
 
@@ -790,11 +793,18 @@ def jointplot(x, y, x_label="X", y_label="Y",
     ylim = (y_valid.min() - y_margin, y_valid.max() + y_margin)
 
     # Create JointGrid with fixed axis limits
-    g = sns.JointGrid(x=x_valid, y=y_valid, height=8, xlim=xlim, ylim=ylim)
+    g = sns.JointGrid(x=x_valid, y=y_valid, height=10, xlim=xlim, ylim=ylim) # height to increase box size
+    # g.fig.set_size_inches(10, 11)  # width, height in inches
+
 
     # Scatter plot
-    g.ax_joint.scatter(x_valid, y_valid, alpha=0.7, s=50, edgecolor='black', color=default_color)
-    g.ax_joint.tick_params(axis='both', which='major', labelsize=22)
+    # g.ax_joint.scatter(x_valid, y_valid, alpha=0.7, s=50, edgecolor='black', color=default_color)
+    g.ax_joint.scatter(x_valid, y_valid, alpha=0.7, s=150, edgecolor='black', linewidth=1.5, color=default_color)
+
+    g.ax_joint.tick_params(axis='both', which='major', labelsize=40, width=2.5, length=8)
+    
+    for spine in g.ax_joint.spines.values():
+        spine.set_linewidth(3.5)
 
 
     # Add regression line
@@ -802,20 +812,24 @@ def jointplot(x, y, x_label="X", y_label="Y",
                 line_kws={'color': 'black', 'linewidth': 5})
 
     # KDE marginal distributions with separate colors
-    sns.kdeplot(x=x_valid, ax=g.ax_marg_x, fill=True, color=density_color_x, alpha=0.5)
-    sns.kdeplot(y=y_valid, ax=g.ax_marg_y, fill=True, color=density_color_y, alpha=0.5)
+    
+    sns.kdeplot(x=x_valid, ax=g.ax_marg_x, fill=True, color=density_color_x, alpha=alpha)
+    sns.kdeplot(y=y_valid, ax=g.ax_marg_y, fill=True, color=density_color_y, alpha=alpha)
 
     # Add correlation text with larger box
     g.ax_joint.text(0.05, 0.95, corr_label, transform=g.ax_joint.transAxes,
-                    fontsize=25, verticalalignment='top', 
+                    fontsize=35, verticalalignment='top', 
                     bbox=dict(boxstyle="round,pad=0.48", alpha=0.5, facecolor = 'lightgray'))
 
     # Add labels and title
-    g.set_axis_labels(x_label, y_label, fontsize=30)
+    g.ax_joint.set_xlabel(x_label, fontsize=45, labelpad=24)
+    g.ax_joint.set_ylabel(y_label, fontsize=45)
     if title:
-        g.fig.suptitle(title, fontsize=30, y=0.98)
+        g.fig.suptitle(title, fontsize=36, y=0.97)
+
 
     plt.tight_layout()
+
     plt.show()
 
     return g
@@ -1014,3 +1028,364 @@ def plot_median_isc_dots(sig_dfs_one_sample,
     ax.grid(axis='x', linestyle='dotted', alpha=0.5)
     plt.tight_layout()
     plt.show()
+
+
+
+from mpl_toolkits.axes_grid1 import make_axes_locatable
+
+def plot_simmat_behav(simmat, title, title_id='SHSS', y_label=None, x_label = 'Subjects', cmap='RdBu_r', colorbar_name = 'Similarity', save_path=None, dpi=1000):
+    """
+    Plot a similarity matrix sorted by behavioral scores, styled for publication.
+
+    Parameters
+    ----------
+    simmat : np.ndarray
+        Square similarity matrix.
+    title : str
+        Title of the plot.
+    title_id : str, optional
+        Identifier for the title or output filename (used if save_path is provided).
+    y_name : str, optional
+        Name of the behavioral score used for sorting.
+    cmap : str, optional
+        Colormap for the matrix.
+    save_path : str, optional
+        Path to save the figure. If None, the figure is not saved.
+    dpi : int, optional
+        Resolution of the saved figure in dots per inch.
+    """
+    fig, ax = plt.subplots(figsize=(10, 10))
+
+    vmax = np.max(np.abs(simmat))
+    im = ax.imshow(
+        simmat,
+        vmin=-vmax,
+        vmax=vmax,
+        cmap=cmap,
+        aspect='equal'
+    )
+
+    # Custom colorbar: thick and aligned with heatmap
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes("right", size="5%", pad=0.2)  # 5% width, 10% pad
+    cbar = plt.colorbar(im, cax=cax, ticks=[1, 0, -1])
+    cbar.ax.tick_params(labelsize=30, width=3, length=6)
+    cbar.set_label(colorbar_name, fontsize=35)
+
+    # Titles and labels
+    ax.set_title(title, fontsize=35, pad=15)
+    ax.set_xlabel(x_label, fontsize=35, labelpad=14)
+    ax.set_ylabel(y_label, fontsize=35, labelpad=14)
+
+    # Tick labels only at 0, 5, 10, 15, 20 (within matrix size)
+    max_idx = simmat.shape[0] - 1
+    ticks = [i for i in [0, 5, 10, 15, 20] if i <= max_idx]
+    ax.set_xticks(ticks)
+    ax.set_yticks(ticks)
+    ax.set_xticklabels(ticks, fontsize=30)
+    ax.set_yticklabels(ticks, fontsize=30)
+
+    ax.tick_params(length=8, width=3)
+
+    plt.tight_layout()
+
+    if save_path is not None:
+        plt.savefig(save_path, dpi=dpi, bbox_inches='tight')
+        print(f"Figure saved to: {save_path}")
+
+    plt.show()
+
+
+from mpl_toolkits.axes_grid1.inset_locator import inset_axes
+
+
+def plot_simmat_isc(simmat, title, title_id='SHSS', y_label=None, x_label = 'Subjects', cmap='RdBu_r', colorbar_name = 'Similarity', save_path=None, dpi=1000):
+    """
+    Plot a similarity matrix sorted by behavioral scores, styled for publication.
+
+    Parameters
+    ----------
+    simmat : np.ndarray
+        Square similarity matrix.
+    title : str
+        Title of the plot.
+    title_id : str, optional
+        Identifier for the title or output filename (used if save_path is provided).
+    y_name : str, optional
+        Name of the behavioral score used for sorting.
+    cmap : str, optional
+        Colormap for the matrix.
+    save_path : str, optional
+        Path to save the figure. If None, the figure is not saved.
+    dpi : int, optional
+        Resolution of the saved figure in dots per inch.
+    """
+    fig, ax = plt.subplots(figsize=(10, 10))
+    
+    vmax = np.max(np.abs(simmat))
+    im = ax.imshow(
+        simmat,
+        vmin=-vmax,
+        vmax=vmax,
+        cmap=cmap,
+        aspect='equal'
+    )
+
+    # Custom colorbar: thick and aligned with heatmap
+    divider = make_axes_locatable(ax)
+    cax = inset_axes(
+    ax,
+    width="5%",        # Width of the colorbar relative to ax
+    height="96%",      # Slightly shorter height
+    loc='right',
+    bbox_to_anchor=(0.1, 0.0, 1, 1),  # Move it down a bit to center it
+    bbox_transform=ax.transAxes,
+    borderpad=0
+    )
+
+    cbar_ticks = [-vmax, 0, vmax]
+    cbar = plt.colorbar(im, cax=cax, ticks=cbar_ticks)
+    cbar.ax.tick_params(labelsize=50, width=3, length=6)
+    cbar.set_label(colorbar_name, fontsize=60, rotation=270, labelpad=0)
+      # Default position is something like (1.05, 0.5) 
+    cbar.ax.yaxis.label.set_position((0.98, 0.5))  #
+
+    # Then manually round the tick *labels*
+    tick_labels = [f"{t:.2f}" if t != 0 else "0" for t in cbar_ticks]
+    cbar.ax.set_yticklabels(tick_labels)
+
+    # Titles and labels
+    ax.set_title(title, fontsize=60, pad=15)
+    ax.set_xlabel(x_label, fontsize=60, labelpad=14)
+    ax.set_ylabel(y_label, fontsize=60, labelpad=14)
+
+    # Tick labels only at 0, 5, 10, 15, 20 (within matrix size)
+    max_idx = simmat.shape[0] - 1
+    ticks = [i for i in [0, 5, 10, 15, 20] if i <= max_idx]
+    ax.set_xticks(ticks)
+    ax.set_yticks(ticks)
+    ax.set_xticklabels(ticks, fontsize=40)
+    ax.set_yticklabels(ticks, fontsize=40)
+
+    ax.tick_params(length=8, width=3)
+
+    plt.tight_layout()
+
+    if save_path is not None:
+        plt.savefig(save_path, dpi=dpi)
+        print(f"Figure saved to: {save_path}")
+
+    plt.show()
+
+#==================================
+#BRAIN PLOTS FINAL //Like pain gen project
+# from M-E Picard FEPS + Coll et al.
+from nilearn.image import resample_to_img
+
+def save_slices(img, coords_to_plot, save_to, img_id,cmap='hot', **kwargs):
+    ticksfontsize = 14
+
+    bg_img = datasets.load_mni152_template(resolution=1)
+    new_img = resample_to_img(img, bg_img, interpolation='nearest')
+
+    for axis, coord_list in coords_to_plot.items():
+        for c in coord_list:
+            fig, ax = plt.subplots(figsize=(2, 2))  # matched style
+            disp = plot_stat_map(
+                new_img,  
+                bg_img=bg_img,
+                cmap=cmap,
+                colorbar=False,
+                dim=0,
+                black_bg=False,
+                display_mode=axis,
+                axes=ax,
+                vmax=None,
+                cut_coords=(c,),
+                alpha=1,
+                annotate=False,
+                interpolation='nearest'
+            )
+            # disp.annotate(size=ticksfontsize, left_right=False, xy=(0.5, -0.08))
+
+            # disp.annotate(size=ticksfontsize, left_right=False, xy=(0.5, -0.08))
+            if axis == 'z': # bigger brain on z cuts
+                x_pos = 0.5
+                y_pos = -0.029
+            elif axis == 'y':
+                x_pos = 0.5
+                y_pos = 0.1
+            elif axis == 'x':
+                x_pos = 0.65
+                y_pos = 0.145
+
+            ax.text(
+                x_pos, y_pos, f'{axis} = {c}',
+                transform=ax.transAxes,
+                fontsize=ticksfontsize,
+                ha='center', va='top',
+                bbox=dict(boxstyle="round,pad=0.3", facecolor='white', alpha=0.7, edgecolor='none')
+            )
+
+            fig.savefig(
+                os.path.join(save_to, f'{img_id}_sig_{axis}{c}.png'),
+                transparent=True, bbox_inches='tight', dpi=600
+            )
+            plt.close(fig)
+
+# ===================================
+# color bars
+# ===================================
+
+# Adapted from Nilearn (https://github.com/nilearn/nilearn),
+# Copyright (c) 2007-2024 The Nilearn developers,
+# BSD-3-Clause license
+
+from numbers import Number
+import numpy as np
+
+
+
+def get_cbar_ticks(vmin, vmax, offset, n_ticks=5):
+    """Extracted from Nilearn, adapted for standalone use."""
+    if vmin == vmax:
+        return np.linspace(vmin, vmax, 1)
+
+    if vmax == 0:
+        vmax += np.finfo(np.float32).eps
+
+    ticks = np.linspace(vmin, vmax, n_ticks)
+    if offset is not None and offset / vmax > 0.12:
+        diff = [abs(abs(tick) - offset) for tick in ticks]
+        if diff.count(min(diff)) == 4:
+            idx_closest = np.sort(np.argpartition(diff, 4)[:4])
+            idx_closest = np.isin(ticks, np.sort(ticks[idx_closest])[1:3])
+        else:
+            idx_closest = np.sort(np.argpartition(diff, 2)[:2])
+            if 0 in ticks[idx_closest]:
+                idx_closest = np.sort(np.argpartition(diff, 3)[:3])
+                idx_closest = idx_closest[[0, 2]]
+        ticks[idx_closest] = [-offset, offset]
+    if len(ticks) > 0 and ticks[0] < vmin:
+        ticks[0] = vmin
+    return ticks
+
+
+def get_colorbar_and_data_ranges(
+    stat_map_data,
+    vmin=None,
+    vmax=None,
+    symmetric_cbar=True,
+    force_min_stat_map_value=None,
+):
+    """Extracted from Nilearn, adapted for standalone use."""
+    if (not isinstance(vmin, Number)) or (not np.isfinite(vmin)):
+        vmin = None
+    if (not isinstance(vmax, Number)) or (not np.isfinite(vmax)):
+        vmax = None
+
+    if hasattr(stat_map_data, "_mask"):
+        stat_map_data = np.asarray(
+            stat_map_data[np.logical_not(stat_map_data._mask)]
+        )
+
+    if force_min_stat_map_value is None:
+        stat_map_min = np.nanmin(stat_map_data)
+    else:
+        stat_map_min = force_min_stat_map_value
+    stat_map_max = np.nanmax(stat_map_data)
+
+    if symmetric_cbar == "auto":
+        if vmin is None or vmax is None:
+            min_value = stat_map_min if vmin is None else max(vmin, stat_map_min)
+            max_value = stat_map_max if vmax is None else min(stat_map_max, vmax)
+            symmetric_cbar = min_value < 0 < max_value
+        else:
+            symmetric_cbar = np.isclose(vmin, -vmax)
+
+    if symmetric_cbar:
+        if vmin is None and vmax is None:
+            vmax = max(-stat_map_min, stat_map_max)
+            vmin = -vmax
+        elif vmin is None:
+            vmin = -vmax
+        elif vmax is None:
+            vmax = -vmin
+        elif not np.isclose(vmin, -vmax):
+            raise ValueError(
+                "vmin must be equal to -vmax unless symmetric_cbar is False."
+            )
+        cbar_vmin = vmin
+        cbar_vmax = vmax
+    else:
+        negative_range = stat_map_max <= 0
+        positive_range = stat_map_min >= 0
+        if positive_range:
+            cbar_vmin = 0 if vmin is None else vmin
+            cbar_vmax = vmax
+        elif negative_range:
+            cbar_vmax = 0 if vmax is None else vmax
+            cbar_vmin = vmin
+        else:
+            cbar_vmin = vmin
+            cbar_vmax = vmax
+
+    if vmin is None:
+        vmin = stat_map_min
+    if vmax is None:
+        vmax = stat_map_max
+
+    return cbar_vmin, cbar_vmax, float(vmin), float(vmax)
+
+import matplotlib.pyplot as plt
+from matplotlib.colorbar import ColorbarBase
+from matplotlib.colors import Normalize
+
+
+def save_colorbar(img, cmap, outpath, symmetric_cbar=False, offset=None, n_ticks=5, transparent=True):
+    img_data = img.get_fdata()
+
+    import numpy as np # bug fix, somehow numpy is not imported in the scritp
+
+    # Automatically set vmax and vmin based on actual data range
+    data_max = np.nanmax(img_data)
+    data_min = np.nanmin(img_data)
+
+    # Important adjustment here:
+    if symmetric_cbar:
+        vmax = max(abs(data_min), abs(data_max))
+        vmin = -vmax
+    else:
+        vmax = data_max
+        vmin = data_min  # <-- set to actual data min, not 0 explicitly
+
+    cbar_vmin, cbar_vmax, _, _ = get_colorbar_and_data_ranges(
+        img_data,
+        symmetric_cbar=symmetric_cbar,
+        vmax=vmax,
+        vmin=vmin
+    )
+
+    # Guard against None values
+    if cbar_vmin is None:
+        cbar_vmin = data_min
+    if cbar_vmax is None:
+        cbar_vmax = data_max
+
+    # Generate ticks safely
+    ticks = np.linspace(cbar_vmin, cbar_vmax, n_ticks)
+
+    # Plotting the standalone colorbar
+    fig, ax = plt.subplots(figsize=(0.4, 4))
+    norm = Normalize(vmin=cbar_vmin, vmax=cbar_vmax)
+    cb = ColorbarBase(ax, cmap=cmap, norm=norm, ticks=ticks, orientation='vertical')
+    cb.ax.set_yticklabels([f'{t:.2f}' for t in ticks], fontsize=16)
+
+    cb.ax.yaxis.set_ticks_position('left')
+    cb.ax.yaxis.set_label_position('left')
+    cb.outline.set_visible(False)
+
+    fig.savefig(outpath, transparent=transparent, bbox_inches='tight', dpi=300)
+    plt.close(fig)
+
+    return fig
