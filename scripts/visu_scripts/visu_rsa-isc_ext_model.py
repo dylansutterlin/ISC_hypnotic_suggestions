@@ -49,14 +49,16 @@ model_names = {
 model_sugg = model_names['model1_sugg_200_run']
 model_pain = model_names['model3_shock_200_run']
 
+model_sugg = model_names['model2_sugg']
+model_pain = model_names['model3_shock']
 
 project_dir = "/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions"
 results_dir = os.path.join(project_dir, f'results/imaging/ISC/{model_sugg}')
 setup = isc_utils.load_json(os.path.join(results_dir, "setup_parameters.json"))
 subjects = setup['subjects']
 
-DATE = datetime.now().strftime("%Y-%m-%d_%H")
-save_path = f'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/RSA/isc-RSA_ext_conds_sugg-pain_2tails'
+save_path = '/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/RSA/isc-RSA_ext_conds_sugg-pain_tian216_2tails'
+save_figures = os.path.join(project_dir, 'results/imaging/RSA/isc-RSA_ext_conds_sugg-pain_tian216_2tails/post-hoc_figures')
 os.makedirs(save_path, exist_ok=True)
 
 # conditions = ['NANA', 'ANA', 'HYPER', 'all_sugg', 'neutral', 'ana_run', 'hyper_run']
@@ -123,7 +125,7 @@ def plot_simmat(simmat, title,title_id = 'SHSS', y_name = 'SHSS_score', cmap= 'c
     plt.show()
 
 for metric in ['euclidean', 'annak']:
-    for y_name in ['SHSS_score', 'total_chge_pain_hypAna']:
+    for y_name in ['SHSS_score', 'total_chge_pain_hypAna', 'raw_change_ANA', 'raw_change_HYPER']:
 
         y = Y[y_name].values
         y = (y - np.mean(y)) / np.std(y)
@@ -134,7 +136,97 @@ for metric in ['euclidean', 'annak']:
 
         title = f'{metric}-based {y_name} similarity matrix'
         plot_simmat(sim_ranked, title = title, y_name = y_name)
-   
+
+#%%
+# BETTER LOOK AT BEHAVIROAL DATA
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+
+#%%
+#plot jointplots 
+from src import isc_utils
+import src.isc_utils as isc_utils
+import src.visu_utils as visu_utils
+from importlib import reload
+reload(visu_utils)
+reload(isc_utils)
+
+from src.visu_utils import jointplot
+x_shss = np.array(Y['SHSS_score']).astype(float)
+
+
+for y_name in ['raw_change_ANA', 'raw_change_HYPER']:
+    
+    fig_id = 'jointplot_SHSS' + y_name + '.png'
+    y_label = 'Change in pain (hyperalgesia)' if y_name == 'raw_change_HYPER' else 'Change in pain (analgesia)'
+    g = jointplot(x_shss, np.array(Y[y_name]).astype(float),
+              x_label='Hypnotic Susceptibility', y_label=y_label,
+              title=None)
+    g.savefig(os.path.join(save_figures, fig_id), dpi=300, bbox_inches='tight')
+
+#%%
+# regression SHSS ~ pain 
+import statsmodels.api as sm
+
+x = np.array(Y['SHSS_score']).astype(float)
+X = sm.add_constant(x)  # add intercept
+y = np.array(Y['raw_change_HYPER']).astype(float)
+
+model = sm.OLS(y, X).fit()
+print(model.summary())
+
+print('======NEXT=======')
+
+y = np.array(Y['raw_change_ANA']).astype(float)
+
+model = sm.OLS(y, X).fit()
+print(model.summary())
+
+#%%
+# T test + violin plot for pain ratings
+from scipy.stats import ttest_rel
+from itertools import combinations
+# Perform paired t-test
+
+variables = {'Analgesia' : ['mean_VAS_ana_int', 'mean_VAS_ana_UnP'],
+            'Hyperalgesia' : ['mean_VAS_hyper_int', 'mean_VAS_hyper_UnP'],
+            'Neutral (Ana.)' : ['mean_VAS_Nana_int', 'mean_VAS_Nana_UnP'],
+            'Neutral (Hyper.)' : ['mean_VAS_Nhyper_int', 'mean_VAS_Nhyper_UnP']}
+
+cond_means = {}
+for label, cols in variables.items():
+    print(cols)
+    cond_means[label] = Y[cols].mean(axis=1)
+
+# Convert to DataFrame
+mean_df = pd.DataFrame(cond_means)
+conditions = mean_df.columns.tolist()
+# Perform paired t-tests between all condition pairs
+print("Paired t-tests between conditions:")
+ttest_results = []
+for cond1, cond2 in combinations(mean_df.columns, 2):
+    stat, p = ttest_rel(mean_df[cond1], mean_df[cond2])
+    ttest_results.append({'Comparison': f"{cond1} vs {cond2}", 't-stat': stat, 'p-value': p})
+    print(f"{cond1} vs {cond2} : t = {stat:.3f}, p = {p:.4f}")
+
+# Convert to DataFrame if needed
+ttest_df = pd.DataFrame(ttest_results)
+palette = ['#df265e','#c1bfbf', '#004197', '#c1bfbf'] #red blue green blue
+
+reload(visu_utils)
+fig = visu_utils.plot_four_condition_violin(
+    data_dict={
+        'Analgesia': mean_df['Analgesia'],
+        'Neutral\n(Ana.)': mean_df['Neutral (Ana.)'],
+        'Hyperalgesia': mean_df['Hyperalgesia'],
+        'Neutral\n(Hyper.)': mean_df['Neutral (Hyper.)']
+    },
+    palette=palette, 
+    title=None
+)
+
+fig.savefig(os.path.join(save_figures, 'pain_ratings_violin.png'), dpi=1000, bbox_inches='tight')
 #%%
 #================================
 # Multivariate behavioral similarity
@@ -189,7 +281,6 @@ cosine_vec_pain = isc_utils.compute_behav_similarity(Y_pain, metric='cosine', ve
 plot_simmat(cosine_sim_sugg, title = 'Cosine', title_id = 'SUGG', y_name = 'SHSS_score', cmap= 'coolwarm')
 plot_simmat(cosine_sim_pain, title = 'Cosine', title_id = 'PAIN', y_name = 'raw_change_HYPER', cmap= 'coolwarm')
 
-
 # UNIVARIATE pairwise similarities : NN & AnnaK 
 y = Y['SHSS_score'].values
 y = (y - np.mean(y)) / np.std(y)
@@ -221,7 +312,7 @@ print(f"Spearman correlation between uni - multivariate PAIN var.: {r:.4f}, p-va
 #================================
 #Atlas
 #================================
-SCHAEFER_ONLY = True
+SCHAEFER_ONLY = False
 
 atlas = nib.load('/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/masks/Tian2020_schaeffer200_subcortical16/combined_schaefer200_tian16_DSG.nii.gz')
 id_labels_dct = isc_utils.load_json('/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/masks/Tian2020_schaeffer200_subcortical16/roi_labels_dict_DSG.json')
@@ -256,34 +347,34 @@ df_labels_coords['coords'] = [coords[i] for i in range(len(coords))]
 #%%
 # plot specific ROIs to find anatomical regions
 
-from nilearn.image import math_img
+# from nilearn.image import math_img
 
-# plot only selected roi to validate the location aMCC _ SMA
-def plot_roi_by_label(label_name, atlas, df_labels_coords):
-    try:
-        row = df_labels_coords[df_labels_coords['region'] == label_name].iloc[0]
-        region_value = int(row['index'])
+# # plot only selected roi to validate the location aMCC _ SMA
+# def plot_roi_by_label(label_name, atlas, df_labels_coords):
+#     try:
+#         row = df_labels_coords[df_labels_coords['region'] == label_name].iloc[0]
+#         region_value = int(row['index'])
 
-        mask_img = math_img("img == %d" % region_value, img=atlas)
+#         mask_img = math_img("img == %d" % region_value, img=atlas)
 
-        print(f"Found region: {label_name} (Index {region_value})")
-        print(f"Coordinates: {row['coords']}")
+#         print(f"Found region: {label_name} (Index {region_value})")
+#         print(f"Coordinates: {row['coords']}")
 
-        return plotting.view_img(mask_img, threshold=0.5, title=f"{label_name}")
+#         return plotting.view_img(mask_img, threshold=0.5, title=f"{label_name}")
 
     
-    except IndexError:
-        print(f"Region label '{label_name}' not found in atlas.")
+#     except IndexError:
+#         print(f"Region label '{label_name}' not found in atlas.")
    
-#$$
-sig_ana_run_rois = [20, 28, 30, 52, 54, 76, 77, 122, 131, 132, 157, 158, 173, 187, 189]
+# #$$
+# sig_ana_run_rois = [20, 28, 30, 52, 54, 76, 77, 122, 131, 132, 157, 158, 173, 187, 189]
 
-for roi_idx in sig_ana_run_rois:
-    roi_name = labels[roi_idx]
-    # sma_name =
-    view_amcc = plot_roi_by_label(roi_name, atlas, df_labels_coords)
-    # view_sma = plot_roi_by_label(amcc_name, atlas, df_labels_coords)
-    display(view_amcc)
+# for roi_idx in sig_ana_run_rois:
+#     roi_name = labels[roi_idx]
+#     # sma_name =
+#     view_amcc = plot_roi_by_label(roi_name, atlas, df_labels_coords)
+#     # view_sma = plot_roi_by_label(amcc_name, atlas, df_labels_coords)
+#     display(view_amcc)
 
 #%% VISU ISC
 #===========
@@ -291,9 +382,7 @@ from nilearn import plotting
 reload(visu_utils)
 
 # rsa_isc = isc_utils.load_pickle('/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/RSA/isc-RSA_ext_conds_sugg-pain/rsa_isc-sugg_isc-pain_10000perm.pkl')
-rsa_isc = isc_utils.load_pickle('/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/RSA/isc-RSA_ext_conds_sugg-pain/rsa_cosine-behav_isc-sugg10000perm.pkl')
-rsa_isc = isc_utils.load_pickle('/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/RSA/2025-05-21_23/rsa_isc-sugg_isc-pain_5000perm.pkl')
-rsa_isc = isc_utils.load_pickle('/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/RSA/isc-RSA_ext_conds_sugg-pain/rsa_isc-sugg_isc-pain_10000perm.pkl')
+rsa_isc = isc_utils.load_pickle('/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/RSA/isc-RSA_ext_conds_sugg-pain_tian216_2tails/rsa_isc-sugg_isc-pain_10000perm.pkl')
 
 views={}
 tables = {}
@@ -326,7 +415,7 @@ for cond in ['HYPER', 'ANA', 'ana_run', 'hyper_run']: #, 'ANA', 'all_sugg', 'neu
         color='Reds'
     )
     tables[cond] = sig_labels
-    views[cond] = plotting.view_img(rsa_img,bg_img = bg_mni, threshold=rsa_thresh, title=f"RSA suggestion - pain similarity {cond}", colorbar=True,symmetric_cmap=False, cmap = 'Reds')
+    views[cond] = plotting.view_img(rsa_img, threshold=rsa_thresh, title=f"RSA suggestion - pain similarity {cond}", colorbar=True,symmetric_cmap=False, cmap = 'Reds')
 
 #%%
 reload(visu_utils)
@@ -335,6 +424,7 @@ bg_mni =  datasets.load_mni152_template(resolution=1)
 
 #VISU UNIVARIATE SHSS for run effect
 load_dir = '/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/RSA/isc-RSA_ext_conds_sugg-pain_2tails'
+load_dir = save_path
 RESULT_FILE = 'rsa_SHSS-behav_isc-sugg10000perm.pkl' 
 
 rsa_isc = isc_utils.load_pickle(os.path.join(load_dir, RESULT_FILE))
@@ -547,14 +637,15 @@ for roi_idx, roi in zip(sig_roi['ROI'], sig_roi['Label']):
     visu_utils.jointplot(Y['SHSS_score'], median_per_row,
                             x_label='SHSS score (ranked)', y_label=f'ISC {roi} (ranked)',
                             title=f'ISC {roi} vs SHSS score')
+
 #%%
 sig_ana_run_rois = [20, 28, 30, 52, 54, 76, 77, 122, 131, 132, 157, 158, 173, 187, 189]
 
 for roi_idx in sig_ana_run_rois:
 
-roi_name = atlas_labels[roi_idx] #adjusted for roi_index
-# sma_name =
-view_amcc = plot_roi_by_label(roi_name, atlas, df_labels_coords)
-# view_sma = plot_roi_by_label(amcc_name, atlas, df_labels_coords)
-display(view_amcc)
+    roi_name = atlas_labels[roi_idx] #adjusted for roi_index
+    # sma_name =
+    view_amcc = plot_roi_by_label(roi_name, atlas, df_labels_coords)
+    # view_sma = plot_roi_by_label(amcc_name, atlas, df_labels_coords)
+    display(view_amcc)
 
