@@ -834,6 +834,100 @@ def jointplot(x, y, x_label="X", y_label="Y",
 
     return g
 
+# Re-import necessary modules after kernel reset
+import numpy as np
+import pandas as pd
+import seaborn as sns
+import matplotlib.pyplot as plt
+from matplotlib.ticker import MaxNLocator
+
+def plot_four_condition_violin(data_dict, palette=None, title='Pain Ratings by Condition', save_as=None):
+    """
+    Plot asymmetric violin plots for four conditions:
+    - Left pair: Analgesia and Neutral (Ana.)
+    - Right pair: Hyperalgesia and Neutral (Hyper.)
+
+    Parameters
+    ----------
+    data_dict : dict
+        Dictionary with condition names as keys and lists/arrays of VAS values as values.
+        Must contain exactly 4 conditions.
+    palette : list of str
+        List of 4 hex color codes.
+    title : str
+        Title for the plot.
+    save_as : str or None
+        If set, path to save the figure.
+    """
+
+    assert len(data_dict) == 4, "Must provide exactly four conditions."
+    condition_names = list(data_dict.keys())
+
+    # Prepare data for plotting
+    all_data = []
+    for cond, values in data_dict.items():
+        for v in values:
+            all_data.append({'Condition': cond, 'Pain Rating': v})
+
+    df_plot = pd.DataFrame(all_data)
+
+    # Set default colors if not provided
+    if palette is None:
+        palette = ['#4c80ff', '#a8c7ff', '#fd6262', '#ffaaaa']
+
+    fig, ax = plt.subplots(figsize=(12, 8))
+
+    sns.set_style('white')
+
+    # Violin plots
+    sns.violinplot(
+        x='Condition', y='Pain Rating', data=df_plot,
+        palette=palette, dodge=False,
+        scale='width', inner=None, linewidth=2, cut=2, ax=ax
+    )
+
+    # Clip each violin in half
+    for i, violin in enumerate(ax.collections[:4]):
+        path = violin.get_paths()[0]
+        bbox = path.get_extents()
+        x0, y0, width, height = bbox.bounds
+        if i in [0, 2]:  # Left half for first in pair (Analgesia, Hyperalgesia)
+            clip_rect = plt.Rectangle((x0, y0), width / 2, height, transform=ax.transData)
+        else:  # Right half for second in pair (Neutral Ana., Neutral Hyper.)
+            clip_rect = plt.Rectangle((x0 + width / 2, y0), width / 2, height, transform=ax.transData)
+        violin.set_clip_path(clip_rect)
+
+    # Stripplot on top (shifted)
+    strip = sns.stripplot(
+        x='Condition', y='Pain Rating', data=df_plot,
+        palette=palette, dodge=False,
+        size=10, alpha=0.7, ax=ax
+    )
+
+    # Offset the dots left or right for pairs
+    for i, dots in enumerate(strip.collections):
+        offsets = dots.get_offsets()
+        shift = 0.12 if i % 2 == 0 else -0.12
+        dots.set_offsets(offsets + np.array([shift, 0]))
+
+    # Axis formatting
+    ax.set_title(title, fontsize=28, y=1.02)
+    ax.set_xlabel('', fontsize=22)
+    ax.set_ylabel('Mean Pain Rating', fontsize=22)
+    ax.tick_params(axis='both', which='major', labelsize=18, width=2, length=6)
+    ax.set_ylim(0, 100)
+    ax.yaxis.set_major_locator(MaxNLocator(nbins='auto', integer=True))
+    for spine in ax.spines.values():
+        spine.set_linewidth(2)
+
+    plt.tight_layout()
+    if save_as:
+        plt.savefig(save_as, dpi=1000)
+    plt.show()
+
+    return fig
+
+
 
 # =============
 # RADAR CHART
