@@ -841,17 +841,19 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 from matplotlib.ticker import MaxNLocator
 
+
 def plot_four_condition_violin(data_dict, palette=None, title='Pain Ratings by Condition', save_as=None):
     """
-    Plot asymmetric violin plots for four conditions:
-    - Left pair: Analgesia and Neutral (Ana.)
-    - Right pair: Hyperalgesia and Neutral (Hyper.)
+    Plot asymmetric violin plots for four conditions with:
+    - Mean (dashed line)
+    - Standard deviation (rectangle)
+    - Connecting lines between paired conditions
 
     Parameters
     ----------
     data_dict : dict
         Dictionary with condition names as keys and lists/arrays of VAS values as values.
-        Must contain exactly 4 conditions.
+        Expected order: Analgesia, Neutral (Ana.), Hyperalgesia, Neutral (Hyper.)
     palette : list of str
         List of 4 hex color codes.
     title : str
@@ -861,64 +863,94 @@ def plot_four_condition_violin(data_dict, palette=None, title='Pain Ratings by C
     """
 
     assert len(data_dict) == 4, "Must provide exactly four conditions."
+
     condition_names = list(data_dict.keys())
 
-    # Prepare data for plotting
+    # Prepare DataFrame
     all_data = []
     for cond, values in data_dict.items():
-        for v in values:
-            all_data.append({'Condition': cond, 'Pain Rating': v})
+        for i, v in enumerate(values):
+            all_data.append({'Subject': i, 'Condition': cond, 'Pain Rating': v})
 
     df_plot = pd.DataFrame(all_data)
 
-    # Set default colors if not provided
     if palette is None:
         palette = ['#4c80ff', '#a8c7ff', '#fd6262', '#ffaaaa']
 
-    fig, ax = plt.subplots(figsize=(12, 8))
-
+    fig, ax = plt.subplots(figsize=(14, 10))
     sns.set_style('white')
 
-    # Violin plots
+    # Violin plot
     sns.violinplot(
         x='Condition', y='Pain Rating', data=df_plot,
         palette=palette, dodge=False,
-        scale='width', inner=None, linewidth=2, cut=2, ax=ax
+        scale='width', inner=None, linewidth=2, cut=0, ax=ax
     )
 
-    # Clip each violin in half
+    # Clip violins in half
     for i, violin in enumerate(ax.collections[:4]):
         path = violin.get_paths()[0]
         bbox = path.get_extents()
         x0, y0, width, height = bbox.bounds
-        if i in [0, 2]:  # Left half for first in pair (Analgesia, Hyperalgesia)
+        if i in [0, 2]:
             clip_rect = plt.Rectangle((x0, y0), width / 2, height, transform=ax.transData)
-        else:  # Right half for second in pair (Neutral Ana., Neutral Hyper.)
+        else:
             clip_rect = plt.Rectangle((x0 + width / 2, y0), width / 2, height, transform=ax.transData)
         violin.set_clip_path(clip_rect)
 
-    # Stripplot on top (shifted)
+    for violin in ax.collections[:4]:  # adjust if more violins exist
+        violin.set_alpha(0.9)
+
+    # Stripplot (with offset)
     strip = sns.stripplot(
         x='Condition', y='Pain Rating', data=df_plot,
         palette=palette, dodge=False,
         size=10, alpha=0.7, ax=ax
     )
-
-    # Offset the dots left or right for pairs
     for i, dots in enumerate(strip.collections):
         offsets = dots.get_offsets()
         shift = 0.12 if i % 2 == 0 else -0.12
         dots.set_offsets(offsets + np.array([shift, 0]))
 
-    # Axis formatting
+    # Draw connecting lines between paired conditions
+    n_subjects = len(data_dict[condition_names[0]])
+    for i in range(n_subjects):
+        # Left pair: Analgesia <-> Neutral (Ana.)
+        ax.plot([0, 1],
+                [data_dict[condition_names[0]][i], data_dict[condition_names[1]][i]],
+                color='gray', alpha=0.4, linewidth=1.5, zorder=0)
+        # Right pair: Hyperalgesia <-> Neutral (Hyper.)
+        ax.plot([2, 3],
+                [data_dict[condition_names[2]][i], data_dict[condition_names[3]][i]],
+                color='gray', alpha=0.4, linewidth=1.5, zorder=0)
+
+    # Add mean and standard deviation box for each condition
+    for i, (cond, values) in enumerate(data_dict.items()):
+        mean = np.mean(values)
+        std = np.std(values)
+        ax.hlines(mean, i - 0.2, i + 0.2, color='black', linestyle='--', linewidth=2.5)
+        ax.add_patch(plt.Rectangle((i - 0.15, mean - std), 0.3, 2 * std,
+                                   edgecolor='black', facecolor='none', lw=2.5, zorder=10))
+
+    # Formatting
     ax.set_title(title, fontsize=28, y=1.02)
-    ax.set_xlabel('', fontsize=22)
-    ax.set_ylabel('Mean Pain Rating', fontsize=22)
-    ax.tick_params(axis='both', which='major', labelsize=18, width=2, length=6)
-    ax.set_ylim(0, 100)
+    ax.set_xlabel('Hypnotic suggestions', fontsize=40, labelpad=20)
+    ax.set_xticklabels(ax.get_xticklabels(), fontsize=37)
+    ax.set_ylabel('Pain ratings', fontsize=40)
+    ax.tick_params(axis='both', which='major', labelsize=37, width=4, length=12)
+    
+    #more space on top
+    ax.set_ylim(0, 110)
+    ticks = ax.get_yticks()
+    ticks = [tick for tick in ticks if tick < 110]
+    ax.set_yticks(ticks)
+
     ax.yaxis.set_major_locator(MaxNLocator(nbins='auto', integer=True))
     for spine in ax.spines.values():
         spine.set_linewidth(2)
+
+    ax.tick_params(axis='x', bottom=True)  # show ticks on bottom
+    ax.tick_params(axis='y', left=True)    # show ticks on left
 
     plt.tight_layout()
     if save_as:
