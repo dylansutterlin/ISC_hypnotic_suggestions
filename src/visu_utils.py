@@ -736,7 +736,108 @@ def plot_images_grid(image_paths, title,save_to=False, show=True):
     if show:
         plt.show()
 
-    
+def plot_roi_timeseries(
+    timeseries, 
+    region_label="ROI", 
+    plot_mean=True, 
+    save_to=None, 
+    show=True, 
+    mean_label="Mean",
+    subject_scores=None,
+    score_label="Score",
+    colormap="viridis"
+):
+    """
+    Plots each subject's timeseries and the mean timeseries for a given region.
+    Optionally colors each subject by an external score and adds a colorbar.
+
+    Parameters
+    ----------
+    timeseries : np.ndarray
+        Array of shape (datapoints, subjects) containing the timeseries data for one region.
+    region_label : str, optional
+        Label for the region (used in the plot title). Default is "ROI".
+    plot_mean : bool, optional
+        Whether to plot the mean timeseries on top. Default is True.
+    save_to : str or None, optional
+        If provided, path to save the figure as PNG. Default is None.
+    show : bool, optional
+        Whether to display the plot. Default is True.
+    mean_label : str, optional
+        Legend label for the mean signal. Default is "Mean".
+    subject_scores : array-like or None, optional
+        If provided, array of shape (subjects,) with external scores to color lines.
+    score_label : str, optional
+        Label for the colorbar if subject_scores is provided.
+    colormap : str, optional
+        Name of the matplotlib colormap to use for subject_scores. Default is "viridis".
+    """
+    import matplotlib.pyplot as plt
+
+    n_timepoints, n_subjects = timeseries.shape
+
+    plt.figure(figsize=(15, 5))
+    ax = plt.gca()
+
+    if subject_scores is not None:
+        # Normalize scores for colormap
+        subject_scores = np.asarray(subject_scores)
+        assert subject_scores.shape[0] == n_subjects, "subject_scores must match number of subjects"
+        norm = plt.Normalize(np.min(subject_scores), np.max(subject_scores))
+        cmap = plt.get_cmap(colormap)
+        colors = cmap(norm(subject_scores))
+        for subj in range(n_subjects):
+            ax.plot(
+                timeseries[:, subj], 
+                color=colors[subj], 
+                alpha=0.85, 
+                linewidth=1.5
+            )
+        # Add colorbar
+        sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
+        sm.set_array([])
+        cbar = plt.colorbar(sm, ax=ax, pad=0.02)
+        cbar.set_label(score_label, fontsize=12)
+    else:
+        # Use a different color for each subject
+        cmap = plt.get_cmap("tab10") if n_subjects <= 10 else plt.get_cmap("tab20")
+        for subj in range(n_subjects):
+            color = cmap(subj % cmap.N)
+            ax.plot(
+                timeseries[:, subj], 
+                color=color, 
+                alpha=0.85, 
+                linewidth=1.5
+            )
+
+    # Plot mean timeseries if requested
+    if plot_mean:
+        mean_signal = np.mean(timeseries, axis=1)
+        ax.plot(
+            mean_signal, 
+            color='red', 
+            linewidth=3.5, 
+            label=mean_label, 
+            zorder=10
+        )
+
+    ax.set_title(f"Timecourse for {region_label}")
+    ax.set_xlabel("Timepoints")
+    ax.set_ylabel("Signal")
+    if plot_mean:
+        ax.legend()
+    plt.tight_layout()
+
+    if save_to is not None:
+        plt.savefig(save_to, dpi=300)
+        print(f"[plot_roi_timeseries] Saved plot to {save_to}")
+
+    if show:
+        plt.show()
+    else:
+        plt.close()
+
+# BEHAVIORAL 
 import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
@@ -1466,7 +1567,6 @@ def get_colorbar_and_data_ranges(
 import matplotlib.pyplot as plt
 from matplotlib.colorbar import ColorbarBase
 from matplotlib.colors import Normalize
-
 
 def save_colorbar(img, cmap, outpath, symmetric_cbar=False, offset=None, n_ticks=5, transparent=True):
     img_data = img.get_fdata()

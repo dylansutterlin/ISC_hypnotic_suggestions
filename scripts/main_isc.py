@@ -338,7 +338,6 @@ X_pheno, group_labels_df, sub_check= isc_utils.load_process_behav(phenotype, y_i
 #X_pheno includes group labels_df!! 
 setup.group_labels = group_labels_df
 
-# breakpoint()
 # %%
 # extract timseries from atlas
 if transform_imgs == True:
@@ -465,37 +464,67 @@ print(f"Subjects with 0 variance will be removed : {sub_to_remove}")
 setup.kept_subjects = subjects
 n_sub= len(subjects)
 
-isc_utils.plot_flat_rois(
-    transformed_data_per_cond=transformed_data_per_cond,
-    subjects=setup.kept_subjects,
-    roi_names=atlas_labels,  # make sure they're decoded if needed
-    condition_names=setup.conditions,
-    save_dir=os.path.join(setup.results_dir, "QC_flat_rois")
-)
+# #%%
+# isc_utils.plot_flat_rois(
+#     transformed_data_per_cond=transformed_data_per_cond,
+#     subjects=setup.kept_subjects,
+#     roi_names=atlas_labels,  # make sure they're decoded if needed
+#     condition_names=setup.conditions,
+#     save_dir=os.path.join(setup.results_dir, "QC_flat_rois")
+# )
 
 #%%
-if do_isc_analyses:
-    # bootstrap_conditions = ['Hyper', 'Ana', 'NHyper', 'NAna', 'all_sugg', 'modulation', 'neutral']
+# save transformed data and maskers
+save_timeseries = os.path.join(setup.results_dir, "QC_flat_rois")
 
-    # ISC with ROI/voxels : bootstrap per condition (from chen et al. 2016)
-    reload(isc_utils)
+
+#%%
+# ==Format timeseries data for ISC== 
+# assert that data is shape TRs x ROI x subjects and not ls of TRxROI
+transformed_formated = {}
+for cond, data in transformed_data_per_cond.items():
+
+    if isinstance(data, list):
+        data_3d = np.stack(data, axis=-1)
+    elif isinstance(data, np.ndarray):
+        data_3d = data
+    assert data_3d.shape[-1] == n_sub, f"Data shape {data_3d.shape} does not match number of subjects {n_sub}"
+    transformed_formated[cond] = data_3d
+
+transformed_data_per_cond = transformed_formated # replace with 3d arrays
+
+#%%
+# Plot timeseries per ROI
+#%%
+reload(visu_utils)
+
+roi_ids = [16, 76, 77, 187, 189]
+roi_names = ['L_A1', 'L_aMTG', 'L_pMTG', 'R_aMTG', 'R_pMTG']
+
+for cond in conditions:
+    save_plot = os.path.join(setup.results_dir, "QC_flat_rois", cond)
+
+    for roi_id, roi_name in zip(roi_ids, roi_names):
+
+        visu_utils.plot_roi_timeseries(
+            transformed_data_per_cond[cond][:,roi_id,:],
+            region_label = roi_name + f' (roi_id)',
+            save_to = os.path.join(save_plot, f"{roi_name}_{cond}_timeseries.png")
+        )
+        visu_utils.plot_roi_timeseries(
+            transformed_data_per_cond[cond][:,roi_id,:],
+            region_label= roi_name,
+            subject_scores = X_pheno['SHSS_score'],
+            save_to = os.path.join(save_plot, f"{roi_name}_{cond}_timeseries_SHSS.png")
+        )
+                            
+#%%
+# ISC with ROI/voxels : bootstrap per condition (from chen et al. 2016)
+if do_isc_analyses:
+
     isc_results = {}
     start_time = time.time()
 
-    # assert that data is shape TRs x ROI x subjects and not ls of TRxROI
-    transformed_formated = {}
-    for cond, data in transformed_data_per_cond.items():
-
-        if isinstance(data, list):
-            data_3d = np.stack(data, axis=-1)
-        elif isinstance(data, np.ndarray):
-            data_3d = data
-        assert data_3d.shape[-1] == n_sub, f"Data shape {data_3d.shape} does not match number of subjects {n_sub}"
-        transformed_formated[cond] = data_3d
-
-    transformed_data_per_cond = transformed_formated # replace with 3d arrays
-    # breakpoint()    
-    
     for cond, data in transformed_data_per_cond.items():
         print(f'Performing ISC for condition: {cond}')
         start_cond_time = time.time()
@@ -512,6 +541,7 @@ if do_isc_analyses:
         end_cond_time = time.time()
         print(f" {cond} done in {end_cond_time - start_cond_time:.2f} sec")
         print(f"ISC results saved for {cond} at {save_path}")
+
 
     # %%
 
