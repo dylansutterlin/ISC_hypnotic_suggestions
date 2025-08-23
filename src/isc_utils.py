@@ -682,6 +682,20 @@ def group_permutation(isc_values, group_ids, n_perm, do_pairwise, side = 'two-si
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics.pairwise import pairwise_distances, cosine_similarity
 
+def annak_similarity(values, version='min'):
+    values = np.asarray(values)
+    n = len(values)
+    
+    if version == 'min':
+        sim = np.minimum.outer(values, values)
+    elif version == 'mean':
+        max_val = values.max()
+        sim = np.add.outer(values, values) / (2 * max_val)
+    else:
+        raise ValueError("version must be 'min' or 'mean'")
+    
+    return sim
+
 def compute_behav_similarity(behavior, 
                              metric='euclidean', 
                              standardize=True, 
@@ -728,12 +742,13 @@ def compute_behav_similarity(behavior,
     elif metric == 'annak':
         if X.shape[1] > 1:
             raise ValueError("AnnaK only supported for univariate input.")
-        values = X.ravel()
-        max_val = values.max()
-        sim = np.zeros((n_subj, n_subj))
-        for i in range(n_subj):
-            for j in range(n_subj):
-                sim[i, j] = (values[i] + values[j]) / (2 * max_val)
+        # values = X.ravel()
+        # max_val = values.max()
+        # sim = np.zeros((n_subj, n_subj))
+        # for i in range(n_subj):
+        #     for j in range(n_subj):
+        #         sim[i, j] = (values[i] + values[j]) / (2 * max_val)
+        sim = annak_similarity(X.ravel(), version='mean')
 
     elif metric == 'cosine':
         sim = cosine_similarity(X)
