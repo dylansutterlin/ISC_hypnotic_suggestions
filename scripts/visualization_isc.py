@@ -51,18 +51,7 @@ model_names = {
     'model3_shock' : 'model3_shock_23-sub_schafer_tian-200-2mm_mask-whole-brain_pairWise-True_preproc_reg-mvmnt-True-8',
 }
 
-model_is = 'model3-shock'
-model_is = 'model2_sugg-sensaas'
-model_is = 'model5_sugg'
-model_is = 'model1_single-trial'
 model_is = 'model2_sugg'
-
-# model_is = 'model3_shock_200'
-# model_is = 'model1_sugg_200_run'
-# model_is = 'model3_shock_200_run'
-# model_is = 'model1_sugg_200'
-# model_is = 'model1_sugg_run'
-
 
 ref_preproc_models = { 'model2' : model_names['model1_sugg_200']}
 ref_model_name = ref_preproc_models['model2']
@@ -169,7 +158,6 @@ labels, ctab, names = read_annot(annot_path)
 fig = plt.figure(figsize=(8, 6))
 ax = plt.gca()
 
-# Plot the surface atlas using Nilearn
 im = plotting.plot_surf_stat_map(
     fsaverage.infl_right,
     stat_map=labels,
@@ -209,62 +197,97 @@ conditions = ['NANA', 'ANA', 'NHYPER', 'HYPER'] if 'single-trial' not in model_n
 all_conditions = setup['conditions'] + setup['combined_conditions'] #['HYPER', 'ANA', 'NANA', 'NHYPER']
 conditions = setup['conditions']
 
+
 #%%
+#======================
+# Visualizatino ISC 1-sample using global FDR threshold (based on x 4 conditions)
 reload(visu_utils)
 
 iscs_cond = {}
 isc_p_cond = {}
-isc_imgs = {} #used further to produce brain plots of each conditions
-views = {}
-surf = {}
-interactive_views = []
-sig_dfs_one_sample = {}
 
 save_plots_1sample = os.path.join(save_visu, 'plots_1sample_isc')
 os.makedirs(save_plots_1sample, exist_ok=True)
 save_tables_1sample = os.path.join(save_visu, 'tables_1sample_isc')
 os.makedirs(save_tables_1sample, exist_ok=True)
 
-for correction in ['unc_01', 'FDR']: #VAriables are stored for FDR
-    # Generate stats tables for each conditions and save
+# Load ISC results
+for cond in setup['conditions']: #'NHYPER']: #conditions:
+    print('----------------------------------------------------')
+    print(cond)
+
+    maskers = isc_utils.load_pickle(os.path.join(results_dir, f'{cond}/maskers_{parcel_name}_{cond}_23sub.pkl'))
+    atlas = maskers[0].labels_img # adjust number of ROI based on mask
+    labels = list(maskers[0].region_names_.values())
+    if labels == None:
+        labels = [f'ROI_{i}' for i in range(isc_rois.shape[1])]
+
+    # accounts for a case where we masked the brain, e.g. with LAN800
+    #labels are ok, but need index to access proper coords
+    if len(labels) != len(full_labels):
+        labels_indices = [full_labels.index(lbl) for lbl in labels]
+        print(labels_indices)
+    else:
+        labels_indices = list(range(len(labels)))
+        # used for coords 
+    
+    # load result variables
+    isc_bootstrap = isc_utils.load_pickle(os.path.join(results_dir, f'{cond}/isc_results_{cond}_{n_boot}boot_pairWise{do_pairWise}.pkl'))
+    isc_rois = pd.DataFrame(isc_bootstrap['isc'], columns=labels)
+    isc_results_roi[cond] = isc_rois
+    isc_median = isc_bootstrap['observed']
+    ci = isc_bootstrap['confidence_intervals']
+    p_values = isc_bootstrap['p_values']
+    dist = isc_bootstrap['distribution']
+    n_boot = setup['n_boot']
+
+    #stack for brain plotting/cond
+    iscs_cond[cond] = isc_median
+    isc_p_cond[cond] = p_values
+
+    print(f"min p value: {np.min(p_values):.6f}, and max ISC : {np.max(isc_median):.6f}")
+    print(f'Within condition FDR thresh : {isc_utils.fdr(p_values, q=0.05):.6f}, and Bonferroni : {isc_utils.bonferroni(p_values, alpha=0.05):.6f}')
+
+# FDR thresh across all conditions since
+all_ps = []
+all_iscs = []
+for cond in setup['conditions']:
+    p = isc_p_cond[cond]
+    all_ps.extend(p)
+    all_iscs.extend(iscs_cond[cond]) # used for global scale/colorbar in plots
+fdr_all = isc_utils.fdr(np.array(all_ps), q=0.05)
+print('\nFDR across all conditions : ', fdr_all)
+ 
+#-------------
+# Project ISc results to brain maps 
+
+isc_imgs = {} #used further to produce brain plots of each conditions
+sig_isc_tables = {}
+
+# Generate stats tables for each conditions and save
+for correction in ['unc_01', 'FDR', 'bonf']: # between condition FDR / within bonferroni
     for cond in setup['conditions']: #'NHYPER']: #conditions:
-        print('----------------------------------------------------')
+        print('-----------------------------------------------')
         print(cond)
 
-        maskers = isc_utils.load_pickle(f'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/ISC/{model_name}/{cond}/maskers_{parcel_name}_{cond}_23sub.pkl')
+        maskers = isc_utils.load_pickle(os.path.join(results_dir, f'{cond}/maskers_{parcel_name}_{cond}_23sub.pkl'))
         atlas = maskers[0].labels_img # adjust number of ROI based on mask
-        labels = list(maskers[0].region_names_.values())
-        if labels == None:
-            labels = [f'ROI_{i}' for i in range(isc_rois.shape[1])]
+        
+        isc_median = iscs_cond[cond]
+        p_values = isc_p_cond[cond]
+        show = False
 
-        # accounts for a case where we masked the brain, e.g. with LAN800
-        #labels are ok, but need index to access proper coords
-        if len(labels) != len(full_labels):
-            labels_indices = [full_labels.index(lbl) for lbl in labels]
-            print(labels_indices)
-        else:
-            labels_indices = list(range(len(labels)))
-            # used for coords 
-        
-        isc_bootstrap = isc_utils.load_pickle(os.path.join(project_dir, f'results/imaging/ISC/{model_name}/{cond}/isc_results_{cond}_{n_boot}boot_pairWise{do_pairWise}.pkl'))
-        isc_rois = pd.DataFrame(isc_bootstrap['isc'], columns=labels)
-        isc_results_roi[cond] = isc_rois
-        isc_median = isc_bootstrap['observed']
-        # print(isc_median, np.mean(isc_rois))
-        ci = isc_bootstrap['confidence_intervals']
-        p_values = isc_bootstrap['p_values']
-        dist = isc_bootstrap['distribution']
-        n_boot = setup['n_boot']
-        
-        iscs_cond[cond] = isc_median
-        isc_p_cond[cond] = p_values
         if correction == 'unc_01':
-            fdr_p = 0.001
+            p_thresh = 0.01
+            p_thresh_str = '0.01'
         elif correction == 'FDR':
-            fdr_p = isc_utils.fdr(p_values, q=0.05)
-
-        bonf_p = isc_utils.bonferroni(p_values, alpha=0.05)
-        print(f'FDR thresh : {isc_utils.fdr(p_values, q=0.05)}')
+            # p_thresh = isc_utils.fdr(p_values, q=0.05)
+            p_thresh = fdr_all # all conditions!
+            p_thresh_str = 'FDR'+ str(round(p_thresh, 4))
+            show = True
+        elif correction == 'bonf':
+            p_thresh = isc_utils.bonferroni(p_values, alpha=0.05)
+            p_thresh_str = 'Bonf'+ str(round(p_thresh, 4))
         
         title_view = f'ISC_{cond}_{correction}'
         file_id = f'ISC_{cond}_FDR05'
@@ -277,27 +300,86 @@ for correction in ['unc_01', 'FDR']: #VAriables are stored for FDR
             atlas_labels=id_labels_dct,
             roi_coords = roi_coords,
             p_values=p_values,
-            p_threshold=fdr_p, #modif in loop
+            p_threshold=p_thresh, #modif in loop
             title = title_view,
             coords_bool_mask = labels_indices,
             save_path=None,
-            show=True,
+            show=show,
             display_mode='x',
             cut_coords_plot=cut_coords,
         )
 
         isc_imgs[cond] = (isc_img, isc_thresh)
-        p_mask = p_values < fdr_p
+        p_mask = p_values < p_thresh
         sig_labels = [labels[i] for i in range(len(labels)) if p_mask[i]]
-        sig_dfs_one_sample[cond] = sig_df #sig_df.sort_values(by='ISC', ascending=False)
+        sig_isc_tables[cond] = sig_df #sig_df.sort_values(by='ISC', ascending=False)
         print('Sig ROIs :', sig_labels)
         
         #save sign dfs as csv
         if sig_df.shape[0] > 0:
             # sig_labels = pd.DataFrame(sig_labels, columns=['ROI', 'Label', 'spearman_r', 'p_values', 'Coordinates (X,Y,Z)'])
             sig_df.columns = ['Region id', 'Label', 'ISC', 'P-value', 'Coordinates (X,Y,Z)']
-            sig_df.to_csv(os.path.join(save_tables_1sample, f'ISC_{cond}_table_{correction}_thresh{round(fdr_p,4)}.csv'), index=False)
+            sig_df.to_csv(os.path.join(save_tables_1sample, f'ISC_{cond}_table_{correction}_thresh{round(p_thresh,4)}.csv'), index=False)
 
+#%%
+# ----------
+# PUBLICATION GLASS BRAINS
+# Save glass brain to post-hoc plot directory )
+
+# compute color bar across all values/conditions (all_iscs)
+from matplotlib import cm
+from nilearn.image import new_img_like
+
+vmin, vmax = np.min(all_iscs), np.max(all_iscs)
+fake_data = np.zeros_like(atlas.get_fdata())
+fake_data.flat[:len(all_iscs)] = all_iscs
+synthetic_img = new_img_like(atlas, fake_data)
+cmap = cm.get_cmap("Reds")
+
+cbar = visu_utils.save_colorbar(
+    img=synthetic_img,
+    cmap=cmap,
+    outpath=os.path.join(save_plots_1sample, "shared_isc_colorbar.png"),
+    symmetric_cbar=False,
+    offset=None,
+    n_ticks=3,
+    transparent=True
+)
+cbar
+#%%
+condition_names = {'HYPER' : 'Hyperalgesia', 'ANA' : 'Analgesia', 'NHYPER' : 'Control Hyperalgesia', 'NANA' : 'Control Analgesia'}
+
+for i, (cond, (isc_img, isc_thresh)) in enumerate(isc_imgs.items()):
+    # if i >= 1:
+    #     break  # Stop after the first iteration
+
+    print(cond)
+    fig, ax = plt.subplots(figsize=(6, 4))
+    ax.set_axis_off()
+
+    title = f"{condition_names[cond]} (FDR q < .05)"
+    display = plot_glass_brain(
+        isc_img,
+        threshold=isc_thresh,
+        colorbar=False,
+        display_mode='lr',
+        plot_abs=False,
+        cmap='Reds',
+        title=None,
+        axes=ax,
+        vmax= np.max(all_iscs)
+    )
+    y = 0.20
+    ax.text(0.1, y, 'L', transform=ax.transAxes,
+            fontsize=20, ha='center')
+    ax.text(0.9, y, 'R', transform=ax.transAxes,
+            fontsize=20, ha='center')
+
+    # Add title
+    fig.suptitle(title, fontsize=25, y=0.85)
+    fig.savefig(os.path.join(save_plots_1sample, f'glass_brain_{cond}_FDR05.png'), dpi=1000)
+
+#%%
 #%% Plot ISC distribution per condition
 for cond in setup['conditions']:
     isc_values = iscs_cond[cond]
@@ -331,114 +413,25 @@ plt.tight_layout(rect=[0, 0, 1, 0.95])
 plt.show()
 
 
-#%%
-# FDR thresh across all conditions
-all_ps = []
-for cond in setup['conditions']:
-    p = isc_p_cond[cond]
-    all_ps.extend(p)
-fdr_all = isc_utils.fdr(np.array(all_ps), q=0.05)
-print('FDR across all conditions : ', fdr_all)
-
-# Re-comute with this threshold
-correction = fdr_all
-for cond in setup['conditions']:
-
-        isc_bootstrap = isc_utils.load_pickle(os.path.join(project_dir, f'results/imaging/ISC/{model_name}/{cond}/isc_results_{cond}_{n_boot}boot_pairWise{do_pairWise}.pkl'))
-        isc_rois = pd.DataFrame(isc_bootstrap['isc'], columns=labels)
-        isc_median = isc_bootstrap['observed']
-        p_values = isc_bootstrap['p_values']
-        dist = isc_bootstrap['distribution']
-        
-        title_view = f'ISC_{cond}_{correction}'
-
-        #x = -48, -2, 6, 50
-        cut_coords = (5) #(-48, -2, 6, 50)
-        isc_img, isc_thresh, sig_df = visu_utils.project_isc_to_brain(
-            atlas_img=atlas,
-            isc_median=isc_median,
-            atlas_labels=id_labels_dct,
-            roi_coords = roi_coords,
-            p_values=p_values,
-            p_threshold=correction, #modif in loop
-            title = title_view,
-            coords_bool_mask = labels_indices,
-            save_path=None,
-            show=True,
-            display_mode='x',
-            cut_coords_plot=cut_coords,
-        )
-        global_fdr_img = (isc_img, isc_thresh)
-        p_mask = p_values < correction
-        sig_labels = [labels[i] for i in range(len(labels)) if p_mask[i]]
-        sig_dfs_one_sample[cond] = sig_df #sig_df.sort_values(by='ISC', ascending=False)
-        print('Sig ROIs :', sig_labels)
-
 
 #%%
 
-    # views[cond] = plotting.view_img(isc_img, threshold=0,symmetric_cmap=False, title=title_view)
-    surf[cond] = view_img_on_surf(isc_img, threshold=None, surf_mesh='fsaverage')
+    # # views[cond] = plotting.view_img(isc_img, threshold=0,symmetric_cmap=False, title=title_view)
+    # surf[cond] = view_img_on_surf(isc_img, threshold=None, surf_mesh='fsaverage')
 
-    # bar plots 
-    reload(visu_utils)
+    # # bar plots 
+    # reload(visu_utils)
 
-    interactive_view = view_img(
-        isc_img,
-        threshold=0,
-        symmetric_cmap=False,
-        title=title_view,
-        cmap = 'Reds'
-    )
-    interactive_views.append(interactive_view)
-
-#%%
+    # interactive_view = view_img(
+    #     isc_img,
+    #     threshold=0,
+    #     symmetric_cmap=False,
+    #     title=title_view,
+    #     cmap = 'Reds'
+    # )
+    # interactive_views.append(interactive_view)
 
 #%%
-# BRain PLOTS
-# SAve glass brain to post-hoc plot directory )
-for cond, (isc_img, isc_thresh) in isc_imgs.items(): 
-
-    print(cond)
-
-    glass_fig = plot_glass_brain(
-        isc_img,
-        threshold=isc_thresh,
-        colorbar= False if cond == 'HYPER' else True,
-        display_mode='lyr',
-        plot_abs=False,
-    
-        cmap='Reds',
-        title=None
-    )
-
-    # Adjust colorbar tick size
-    # if glass_fig._colorbar_ax is not None:
-    if cond == 'HYPER': 
-        continue
-    else:
-        glass_fig._colorbar_ax.tick_params(labelsize=20)
-        
-        # Shift colorbar right
-        pos = glass_fig._colorbar_ax.get_position()
-        new_x0 = pos.x0 + 0.02
-        glass_fig._colorbar_ax.set_position([new_x0, pos.y0, pos.width, pos.height])
-
-        # Round tick labels to 2 decimal places
-        ticks = glass_fig._colorbar_ax.get_yticks()
-        glass_fig._colorbar_ax.set_yticklabels([f'{tick:.2f}' for tick in ticks])
-
-    for name, ax in glass_fig.axes.items():
-        if name in ['left', 'right']:
-            if name == 'l':
-                ax.annotate('L', xy=(0, 1.02), xycoords='axes fraction',
-                            fontsize=25, ha='center', va='bottom')
-            elif name == 'r':
-                ax.annotate('R', xy=(1, 1.02), xycoords='axes fraction',
-                            fontsize=25, ha='center', va='bottom')
-
-    #glass_fig.annotate(size = 18)
-    glass_fig.savefig(os.path.join(save_visu, f'glass_brain_{cond}_FDR05.png'), dpi=1000)
 
 
     # interactive_view.save_as_html(os.path.join(clean_save_to, f'{title_view}.html'))
@@ -575,7 +568,7 @@ reload(visu_utils)
 #rename conditions with full names
 conditions_full_names = {cond : full for cond, full in zip(conditions, ['Neutral (Analg.)', 'Analgesia', 'Neutral (Hyperalg.)', 'Hyperalgesia'])} #, 'Neutral (Hyper)', 'N_Ana', 'N_Hyper'])}
 # CAREFUL FOR NAME ORDER / CONDITIONS + full name
-visu_utils.plot_median_isc_dots(sig_dfs_one_sample,conditions_full_names=conditions_full_names, title="Median ISC across significant ROIs")
+visu_utils.plot_median_isc_dots(sig_isc_tables,conditions_full_names=conditions_full_names, title="Median ISC across significant ROIs")
 
 
 # %%
@@ -584,8 +577,8 @@ visu_utils.plot_median_isc_dots(sig_dfs_one_sample,conditions_full_names=conditi
 reload(visu_utils)
 
 # all_sugg pie-chart
-cond_pie ='ana_run'
-sig_rois_for_pie = list(sig_df_conditions[cond_pie]['Label'])
+cond_pie = 'ANA'
+sig_rois_for_pie = list(sig_isc_tables[cond_pie]['Label'])
 sig_networks = [label.split('_')[2] if len(label.split('_')) > 2 else 'subcortical' for label in sig_rois_for_pie]
 
 visu_utils.plot_network_radar(sig_networks, title = f'Sig ISC during {cond_pie}')
