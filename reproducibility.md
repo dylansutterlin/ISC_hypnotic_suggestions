@@ -13,8 +13,15 @@ ISC-sugg : Pairiwse ISC matrix during suggestions encoding
 SHSS-behav : behavioral score only
 ISC-sugg/pain : brain ISC for sugg or pain
 
-## Visualization
+#### Final model (hyper)parameters
+- **Atlas** : Shaeffer200 + Tian 16 subcortical regions combined manually in main_isc.py   
+    --> ID as `*_schafer_tian-200-2mm_*` in results names
 
+### Manuscript plots from [scripts]
+- Surface plots with parcel : `/visualization_isc.py`
+
+
+## Visualization and final models
 ### ISC
 `/visualization_isc.py` : Custom script to plot ISC per conditions, for median split (SHSS based), and permutation/contrast tests
 
