@@ -2,41 +2,50 @@ import matplotlib.pyplot as plt
 import numpy as np
 from scipy.stats import rankdata
 from nilearn import datasets
-from nilearn.maskers  import NiftiLabelsMasker, NiftiMapsMasker
-import os 
+from nilearn.maskers import NiftiLabelsMasker, NiftiMapsMasker
+import os
 import nibabel as nib
 import pandas as pd
 from nilearn.plotting import find_parcellation_cut_coords
 
 
 def load_isc_results(isc_results):
-    isc = isc_results['isc']
-    observed_isc = isc_results['observed']
-    p_values = isc_results['p_values']
-    ci = isc_results['confidence_intervals']
-    distributions = isc_results['distribution']
-    median_isc = isc_results['median_isc'] 
+    isc = isc_results["isc"]
+    observed_isc = isc_results["observed"]
+    p_values = isc_results["p_values"]
+    ci = isc_results["confidence_intervals"]
+    distributions = isc_results["distribution"]
+    median_isc = isc_results["median_isc"]
 
     return isc, observed_isc, p_values, ci, median_isc, distributions
 
+
 def load_isc_results_pairwise(isc_results):
-    isc = isc_results['isc']
-    observed_isc = isc_results['observed']
-    p_values = isc_results['p_values']
-    ci = isc_results['confidence_intervals']
-    distributions = isc_results['distribution']
-    
+    isc = isc_results["isc"]
+    observed_isc = isc_results["observed"]
+    p_values = isc_results["p_values"]
+    ci = isc_results["confidence_intervals"]
+    distributions = isc_results["distribution"]
+
     return isc, observed_isc, p_values, ci, distributions
 
+
 def load_isc_results_permutation(isc_results):
-    
-    observed_isc = isc_results['observed']
-    p_values = isc_results['p_value']
-    distributions = isc_results['distribution']
+
+    observed_isc = isc_results["observed"]
+    p_values = isc_results["p_value"]
+    distributions = isc_results["distribution"]
     return observed_isc, p_values, distributions
 
 
-def plot_isc_distributions(observed_isc, p_values, median_isc, bootstrap_distributions,save_to=None, title="ISC Distributions"):
+def plot_isc_distributions(
+    observed_isc,
+    p_values,
+    median_isc,
+    bootstrap_distributions,
+    save_to=None,
+    title="ISC Distributions",
+):
     """
     Plots the distributions of observed ISC values per column with the median ISC as a line,
     p-value annotation, and bootstrap distributions.
@@ -67,21 +76,35 @@ def plot_isc_distributions(observed_isc, p_values, median_isc, bootstrap_distrib
         bootstrap_data = bootstrap_distributions[:, i]
 
         # Plot the histogram
-        ax.hist(data, bins=20, alpha=0.7, color='blue', label='Observed ISC')
+        ax.hist(data, bins=20, alpha=0.7, color="blue", label="Observed ISC")
 
         # Plot the bootstrap distribution
-        ax.hist(bootstrap_data, bins=30, alpha=0.4, color='green', label='Bootstrap Distribution', density=True)
+        ax.hist(
+            bootstrap_data,
+            bins=30,
+            alpha=0.4,
+            color="green",
+            label="Bootstrap Distribution",
+            density=True,
+        )
 
         # Add the median line
-        ax.axvline(median_isc[i], color='red', linestyle='--', label=f'Median ISC = {median_isc[i]:.4f}')
+        ax.axvline(
+            median_isc[i],
+            color="red",
+            linestyle="--",
+            label=f"Median ISC = {median_isc[i]:.4f}",
+        )
 
         # Annotate the p-value
         ax.text(
-            0.05, 0.95, f'p = {p_values[i]:.4f}',
+            0.05,
+            0.95,
+            f"p = {p_values[i]:.4f}",
             transform=ax.transAxes,
             fontsize=10,
-            verticalalignment='top',
-            bbox=dict(boxstyle='round', facecolor='white', alpha=0.8)
+            verticalalignment="top",
+            bbox=dict(boxstyle="round", facecolor="white", alpha=0.8),
         )
         fontsize = 20
         # Labels and formatting
@@ -91,12 +114,11 @@ def plot_isc_distributions(observed_isc, p_values, median_isc, bootstrap_distrib
         ax.legend()
 
         if save_to is not None:
-            plt.savefig(save_to, bbox_inches='tight', dpi = 500)
+            plt.savefig(save_to, bbox_inches="tight", dpi=500)
     print(f"Plot saved to {save_to}")
 
-
     plt.tight_layout(rect=[0, 0, 1, 0.95])  # Adjust layout to fit title
-    plt.show()  
+    plt.show()
 
 
 import numpy as np
@@ -110,7 +132,16 @@ import seaborn as sns
 from scipy.spatial.distance import squareform
 import pandas as pd
 
-def heatmap_pairwise_isc_combined(isc_df, subjects, behavioral_scores=None,roi_to_plot = 'all', save_to=None, show=True, title="Pairwise ISC Matrices"):
+
+def heatmap_pairwise_isc_combined(
+    isc_df,
+    subjects,
+    behavioral_scores=None,
+    roi_to_plot="all",
+    save_to=None,
+    show=True,
+    title="Pairwise ISC Matrices",
+):
     """
     Visualizes subject-by-subject similarity matrices for all ROIs in a single row of plots.
 
@@ -140,11 +171,11 @@ def heatmap_pairwise_isc_combined(isc_df, subjects, behavioral_scores=None,roi_t
     else:
         sorted_indices = range(len(subjects))
         sorted_subjects = subjects
-        
+
     columns = isc_df.columns
     observed_isc = isc_df.to_numpy()
 
-    fig, axes = plt.subplots(1, n_rois-1, figsize=(5 * n_rois, 5))
+    fig, axes = plt.subplots(1, n_rois - 1, figsize=(5 * n_rois, 5))
     fig.suptitle(title, fontsize=16)
 
     # Handle single ROI case where axes is not iterable
@@ -160,13 +191,13 @@ def heatmap_pairwise_isc_combined(isc_df, subjects, behavioral_scores=None,roi_t
 
         ax = axes[i]
         sns.heatmap(
-            isc_matrix, 
-            annot=False, 
-            cmap='coolwarm', 
-            square=True, 
-            cbar_kws={'label': 'ISC'}, 
-            ax=ax, 
-            linewidths=0.5
+            isc_matrix,
+            annot=False,
+            cmap="coolwarm",
+            square=True,
+            cbar_kws={"label": "ISC"},
+            ax=ax,
+            linewidths=0.5,
         )
         ax.set_title(f"{roi_name}")
         ax.set_xticks(np.arange(len(subjects)) + 0.5)
@@ -189,33 +220,49 @@ def heatmap_pairwise_isc_combined(isc_df, subjects, behavioral_scores=None,roi_t
 
 
 def load_boot_images(results_dir, condition):
-    isc_img_path = os.path.join(results_dir, condition, f"isc_val_{condition}_boot5000_pariwiseFalse.nii.gz")
-    pval_img_path = os.path.join(results_dir, condition, f"p_values_{condition}_boot5000_pairwiseFalse.nii.gz")
-    
+    isc_img_path = os.path.join(
+        results_dir, condition, f"isc_val_{condition}_boot5000_pariwiseFalse.nii.gz"
+    )
+    pval_img_path = os.path.join(
+        results_dir, condition, f"p_values_{condition}_boot5000_pairwiseFalse.nii.gz"
+    )
+
     isc_img = nib.load(isc_img_path)
     pval_img = nib.load(pval_img_path)
-    
+
     return isc_img, pval_img
+
 
 def load_perm_images(results_dir, condition):
-    isc_img_path = os.path.join(results_dir, condition, f"isc_val_{condition}_boot5000_pariwiseFalse.nii.gz")
-    pval_img_path = os.path.join(results_dir, condition, f"p_values_{condition}_boot5000_pairwiseFalse.nii.gz")
-    
+    isc_img_path = os.path.join(
+        results_dir, condition, f"isc_val_{condition}_boot5000_pariwiseFalse.nii.gz"
+    )
+    pval_img_path = os.path.join(
+        results_dir, condition, f"p_values_{condition}_boot5000_pairwiseFalse.nii.gz"
+    )
+
     isc_img = nib.load(isc_img_path)
     pval_img = nib.load(pval_img_path)
-    
+
     return isc_img, pval_img
 
+
 def load_difumo():
-    project_dir = project_dir = "/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions"
-    atlas_path = os.path.join(project_dir, 'masks/DiFuMo256/3mm/maps.nii.gz')
-    atlas_dict_path = os.path.join(project_dir, 'masks/DiFuMo256/labels_256_dictionary.csv')
+    project_dir = project_dir = (
+        "/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions"
+    )
+    atlas_path = os.path.join(project_dir, "masks/DiFuMo256/3mm/maps.nii.gz")
+    atlas_dict_path = os.path.join(
+        project_dir, "masks/DiFuMo256/labels_256_dictionary.csv"
+    )
     atlas = nib.load(atlas_path)
     atlas_df = pd.read_csv(atlas_dict_path)
-    atlas_labels = atlas_df['Difumo_names']
-    atlas_name = 'Difumo256' # !!!!!!! 'Difumo256'
+    atlas_labels = atlas_df["Difumo_names"]
+    atlas_name = "Difumo256"  # !!!!!!! 'Difumo256'
 
-    masker = NiftiMapsMasker(maps_img=atlas, standardize=True, memory='nilearn_cache', verbose=5)
+    masker = NiftiMapsMasker(
+        maps_img=atlas, standardize=True, memory="nilearn_cache", verbose=5
+    )
     return atlas, masker.fit(), atlas_df, atlas_labels
 
 
@@ -224,9 +271,20 @@ import numpy as np
 import matplotlib.pyplot as plt
 from statsmodels.stats.multitest import multipletests
 
-def plot_isc_median_with_significance(isc_median, p_values,atlas, atlas_labels, p_threshold=0.01, 
-                                      significant_color='red', nonsignificant_color='gray',coords_bool_mask=None, 
-                                      save_path=None, show=False, fdr_correction=False):
+
+def plot_isc_median_with_significance(
+    isc_median,
+    p_values,
+    atlas,
+    atlas_labels,
+    p_threshold=0.01,
+    significant_color="red",
+    nonsignificant_color="gray",
+    coords_bool_mask=None,
+    save_path=None,
+    show=False,
+    fdr_correction=False,
+):
     """
     Plots ISC median values as a bar plot with significant regions highlighted.
 
@@ -251,9 +309,11 @@ def plot_isc_median_with_significance(isc_median, p_values,atlas, atlas_labels, 
     fdr_correction : bool, optional
         Whether to apply FDR correction to p-values. Default is False.
     """
-    # Apply FDR correction 
+    # Apply FDR correction
     if fdr_correction:
-        _, corrected_p_values, _, _ = multipletests(p_values, alpha=p_threshold, method='fdr_bh')
+        _, corrected_p_values, _, _ = multipletests(
+            p_values, alpha=p_threshold, method="fdr_bh"
+        )
         sig_mask = corrected_p_values < p_threshold
     else:
         sig_mask = p_values < p_threshold
@@ -261,38 +321,49 @@ def plot_isc_median_with_significance(isc_median, p_values,atlas, atlas_labels, 
     roi_coords = find_parcellation_cut_coorcoordsds(labels_img=atlas)
     if coords_bool_mask is not None:
         roi_coords = roi_coords[coords_bool_mask]
-    
+
     # Highlight significant ROIs
-    significant_labels = [label if sig else " " for label, sig in zip(atlas_labels, sig_mask)]
-    bar_colors = [significant_color if sig else nonsignificant_color for sig in sig_mask]
+    significant_labels = [
+        label if sig else " " for label, sig in zip(atlas_labels, sig_mask)
+    ]
+    bar_colors = [
+        significant_color if sig else nonsignificant_color for sig in sig_mask
+    ]
 
     sig_coords = np.array(roi_coords)[sig_mask]
 
-    sig_df = pd.DataFrame({
-        'ROI': [label for label, sig in zip(atlas_labels, sig_mask) if sig],
-        'ISC': isc_median[sig_mask],
-        'p_value': p_values[sig_mask],
-        'Coordinates': [tuple(np.round(coord, 2)) for coord in sig_coords]
-    })
+    sig_df = pd.DataFrame(
+        {
+            "ROI": [label for label, sig in zip(atlas_labels, sig_mask) if sig],
+            "ISC": isc_median[sig_mask],
+            "p_value": p_values[sig_mask],
+            "Coordinates": [tuple(np.round(coord, 2)) for coord in sig_coords],
+        }
+    )
 
     # Create the bar plot
     plt.figure(figsize=(14, 7))
     plt.bar(range(len(isc_median)), isc_median, color=bar_colors, alpha=0.8)
-    plt.axhline(0, color='black', linestyle='--', linewidth=0.8)
+    plt.axhline(0, color="black", linestyle="--", linewidth=0.8)
     plt.xticks(range(len(isc_median)), significant_labels, rotation=90, fontsize=8)
     plt.xlabel("ROIs", fontsize=12)
     plt.ylabel("Median ISC", fontsize=12)
-    plt.title(f"Median ISC Values (Significant regions in red, p < {np.round(p_threshold,2)})", fontsize=14)
+    plt.title(
+        f"Median ISC Values (Significant regions in red, p < {np.round(p_threshold,2)})",
+        fontsize=14,
+    )
     plt.tight_layout()
 
     # Add histogram of p-values in the corner
-    inset_ax = plt.gcf().add_axes([0.75, 0.75, 0.2, 0.2])  # x, y, width, height in figure coordinates
-    inset_ax.hist(p_values, bins=20, color='blue', alpha=0.7)
-    inset_ax.axvline(p_threshold, color='red', linestyle='--', linewidth=0.8)
+    inset_ax = plt.gcf().add_axes(
+        [0.75, 0.75, 0.2, 0.2]
+    )  # x, y, width, height in figure coordinates
+    inset_ax.hist(p_values, bins=20, color="blue", alpha=0.7)
+    inset_ax.axvline(p_threshold, color="red", linestyle="--", linewidth=0.8)
     inset_ax.set_title("P-value Distribution", fontsize=10)
     inset_ax.set_xlabel("P-value", fontsize=8)
     inset_ax.set_ylabel("Count", fontsize=8)
-    inset_ax.tick_params(axis='both', which='major', labelsize=8)
+    inset_ax.tick_params(axis="both", which="major", labelsize=8)
 
     if save_path:
         os.makedirs(os.path.dirname(save_path), exist_ok=True)
@@ -303,14 +374,31 @@ def plot_isc_median_with_significance(isc_median, p_values,atlas, atlas_labels, 
     else:
         plt.close()
 
-    return sig_mask, sig_df 
+    return sig_mask, sig_df
+
 
 import nibabel as nib
 import numpy as np
 import os
 from nilearn.plotting import plot_stat_map
 
-def project_isc_to_brain(atlas_img, isc_median, atlas_labels,roi_coords, p_values=None, p_threshold=0.01,title = '"ISC Median Values (Thresholded)', coords_bool_mask = None, color = 'Reds',save_path=None, show=True, cut_coords_plot = None, display_mode = 'z'):
+
+def project_isc_to_brain(
+    atlas_img,
+    isc_median,
+    atlas_labels,
+    roi_coords,
+    p_values=None,
+    p_threshold=0.01,
+    title='"ISC Median Values (Thresholded)',
+    coords_bool_mask=None,
+    color="Reds",
+    save_path=None,
+    show=True,
+    save_fig_as=None,
+    cut_coords_plot=None,
+    display_mode="z",
+):
     """
     Projects ISC values to brain space and optionally thresholds by significance.
 
@@ -332,8 +420,8 @@ def project_isc_to_brain(atlas_img, isc_median, atlas_labels,roi_coords, p_value
     show : bool, optional
         Whether to display the plot. Default is True.
     """
-    
-    bg_mni =  datasets.load_mni152_template(resolution=1)
+
+    bg_mni = datasets.load_mni152_template(resolution=1)
 
     # atlas_img = nib.load(atlas_path)
     # atlas_data = atlas_img.get_fdata()
@@ -346,7 +434,7 @@ def project_isc_to_brain(atlas_img, isc_median, atlas_labels,roi_coords, p_value
     if len(roi_coords) != len(labels):
         roi_coords = roi_coords[coords_bool_mask]
         raise ValueError("Mismatch between number of ROI coordinates and labels.")
-        
+
     # Create an empty volume to store ISC values
     isc_vol = np.zeros_like(atlas_data, dtype=float)
     non_sig_max_isc = []
@@ -354,35 +442,38 @@ def project_isc_to_brain(atlas_img, isc_median, atlas_labels,roi_coords, p_value
     sig_labels_data = []
 
     # Assign ISC values to corresponding atlas regions
-    for (roi_idx, label) in atlas_labels.items():
+    for roi_idx, label in atlas_labels.items():
 
         i = int(roi_idx) - 1  # Adjust for zero-based indexing
 
-        roi_mask = atlas_data ==int(roi_idx) #+1 !!! ok pre Sensaas
+        roi_mask = atlas_data == int(roi_idx)  # +1 !!! ok pre Sensaas
         if p_values is not None and p_values[i] < p_threshold:
             # print('Sig ROI', label, p_values[i], isc_median[i])
             # Assign significant ISC value
             isc_vol[roi_mask] = isc_median[i]
             sig_isc_values.append(isc_median[i])
 
-            sig_labels_data.append({
-                "ROI": roi_idx,
-                "Label": label,
-                "ISC": round(isc_median[i], 2),
-                "p-value": round(p_values[i], 2),
-                "Coordinates": tuple(np.round(roi_coords[i], 0).astype(int))
-            })
-            
+            sig_labels_data.append(
+                {
+                    "ROI": roi_idx,
+                    "Label": label,
+                    "ISC": round(isc_median[i], 2),
+                    "p-value": round(p_values[i], 4),
+                    "Coordinates": tuple(np.round(roi_coords[i], 0).astype(int)),
+                }
+            )
+
         else:
             # Track the highest ISC value for non-significant ROIs
             non_sig_max_isc.append(isc_median[i])
 
     isc_img = nib.Nifti1Image(isc_vol, atlas_img.affine, atlas_img.header)
-    
+
     # max_isc_thresh = np.max(np.array(non_sig_max_isc))
     if len(sig_isc_values) > 0:
-        min_sig = np.min(np.array(sig_isc_values)) -0.01
-    else : min_sig = 0.0001
+        min_sig = np.min(np.array(sig_isc_values)) - 0.01
+    else:
+        min_sig = 0.0001
 
     # Save the ISC map if save_path is provided
     if save_path:
@@ -393,8 +484,8 @@ def project_isc_to_brain(atlas_img, isc_median, atlas_labels,roi_coords, p_value
     max_isc = np.max(isc_vol)
     print(f"Max ISC value: {max_isc}")
 
-    if max_isc == 0 :
-        print(f'Max non significant ISC value: {np.max(isc_median)}')
+    if max_isc == 0:
+        print(f"Max non significant ISC value: {np.max(isc_median)}")
 
     if show:
         plot_stat_map(
@@ -408,13 +499,31 @@ def project_isc_to_brain(atlas_img, isc_median, atlas_labels,roi_coords, p_value
             display_mode=display_mode,
             cut_coords=cut_coords_plot,
             cmap=color,
-            draw_cross=False
+            draw_cross=False,
         )
+        if save_fig_as is not None:
+            plt.savefig(save_fig_as, dpi=1000, bbox_inches="tight")
+            print(f"ISC projection plot saved to {save_fig_as}")
+        plt.show()
 
     return isc_img, min_sig, pd.DataFrame(sig_labels_data)
 
 
-def project_isc_to_brain_perm(atlas_img, isc_median, atlas_labels,roi_coords, p_values=None, p_threshold=0.01,title = '"ISC Median Values (Thresholded)',color='seismic', save_path=None,save_fig_as = None, show=True, display_mode = 'z',cut_coords_plot = None):
+def project_isc_to_brain_perm(
+    atlas_img,
+    isc_median,
+    atlas_labels,
+    roi_coords,
+    p_values=None,
+    p_threshold=0.01,
+    title='"ISC Median Values (Thresholded)',
+    color="seismic",
+    save_path=None,
+    save_fig_as=None,
+    show=True,
+    display_mode="z",
+    cut_coords_plot=None,
+):
     """
     Projects ISC values to brain space and optionally thresholds by significance.
 
@@ -424,7 +533,7 @@ def project_isc_to_brain_perm(atlas_img, isc_median, atlas_labels,roi_coords, p_
         Path to the atlas file used for analysis.
     isc_median : np.ndarray
         Array of median ISC values for each ROI.
-    atlas_labels : dict 
+    atlas_labels : dict
         ROI label (integer) : label (string) mapping.
     p_values : np.ndarray, optional
         P-values corresponding to the ISC values. Default is None.
@@ -436,7 +545,7 @@ def project_isc_to_brain_perm(atlas_img, isc_median, atlas_labels,roi_coords, p_
         Whether to display the plot. Default is True.
     """
     # Load the atlas
-    bg_mni =  datasets.load_mni152_template(resolution=1)
+    bg_mni = datasets.load_mni152_template(resolution=1)
     # atlas_img = nib.load(atlas_path)
     atlas_data = atlas_img.get_fdata()
     # if coords is not None:
@@ -456,10 +565,10 @@ def project_isc_to_brain_perm(atlas_img, isc_median, atlas_labels,roi_coords, p_
     sig_min_isc = []
 
     # Assign ISC values to corresponding atlas regions
-    for (roi_idx, label) in atlas_labels.items():
+    for roi_idx, label in atlas_labels.items():
 
         i = int(roi_idx) - 1  # Adjust for zero-based indexing
-        roi_mask = atlas_data ==int(roi_idx)
+        roi_mask = atlas_data == int(roi_idx)
 
         if isc_median[i] == 0:
             isc_median[i] = 0.0000
@@ -468,22 +577,26 @@ def project_isc_to_brain_perm(atlas_img, isc_median, atlas_labels,roi_coords, p_
             # Assign significant ISC value
             isc_vol[roi_mask] = isc_median[i]
             sig_min_isc.append(isc_median[i])
-            sig_labels_data.append({
-                "ROI": roi_idx,
-                "Atlas Label": label,
-                "r Difference": round(isc_median[i], 4),
-                "p-value": f"{p_values[i]:.5f}",
-                "Coordinates": tuple(np.round(roi_coords[i], 0).astype(int))
-            })
+            sig_labels_data.append(
+                {
+                    "ROI": roi_idx,
+                    "Atlas Label": label,
+                    "r Difference": round(isc_median[i], 2),
+                    "p-value": f"{p_values[i]:.4f}",
+                    "Coordinates": tuple(np.round(roi_coords[i], 0).astype(int)),
+                }
+            )
 
         img_unthresholded[roi_mask] = np.arctanh(isc_median[i])
 
     # Create a Nifti image for the ISC projection
     isc_img = nib.Nifti1Image(isc_vol, atlas_img.affine, atlas_img.header)
-    z_img_unthresholded = nib.Nifti1Image(img_unthresholded, atlas_img.affine, atlas_img.header)
+    z_img_unthresholded = nib.Nifti1Image(
+        img_unthresholded, atlas_img.affine, atlas_img.header
+    )
 
     if len(sig_min_isc) > 0:
-        min_sig_thresh = np.min(np.abs(sig_min_isc)) -0.01
+        min_sig_thresh = np.min(np.abs(sig_min_isc)) - 0.01
     else:
         min_sig_thresh = 0.0001
 
@@ -497,12 +610,11 @@ def project_isc_to_brain_perm(atlas_img, isc_median, atlas_labels,roi_coords, p_
     sign_max = np.max(isc_vol) if np.max(isc_vol) > 0 else np.min(isc_vol)
     print(f"Max ISC abs diff: {max_diff} and sign : {sign_max}")
 
-    if max_diff == 0 :
-        print(f'Max non significant ISC value: {np.max(isc_median)}')
+    if max_diff == 0:
+        print(f"Max non significant ISC value: {np.max(isc_median)}")
 
-    
     if show:
-        # plot_stat_map(isc_img, title=title, threshold=min_sig_thresh, vmax=max_diff, 
+        # plot_stat_map(isc_img, title=title, threshold=min_sig_thresh, vmax=max_diff,
         #               colorbar=True, display_mode='x', cmap=color, cut_coords=6, draw_cross=False)
         im = plot_stat_map(
             isc_img,
@@ -516,12 +628,11 @@ def project_isc_to_brain_perm(atlas_img, isc_median, atlas_labels,roi_coords, p_
             cut_coords=cut_coords_plot,
             cmap=color,
             draw_cross=False,
-            
         )
+        if save_fig_as is not None:
+            plt.savefig(save_fig_as, dpi=1000, bbox_inches="tight")
+            print(f"ISC projection plot saved to {save_fig_as}")
         plt.show()
-    if save_fig_as is not None:
-        plt.savefig(save_fig_as, dpi=1000, bbox_inches='tight')
-        print(f"ISC projection plot saved to {save_fig_as}")
 
     return isc_img, min_sig_thresh, pd.DataFrame(sig_labels_data), z_img_unthresholded
 
@@ -529,7 +640,10 @@ def project_isc_to_brain_perm(atlas_img, isc_median, atlas_labels,roi_coords, p_
 import seaborn as sns
 import matplotlib.pyplot as plt
 
-def plot_similarity_and_histogram(similarity_matrix, correlations, p_values, atlas_labels, behav_name, save_path=None):
+
+def plot_similarity_and_histogram(
+    similarity_matrix, correlations, p_values, atlas_labels, behav_name, save_path=None
+):
     """
     Plots the similarity matrix as a heatmap and the RSA correlation histogram.
 
@@ -555,42 +669,46 @@ def plot_similarity_and_histogram(similarity_matrix, correlations, p_values, atl
     fig, axes = plt.subplots(1, 2, figsize=(15, 6))
 
     # Plot the similarity matrix heatmap
-    sns.heatmap(similarity_matrix, annot=False, cmap='coolwarm', ax=axes[0])
+    sns.heatmap(similarity_matrix, annot=False, cmap="coolwarm", ax=axes[0])
     axes[0].set_title(f"Behavioral Similarity Matrix ({behav_name})", fontsize=14)
     axes[0].set_xlabel("Subjects", fontsize=12)
     axes[0].set_ylabel("Subjects", fontsize=12)
 
     # Plot the correlation histogram
-    axes[1].hist(correlations, bins=20, color='blue', alpha=0.7, edgecolor='black')
+    axes[1].hist(correlations, bins=20, color="blue", alpha=0.7, edgecolor="black")
     axes[1].set_title(f"RSA Correlations Distribution ({behav_name})", fontsize=14)
     axes[1].set_xlabel("Correlation Values", fontsize=12)
     axes[1].set_ylabel("Frequency", fontsize=12)
 
     # Add a line for zero correlation
-    axes[1].axvline(0, color='red', linestyle='--', linewidth=1, label='Zero Correlation')
+    axes[1].axvline(
+        0, color="red", linestyle="--", linewidth=1, label="Zero Correlation"
+    )
     axes[1].legend(fontsize=10)
 
     plt.tight_layout()
 
     # Save the plot if save_path is provided
     if save_path:
-        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        plt.savefig(save_path, dpi=300, bbox_inches="tight")
         print(f"Plots saved to {save_path}")
 
     plt.show()
 
 
 def vector_to_symmetric_matrix(vec, size):
-   
+
     mat = np.zeros((size, size))
     triu_indices = np.triu_indices(size, k=1)
     mat[triu_indices] = vec
     mat = mat + mat.T
-    
+
     return mat
 
-#=====================
+
+# =====================
 # Atlas related
+
 
 def yeo_networks_from_schaeffer(label_list):
     """
@@ -604,7 +722,7 @@ def yeo_networks_from_schaeffer(label_list):
     Returns
     -------
     network_mapping : dict
-        A dictionary where the keys are network names (e.g., 'Vis', 'SomMot') 
+        A dictionary where the keys are network names (e.g., 'Vis', 'SomMot')
         and the values are lists of indices corresponding to each network.
     labels_by_index : list
         A list of network names (e.g., 'Vis') corresponding to each ROI.
@@ -614,7 +732,7 @@ def yeo_networks_from_schaeffer(label_list):
 
     for idx, label in enumerate(label_list):
         # Extract the network name from the label (e.g., 'Vis' from '7Networks_LH_Vis_9')
-        network =  label.split('_')[2]
+        network = label.split("_")[2]
         labels_by_index.append(network)
 
         if network not in network_mapping:
@@ -630,7 +748,15 @@ import matplotlib.cm as cm
 import matplotlib.colors as mcolors
 
 
-def plot_scatter_legend(correl1, correl2, var_name = ['var1', 'var2'], grp_id=None, legend=True, title=None, save_path=None):
+def plot_scatter_legend(
+    correl1,
+    correl2,
+    var_name=["var1", "var2"],
+    grp_id=None,
+    legend=True,
+    title=None,
+    save_path=None,
+):
     """
     Plots a scatter plot of two ISC-RSA correlation models, optionally grouped by categories.
 
@@ -657,42 +783,54 @@ def plot_scatter_legend(correl1, correl2, var_name = ['var1', 'var2'], grp_id=No
     correl2 = np.array(correl2)
     grp_id = np.array(grp_id) if grp_id is not None else None
 
-   
     plt.figure(figsize=(6, 4))
 
     if grp_id is not None:
-  
+
         unique_groups = np.unique(grp_id)
         num_grps = len(unique_groups)
-        colors = cm.get_cmap('tab20', num_grps).colors
+        colors = cm.get_cmap("tab20", num_grps).colors
         color_map = {group: colors[i] for i, group in enumerate(unique_groups)}
 
         # Plot each group with a unique color
         for group in unique_groups:
             mask = grp_id == group
-            plt.scatter(correl1[mask], correl2[mask], label=group, color=color_map[group], alpha=0.7, edgecolor='k')
+            plt.scatter(
+                correl1[mask],
+                correl2[mask],
+                label=group,
+                color=color_map[group],
+                alpha=0.7,
+                edgecolor="k",
+            )
     else:
-        plt.scatter(correl1, correl2, color='blue', alpha=0.7, edgecolor='k')
+        plt.scatter(correl1, correl2, color="blue", alpha=0.7, edgecolor="k")
 
     # Add diagonal line
     max_val = max(np.max(correl1), np.max(correl2))
     min_val = min(np.min(correl1), np.min(correl2))
-    
-    plt.plot([min_val, max_val], [min_val, max_val], linestyle='--', color='black', linewidth=1)
-    
-    plt.axhline(0, linestyle='--', color='gray', lw=1)
-    plt.axvline(0, linestyle='--', color='gray', lw=1)
+
+    plt.plot(
+        [min_val, max_val],
+        [min_val, max_val],
+        linestyle="--",
+        color="black",
+        linewidth=1,
+    )
+
+    plt.axhline(0, linestyle="--", color="gray", lw=1)
+    plt.axvline(0, linestyle="--", color="gray", lw=1)
 
     # Add labels and title
     plt.xlabel(f"{var_name[0]}", fontsize=14)
-    plt.ylabel(f'{var_name[1]}', fontsize=14)
+    plt.ylabel(f"{var_name[1]}", fontsize=14)
     plt.title(title if title else "scatter plot", fontsize=16)
 
     if legend and grp_id is not None:
-        plt.legend(title="Yeo Networks", loc='best', fontsize=10, title_fontsize=12)
+        plt.legend(title="Yeo Networks", loc="best", fontsize=10, title_fontsize=12)
 
     if save_path:
-        plt.savefig(save_path, bbox_inches='tight', dpi=300)
+        plt.savefig(save_path, bbox_inches="tight", dpi=300)
         print(f"Plot saved to {save_path}")
     else:
         plt.show()
@@ -701,12 +839,14 @@ def plot_scatter_legend(correl1, correl2, var_name = ['var1', 'var2'], grp_id=No
 # Function to plot images in a grid
 from PIL import Image
 
-def plot_images_grid(image_paths, title,save_to=False, show=True):
+
+def plot_images_grid(image_paths, title, save_to=False, show=True):
     """Plots images in a flexible grid layout."""
     num_images = len(image_paths)
     if len(image_paths) < 9:
         max_col = 4
-    else : max_col = 5
+    else:
+        max_col = 5
 
     cols = min(max_col, num_images)  # Define max columns to keep layout balanced
     rows = int(np.ceil(num_images / cols))
@@ -720,32 +860,33 @@ def plot_images_grid(image_paths, title,save_to=False, show=True):
         img = Image.open(img_path)
         ax.imshow(img)
         ax.axis("off")
-        ax.set_title("_".join(os.path.basename(img_path).split("_")[:-1]))  
+        ax.set_title("_".join(os.path.basename(img_path).split("_")[:-1]))
 
     # Hide empty subplots
-    for ax in axes[len(image_paths):]:
+    for ax in axes[len(image_paths) :]:
         ax.axis("off")
 
     plt.suptitle(title, fontsize=16)
     plt.tight_layout()
-    
+
     if save_to:
-        plt.savefig(save_to, dpi=300, bbox_inches='tight')
+        plt.savefig(save_to, dpi=300, bbox_inches="tight")
         print(f"Image grid saved to {save_to}")
 
     if show:
         plt.show()
 
+
 def plot_roi_timeseries(
-    timeseries, 
-    region_label="ROI", 
-    plot_mean=True, 
-    save_to=None, 
-    show=True, 
+    timeseries,
+    region_label="ROI",
+    plot_mean=True,
+    save_to=None,
+    show=True,
     mean_label="Mean",
     subject_scores=None,
     score_label="Score",
-    colormap="viridis"
+    colormap="viridis",
 ):
     """
     Plots each subject's timeseries and the mean timeseries for a given region.
@@ -782,17 +923,14 @@ def plot_roi_timeseries(
     if subject_scores is not None:
         # Normalize scores for colormap
         subject_scores = np.asarray(subject_scores)
-        assert subject_scores.shape[0] == n_subjects, "subject_scores must match number of subjects"
+        assert (
+            subject_scores.shape[0] == n_subjects
+        ), "subject_scores must match number of subjects"
         norm = plt.Normalize(np.min(subject_scores), np.max(subject_scores))
         cmap = plt.get_cmap(colormap)
         colors = cmap(norm(subject_scores))
         for subj in range(n_subjects):
-            ax.plot(
-                timeseries[:, subj], 
-                color=colors[subj], 
-                alpha=0.85, 
-                linewidth=1.5
-            )
+            ax.plot(timeseries[:, subj], color=colors[subj], alpha=0.85, linewidth=1.5)
         # Add colorbar
         sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
         sm.set_array([])
@@ -803,23 +941,12 @@ def plot_roi_timeseries(
         cmap = plt.get_cmap("tab10") if n_subjects <= 10 else plt.get_cmap("tab20")
         for subj in range(n_subjects):
             color = cmap(subj % cmap.N)
-            ax.plot(
-                timeseries[:, subj], 
-                color=color, 
-                alpha=0.85, 
-                linewidth=1.5
-            )
+            ax.plot(timeseries[:, subj], color=color, alpha=0.85, linewidth=1.5)
 
     # Plot mean timeseries if requested
     if plot_mean:
         mean_signal = np.mean(timeseries, axis=1)
-        ax.plot(
-            mean_signal, 
-            color='red', 
-            linewidth=3.5, 
-            label=mean_label, 
-            zorder=10
-        )
+        ax.plot(mean_signal, color="red", linewidth=3.5, label=mean_label, zorder=10)
 
     ax.set_title(f"Timecourse for {region_label}")
     ax.set_xlabel("Timepoints")
@@ -837,7 +964,8 @@ def plot_roi_timeseries(
     else:
         plt.close()
 
-# BEHAVIORAL 
+
+# BEHAVIORAL
 import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
@@ -847,9 +975,18 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 from scipy.stats import linregress
 
-def jointplot(x, y, x_label="X", y_label="Y", 
-              title=None, default_color=[0.2, 0.5, 1],
-              density_color_x='#4c80ff', density_color_y="#fd6262", alpha=1):
+
+def jointplot(
+    x,
+    y,
+    x_label="X",
+    y_label="Y",
+    title=None,
+    default_color=[0.2, 0.5, 1],
+    density_color_x="#4c80ff",
+    density_color_y="#fd6262",
+    alpha=1,
+):
     """
     Create a jointplot with regression line for X and Y with KDE marginals.
 
@@ -885,7 +1022,7 @@ def jointplot(x, y, x_label="X", y_label="Y",
 
     # Compute correlation
     slope, intercept, r_value, p_value, _ = linregress(x_valid, y_valid)
-    corr_label = f'r = {r_value:.2f}, p = {p_value:.3f}'
+    corr_label = f"r = {r_value:.2f}, p = {p_value:.3f}"
 
     # Determine consistent limits
     x_margin = (x_valid.max() - x_valid.min()) * 0.05
@@ -894,33 +1031,58 @@ def jointplot(x, y, x_label="X", y_label="Y",
     ylim = (y_valid.min() - y_margin, y_valid.max() + y_margin)
 
     # Create JointGrid with fixed axis limits
-    g = sns.JointGrid(x=x_valid, y=y_valid, height=10, xlim=xlim, ylim=ylim) # height to increase box size
+    g = sns.JointGrid(
+        x=x_valid, y=y_valid, height=10, xlim=xlim, ylim=ylim
+    )  # height to increase box size
     # g.fig.set_size_inches(10, 11)  # width, height in inches
-
 
     # Scatter plot
     # g.ax_joint.scatter(x_valid, y_valid, alpha=0.7, s=50, edgecolor='black', color=default_color)
-    g.ax_joint.scatter(x_valid, y_valid, alpha=0.7, s=150, edgecolor='black', linewidth=1.5, color=default_color)
+    g.ax_joint.scatter(
+        x_valid,
+        y_valid,
+        alpha=0.7,
+        s=150,
+        edgecolor="black",
+        linewidth=1.5,
+        color=default_color,
+    )
 
-    g.ax_joint.tick_params(axis='both', which='major', labelsize=40, width=2.5, length=8)
-    
+    g.ax_joint.tick_params(
+        axis="both", which="major", labelsize=40, width=2.5, length=8
+    )
+
     for spine in g.ax_joint.spines.values():
         spine.set_linewidth(3.5)
 
-
     # Add regression line
-    sns.regplot(x=x_valid, y=y_valid, scatter=False, ax=g.ax_joint,
-                line_kws={'color': 'black', 'linewidth': 5})
+    sns.regplot(
+        x=x_valid,
+        y=y_valid,
+        scatter=False,
+        ax=g.ax_joint,
+        line_kws={"color": "black", "linewidth": 5},
+    )
 
     # KDE marginal distributions with separate colors
-    
-    sns.kdeplot(x=x_valid, ax=g.ax_marg_x, fill=True, color=density_color_x, alpha=alpha)
-    sns.kdeplot(y=y_valid, ax=g.ax_marg_y, fill=True, color=density_color_y, alpha=alpha)
+
+    sns.kdeplot(
+        x=x_valid, ax=g.ax_marg_x, fill=True, color=density_color_x, alpha=alpha
+    )
+    sns.kdeplot(
+        y=y_valid, ax=g.ax_marg_y, fill=True, color=density_color_y, alpha=alpha
+    )
 
     # Add correlation text with larger box
-    g.ax_joint.text(0.05, 0.95, corr_label, transform=g.ax_joint.transAxes,
-                    fontsize=35, verticalalignment='top', 
-                    bbox=dict(boxstyle="round,pad=0.48", alpha=0.5, facecolor = 'lightgray'))
+    g.ax_joint.text(
+        0.05,
+        0.95,
+        corr_label,
+        transform=g.ax_joint.transAxes,
+        fontsize=35,
+        verticalalignment="top",
+        bbox=dict(boxstyle="round,pad=0.48", alpha=0.5, facecolor="lightgray"),
+    )
 
     # Add labels and title
     g.ax_joint.set_xlabel(x_label, fontsize=45, labelpad=24)
@@ -928,12 +1090,12 @@ def jointplot(x, y, x_label="X", y_label="Y",
     if title:
         g.fig.suptitle(title, fontsize=36, y=0.97)
 
-
     plt.tight_layout()
 
     plt.show()
 
     return g
+
 
 # Re-import necessary modules after kernel reset
 import numpy as np
@@ -943,7 +1105,14 @@ import matplotlib.pyplot as plt
 from matplotlib.ticker import MaxNLocator
 
 
-def plot_four_condition_violin(data_dict, palette=None, title='Pain Ratings by Condition', save_as=None):
+def plot_four_condition_violin(
+    data_dict,
+    palette=None,
+    title="Pain Ratings by Condition",
+    save_as=None,
+    min_y=0,
+    max_y=110,
+):
     """
     Plot asymmetric violin plots for four conditions with:
     - Mean (dashed line)
@@ -971,21 +1140,28 @@ def plot_four_condition_violin(data_dict, palette=None, title='Pain Ratings by C
     all_data = []
     for cond, values in data_dict.items():
         for i, v in enumerate(values):
-            all_data.append({'Subject': i, 'Condition': cond, 'Pain Rating': v})
+            all_data.append({"Subject": i, "Condition": cond, "Pain Rating": v})
 
     df_plot = pd.DataFrame(all_data)
 
     if palette is None:
-        palette = ['#4c80ff', '#a8c7ff', '#fd6262', '#ffaaaa']
+        palette = ["#4c80ff", "#a8c7ff", "#fd6262", "#ffaaaa"]
 
     fig, ax = plt.subplots(figsize=(14, 10))
-    sns.set_style('white')
+    sns.set_style("white")
 
     # Violin plot
     sns.violinplot(
-        x='Condition', y='Pain Rating', data=df_plot,
-        palette=palette, dodge=False,
-        scale='width', inner=None, linewidth=2, cut=0, ax=ax
+        x="Condition",
+        y="Pain Rating",
+        data=df_plot,
+        palette=palette,
+        dodge=False,
+        scale="width",
+        inner=None,
+        linewidth=2,
+        cut=0,
+        ax=ax,
     )
 
     # Clip violins in half
@@ -994,9 +1170,13 @@ def plot_four_condition_violin(data_dict, palette=None, title='Pain Ratings by C
         bbox = path.get_extents()
         x0, y0, width, height = bbox.bounds
         if i in [0, 2]:
-            clip_rect = plt.Rectangle((x0, y0), width / 2, height, transform=ax.transData)
+            clip_rect = plt.Rectangle(
+                (x0, y0), width / 2, height, transform=ax.transData
+            )
         else:
-            clip_rect = plt.Rectangle((x0 + width / 2, y0), width / 2, height, transform=ax.transData)
+            clip_rect = plt.Rectangle(
+                (x0 + width / 2, y0), width / 2, height, transform=ax.transData
+            )
         violin.set_clip_path(clip_rect)
 
     for violin in ax.collections[:4]:  # adjust if more violins exist
@@ -1004,9 +1184,14 @@ def plot_four_condition_violin(data_dict, palette=None, title='Pain Ratings by C
 
     # Stripplot (with offset)
     strip = sns.stripplot(
-        x='Condition', y='Pain Rating', data=df_plot,
-        palette=palette, dodge=False,
-        size=10, alpha=0.7, ax=ax
+        x="Condition",
+        y="Pain Rating",
+        data=df_plot,
+        palette=palette,
+        dodge=False,
+        size=10,
+        alpha=0.7,
+        ax=ax,
     )
     for i, dots in enumerate(strip.collections):
         offsets = dots.get_offsets()
@@ -1017,41 +1202,60 @@ def plot_four_condition_violin(data_dict, palette=None, title='Pain Ratings by C
     n_subjects = len(data_dict[condition_names[0]])
     for i in range(n_subjects):
         # Left pair: Analgesia <-> Neutral (Ana.)
-        ax.plot([0, 1],
-                [data_dict[condition_names[0]][i], data_dict[condition_names[1]][i]],
-                color='gray', alpha=0.4, linewidth=1.5, zorder=0)
+        ax.plot(
+            [0, 1],
+            [data_dict[condition_names[0]][i], data_dict[condition_names[1]][i]],
+            color="gray",
+            alpha=0.4,
+            linewidth=1.5,
+            zorder=0,
+        )
         # Right pair: Hyperalgesia <-> Neutral (Hyper.)
-        ax.plot([2, 3],
-                [data_dict[condition_names[2]][i], data_dict[condition_names[3]][i]],
-                color='gray', alpha=0.4, linewidth=1.5, zorder=0)
+        ax.plot(
+            [2, 3],
+            [data_dict[condition_names[2]][i], data_dict[condition_names[3]][i]],
+            color="gray",
+            alpha=0.4,
+            linewidth=1.5,
+            zorder=0,
+        )
 
     # Add mean and standard deviation box for each condition
     for i, (cond, values) in enumerate(data_dict.items()):
         mean = np.mean(values)
         std = np.std(values)
-        ax.hlines(mean, i - 0.2, i + 0.2, color='black', linestyle='--', linewidth=2.5)
-        ax.add_patch(plt.Rectangle((i - 0.15, mean - std), 0.3, 2 * std,
-                                   edgecolor='black', facecolor='none', lw=2.5, zorder=10))
+        ax.hlines(mean, i - 0.2, i + 0.2, color="black", linestyle="--", linewidth=2.5)
+        ax.add_patch(
+            plt.Rectangle(
+                (i - 0.15, mean - std),
+                0.3,
+                2 * std,
+                edgecolor="black",
+                facecolor="none",
+                lw=2.5,
+                zorder=10,
+            )
+        )
 
     # Formatting
     ax.set_title(title, fontsize=28, y=1.02)
-    ax.set_xlabel('Hypnotic suggestions', fontsize=40, labelpad=20)
+    ax.set_xlabel("Hypnotic suggestions", fontsize=40, labelpad=20)
     ax.set_xticklabels(ax.get_xticklabels(), fontsize=37)
-    ax.set_ylabel('Pain ratings', fontsize=40)
-    ax.tick_params(axis='both', which='major', labelsize=37, width=4, length=12)
-    
-    #more space on top
-    ax.set_ylim(0, 110)
+    ax.set_ylabel("Pain ratings", fontsize=40)
+    ax.tick_params(axis="both", which="major", labelsize=37, width=4, length=12)
+
+    # more space on top
+    ax.set_ylim(min_y, max_y)
     ticks = ax.get_yticks()
     ticks = [tick for tick in ticks if tick < 110]
     ax.set_yticks(ticks)
 
-    ax.yaxis.set_major_locator(MaxNLocator(nbins='auto', integer=True))
+    ax.yaxis.set_major_locator(MaxNLocator(nbins="auto", integer=True))
     for spine in ax.spines.values():
         spine.set_linewidth(2)
 
-    ax.tick_params(axis='x', bottom=True)  # show ticks on bottom
-    ax.tick_params(axis='y', left=True)    # show ticks on left
+    ax.tick_params(axis="x", bottom=True)  # show ticks on bottom
+    ax.tick_params(axis="y", left=True)  # show ticks on left
 
     plt.tight_layout()
     if save_as:
@@ -1061,13 +1265,162 @@ def plot_four_condition_violin(data_dict, palette=None, title='Pain Ratings by C
     return fig
 
 
+def plot_delta_condition_violin(
+    data_dict,
+    palette=None,
+    title="Pain Ratings by Condition",
+    save_as=None,
+    min_y=0,
+    max_y=110,
+    xlabel="Hypnotic suggestions",
+    ylabel="Pain ratings",
+    median_line=True,
+    pair_lines=True,
+    std_box=True,
+    dot_size=10,
+    condition_labels=None,
+    lab_rotation=0,
+):
+    n_conditions = len(data_dict)
+    assert n_conditions % 2 == 0, "Number of conditions must be even (e.g., 2, 4, 6)."
+    condition_names = list(data_dict.keys())
+    n_subjects = len(next(iter(data_dict.values())))
+
+    all_data = [
+        {"Subject": i, "Condition": cond, "Pain Rating": v}
+        for cond, values in data_dict.items()
+        for i, v in enumerate(values)
+    ]
+    df_plot = pd.DataFrame(all_data)
+
+    if palette is None:
+        default_palette = [
+            "#4c80ff",
+            "#a8c7ff",
+            "#fd6262",
+            "#ffaaaa",
+            "#53b37f",
+            "#b6eadf",
+        ]
+        palette = default_palette[:n_conditions]
+
+    fig, ax = plt.subplots(figsize=(14, 10))
+    sns.set_style("white")
+
+    sns.violinplot(
+        x="Condition",
+        y="Pain Rating",
+        data=df_plot,
+        palette=palette,
+        dodge=False,
+        scale="width",
+        inner=None,
+        linewidth=2,
+        cut=0,
+        ax=ax,
+    )
+
+    for i, violin in enumerate(ax.collections[:n_conditions]):
+        path = violin.get_paths()[0]
+        bbox = path.get_extents()
+        x0, y0, width, height = bbox.bounds
+        if i % 2 == 0:
+            clip_rect = plt.Rectangle(
+                (x0, y0), width / 2, height, transform=ax.transData
+            )
+        else:
+            clip_rect = plt.Rectangle(
+                (x0 + width / 2, y0), width / 2, height, transform=ax.transData
+            )
+        violin.set_clip_path(clip_rect)
+        violin.set_alpha(0.9)
+
+    strip = sns.stripplot(
+        x="Condition",
+        y="Pain Rating",
+        data=df_plot,
+        palette=palette,
+        dodge=False,
+        size=dot_size,
+        alpha=0.7,
+        ax=ax,
+    )
+    for i, dots in enumerate(strip.collections):
+        shift = 0.12 if i % 2 == 0 else -0.12
+        dots.set_offsets(dots.get_offsets() + np.array([shift, 0]))
+
+    if pair_lines:
+        for i in range(n_subjects):
+            for pair in range(n_conditions // 2):
+                x1, x2 = 2 * pair, 2 * pair + 1
+                y1, y2 = (
+                    data_dict[condition_names[x1]][i],
+                    data_dict[condition_names[x2]][i],
+                )
+                ax.plot(
+                    [x1, x2], [y1, y2], color="gray", alpha=0.4, linewidth=1.5, zorder=0
+                )
+
+    for i, (cond, values) in enumerate(data_dict.items()):
+        if std_box:
+            mean = np.mean(values)
+            std = np.std(values)
+            ax.hlines(
+                mean, i - 0.2, i + 0.2, color="black", linestyle="--", linewidth=2.5
+            )
+            ax.add_patch(
+                plt.Rectangle(
+                    (i - 0.15, mean - std),
+                    0.3,
+                    2 * std,
+                    edgecolor="black",
+                    facecolor="none",
+                    lw=2.5,
+                    zorder=10,
+                )
+            )
+        elif median_line:
+            median = np.median(values)
+            ax.hlines(
+                median, i - 0.2, i + 0.2, color="black", linestyle="-", linewidth=2.5
+            )
+
+    ax.set_title(title, fontsize=40, y=1.02)
+    ax.set_xlabel(xlabel, fontsize=40, labelpad=20)
+    ax.set_ylabel(ylabel, fontsize=40)
+    if condition_labels:
+        xticklabels = [condition_labels.get(name, name) for name in condition_names]
+    else:
+        xticklabels = condition_names
+
+    ax.set_xticklabels(xticklabels, fontsize=37, rotation=lab_rotation)
+    for tick in ax.get_xticklabels():
+        tick.set_ha("right")  # Aligns the label's right edge to the tick mark
+
+    ax.tick_params(axis="both", which="major", labelsize=37, width=4, length=12)
+    ax.set_ylim(min_y, max_y)
+    ax.set_yticks([tick for tick in ax.get_yticks() if tick < max_y])
+    ax.yaxis.set_major_locator(MaxNLocator(nbins="auto", integer=True))
+    for spine in ax.spines.values():
+        spine.set_linewidth(2)
+    ax.tick_params(axis="x", bottom=True)
+    ax.tick_params(axis="y", left=True)
+
+    plt.tight_layout()
+    if save_as:
+        plt.savefig(save_as, dpi=1000)
+    plt.show()
+
+    return fig
+
 
 # =============
 # RADAR CHART
-#==============
+# ==============
 import matplotlib.pyplot as plt
 import numpy as np
 from collections import Counter
+
 
 def plot_network_radar(network_list, title="Network Distribution of Significant ROIs"):
     """
@@ -1082,9 +1435,19 @@ def plot_network_radar(network_list, title="Network Distribution of Significant 
     """
     counts = Counter(network_list)
 
-    network_order = ['Visual', 'SomMot', 'DorsAttn', 'SalVentAttn', 'Limbic',
-                     'Cont', 'Default', 'TempPar', 'Subcortical', 'Cerebellum']
-    
+    network_order = [
+        "Visual",
+        "SomMot",
+        "DorsAttn",
+        "SalVentAttn",
+        "Limbic",
+        "Cont",
+        "Default",
+        "TempPar",
+        "Subcortical",
+        "Cerebellum",
+    ]
+
     values = [counts.get(n, 0) for n in network_order]
     max_val = max(values) if max(values) > 0 else 1
 
@@ -1094,8 +1457,8 @@ def plot_network_radar(network_list, title="Network Distribution of Significant 
     angles += angles[:1]
 
     fig, ax = plt.subplots(figsize=(8, 8), subplot_kw=dict(polar=True))
-    ax.plot(angles, values, color='tab:blue', linewidth=2)
-    ax.fill(angles, values, color='tab:blue', alpha=0.25)
+    ax.plot(angles, values, color="tab:blue", linewidth=2)
+    ax.fill(angles, values, color="tab:blue", alpha=0.25)
 
     ax.set_xticks(angles[:-1])
     ax.set_xticklabels(labels, fontsize=10)
@@ -1108,21 +1471,35 @@ def plot_network_radar(network_list, title="Network Distribution of Significant 
     ax.set_yticklabels(ytick_labels, fontsize=9)
     ax.set_ylim(0, max_val)
 
-    ax.yaxis.grid(True, linestyle='dotted')
-    ax.xaxis.grid(True, linestyle='dotted')
+    ax.yaxis.grid(True, linestyle="dotted")
+    ax.xaxis.grid(True, linestyle="dotted")
 
     plt.title(title, fontsize=13)
     plt.tight_layout()
     plt.show()
 
 
-#for multiple networks/conditions
+# for multiple networks/conditions
 
-def plot_overlay_network_radar(sig_dfs_dict, full_cond_names, title="Overlay Network Distribution"):
-    network_order = ['Visual', 'SomMot', 'DorsAttn', 'SalVentAttn', 'Limbic', 'Cont', 'Default', 'TempPar', 'Subcortical', 'Cerebellum']
+
+def plot_overlay_network_radar(
+    sig_dfs_dict, full_cond_names, title="Overlay Network Distribution"
+):
+    network_order = [
+        "Visual",
+        "SomMot",
+        "DorsAttn",
+        "SalVentAttn",
+        "Limbic",
+        "Cont",
+        "Default",
+        "TempPar",
+        "Subcortical",
+        "Cerebellum",
+    ]
     all_used_networks = set()
     for df in sig_dfs_dict.values():
-        nets = [roi.split('_')[2] for roi in df['ROI']]
+        nets = [roi.split("_")[2] for roi in df["ROI"]]
         all_used_networks.update(nets)
     network_order = [n for n in network_order if n in all_used_networks]
 
@@ -1134,36 +1511,46 @@ def plot_overlay_network_radar(sig_dfs_dict, full_cond_names, title="Overlay Net
 
     for i, (cond, full_cond) in enumerate(full_cond_names.items()):
         df = sig_dfs_dict[cond]
-        nets = [roi.split('_')[2] for roi in df['ROI']]
+        nets = [roi.split("_")[2] for roi in df["ROI"]]
         counts = Counter(nets)
         values = [counts.get(n, 0) for n in network_order]
         values += values[:1]
 
-        ax.plot(angles, values, label=full_cond, linewidth=2, color=colors[i % len(colors)])
+        ax.plot(
+            angles, values, label=full_cond, linewidth=2, color=colors[i % len(colors)]
+        )
         ax.fill(angles, values, alpha=0.25, color=colors[i % len(colors)])
 
     ax.set_xticks(angles[:-1])
     ax.set_xticklabels(network_order, fontsize=12)
-    max_val = max([max(Counter([roi.split('_')[2] for roi in df['ROI']]).values()) for df in sig_dfs_dict.values()])
+    max_val = max(
+        [
+            max(Counter([roi.split("_")[2] for roi in df["ROI"]]).values())
+            for df in sig_dfs_dict.values()
+        ]
+    )
     yticks = list(range(1, max_val + 1))
     ax.set_yticks(yticks)
-    ax.set_yticklabels([str(y) if y % 2 == 0 else '' for y in yticks], fontsize=10)
+    ax.set_yticklabels([str(y) if y % 2 == 0 else "" for y in yticks], fontsize=10)
     ax.set_ylim(0, max_val)
 
-    ax.yaxis.grid(True, linestyle='dotted')
-    ax.xaxis.grid(True, linestyle='dotted')
-    legend = plt.legend(loc='upper right', bbox_to_anchor=(1.1, 1.1), fontsize=12)
+    ax.yaxis.grid(True, linestyle="dotted")
+    ax.xaxis.grid(True, linestyle="dotted")
+    legend = plt.legend(loc="upper right", bbox_to_anchor=(1.1, 1.1), fontsize=12)
     plt.setp(legend.get_texts(), fontsize=12)
     plt.title(title, fontsize=14)
     plt.tight_layout()
     plt.show()
 
-def plot_median_isc_dots(sig_dfs_one_sample, 
-                          title="Intersubject Correlation (ISC) per Condition", 
-                          conditions_full_names=None,
-                          jitter=True,
-                          jitter_scale=0.08,
-                          y_spacing=1.3):
+
+def plot_median_isc_dots(
+    sig_dfs_one_sample,
+    title="Intersubject Correlation (ISC) per Condition",
+    conditions_full_names=None,
+    jitter=True,
+    jitter_scale=0.08,
+    y_spacing=1.3,
+):
     """
     Plot ISC values as dots for each significant ROI per condition,
     with median and MAD error bars, condition color coding, and ROI counts.
@@ -1189,13 +1576,13 @@ def plot_median_isc_dots(sig_dfs_one_sample,
 
     # Color per condition
     color_map = {
-        'ANA': '#1f77b4',
-        'HYPER': '#d62728',
-        'neutral': '#2ca02c',
-        'modulation': '#9467bd',
-        'all_sugg': '#ff7f0e',
-        'NANA': '#17becf',
-        'NHYPER': '#e377c2',
+        "ANA": "#1f77b4",
+        "HYPER": "#d62728",
+        "neutral": "#2ca02c",
+        "modulation": "#9467bd",
+        "all_sugg": "#ff7f0e",
+        "NANA": "#17becf",
+        "NHYPER": "#e377c2",
     }
 
     fig, ax = plt.subplots(figsize=(11, 7))
@@ -1208,19 +1595,33 @@ def plot_median_isc_dots(sig_dfs_one_sample,
 
         y_base = i * y_spacing
         yticks.append(y_base)
-        full_label = conditions_full_names.get(cond, cond) if conditions_full_names else cond
+        full_label = (
+            conditions_full_names.get(cond, cond) if conditions_full_names else cond
+        )
         ylabels.append(full_label)
 
-        isc_vals = df['ISC'].values
+        isc_vals = df["ISC"].values
         n = len(isc_vals)
 
         # Jitter for dot spread
-        y_vals = y_base + np.random.uniform(-jitter_scale, jitter_scale, size=n) if jitter else np.full(n, y_base)
+        y_vals = (
+            y_base + np.random.uniform(-jitter_scale, jitter_scale, size=n)
+            if jitter
+            else np.full(n, y_base)
+        )
 
         color = color_map.get(cond, f"C{i}")
 
         # Plot dots
-        ax.scatter(isc_vals, y_vals, s=85, alpha=0.9, color=color, edgecolor='black', linewidth=0.4)
+        ax.scatter(
+            isc_vals,
+            y_vals,
+            s=85,
+            alpha=0.9,
+            color=color,
+            edgecolor="black",
+            linewidth=0.4,
+        )
 
         # Compute median and MAD
         med = np.median(isc_vals)
@@ -1234,33 +1635,47 @@ def plot_median_isc_dots(sig_dfs_one_sample,
             height=box_height,
             boxstyle="round,pad=0.02",
             linewidth=2.8,
-            edgecolor='black',
+            edgecolor="black",
             facecolor=color,
-            alpha=0.25
+            alpha=0.25,
         )
         ax.add_patch(box)
 
         # Add median line inside box
-        ax.plot([med, med], [y_base - box_height / 2, y_base + box_height / 2],
-                color='black', linewidth=2.5)
+        ax.plot(
+            [med, med],
+            [y_base - box_height / 2, y_base + box_height / 2],
+            color="black",
+            linewidth=2.5,
+        )
 
     # Final layout
     ax.set_yticks(yticks)
     ax.set_yticklabels(ylabels, fontsize=18)
-    ax.set_xlabel('Median ISC per region', fontsize=24)
+    ax.set_xlabel("Median ISC per region", fontsize=24)
     ax.set_title(title, fontsize=26)
-    ax.tick_params(axis='x', labelsize=18)
-    ax.tick_params(axis='y', labelsize=18)
+    ax.tick_params(axis="x", labelsize=18)
+    ax.tick_params(axis="y", labelsize=18)
     ax.set_ylim(-y_spacing, yticks[-1] + y_spacing)
-    ax.grid(axis='x', linestyle='dotted', alpha=0.5)
+    ax.grid(axis="x", linestyle="dotted", alpha=0.5)
     plt.tight_layout()
     plt.show()
 
 
-
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
-def plot_simmat_behav(simmat, title, title_id='SHSS', y_label=None, x_label = 'Subjects', cmap='RdBu_r', colorbar_name = 'Similarity', save_path=None, dpi=1000):
+
+def plot_simmat_behav(
+    simmat,
+    title,
+    title_id="SHSS",
+    y_label=None,
+    x_label="Subjects",
+    cmap="RdBu_r",
+    colorbar_name="Similarity",
+    save_path=None,
+    dpi=1000,
+):
     """
     Plot a similarity matrix sorted by behavioral scores, styled for publication.
 
@@ -1284,13 +1699,7 @@ def plot_simmat_behav(simmat, title, title_id='SHSS', y_label=None, x_label = 'S
     fig, ax = plt.subplots(figsize=(10, 10))
 
     vmax = np.max(np.abs(simmat))
-    im = ax.imshow(
-        simmat,
-        vmin=-vmax,
-        vmax=vmax,
-        cmap=cmap,
-        aspect='equal'
-    )
+    im = ax.imshow(simmat, vmin=-vmax, vmax=vmax, cmap=cmap, aspect="equal")
 
     # Custom colorbar: thick and aligned with heatmap
     divider = make_axes_locatable(ax)
@@ -1317,7 +1726,7 @@ def plot_simmat_behav(simmat, title, title_id='SHSS', y_label=None, x_label = 'S
     plt.tight_layout()
 
     if save_path is not None:
-        plt.savefig(save_path, dpi=dpi, bbox_inches='tight')
+        plt.savefig(save_path, dpi=dpi, bbox_inches="tight")
         print(f"Figure saved to: {save_path}")
 
     plt.show()
@@ -1326,100 +1735,164 @@ def plot_simmat_behav(simmat, title, title_id='SHSS', y_label=None, x_label = 'S
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 
 
-def plot_simmat_isc(simmat, title, title_id='SHSS', y_label=None, x_label = 'Subjects', cmap='RdBu_r', colorbar_name = 'Similarity', save_path=None, dpi=1000):
-    """
-    Plot a similarity matrix sorted by behavioral scores, styled for publication.
+def plot_simmat_isc(
+    simmat,
+    title,
+    title_id="SHSS",
+    y_label=None,
+    x_label="Subjects",
+    cmap="RdBu_r",
+    colorbar_name="Similarity",
+    show_colorbar=True,
+    vmin=None,
+    vmax=None,
+    save_path=None,
+    dpi=1000,
+    figsize=(10, 10),
+    tick_fontsize=40,
+    label_fontsize=60,
+):
+    import matplotlib.pyplot as plt
+    from mpl_toolkits.axes_grid1 import make_axes_locatable
+    from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 
-    Parameters
-    ----------
-    simmat : np.ndarray
-        Square similarity matrix.
-    title : str
-        Title of the plot.
-    title_id : str, optional
-        Identifier for the title or output filename (used if save_path is provided).
-    y_name : str, optional
-        Name of the behavioral score used for sorting.
-    cmap : str, optional
-        Colormap for the matrix.
-    save_path : str, optional
-        Path to save the figure. If None, the figure is not saved.
-    dpi : int, optional
-        Resolution of the saved figure in dots per inch.
-    """
-    fig, ax = plt.subplots(figsize=(10, 10))
-    
-    vmax = np.max(np.abs(simmat))
-    im = ax.imshow(
-        simmat,
-        vmin=-vmax,
-        vmax=vmax,
-        cmap=cmap,
-        aspect='equal'
-    )
+    fig, ax = plt.subplots(figsize=figsize)
 
-    # Custom colorbar: thick and aligned with heatmap
-    divider = make_axes_locatable(ax)
-    cax = inset_axes(
-    ax,
-    width="5%",        # Width of the colorbar relative to ax
-    height="96%",      # Slightly shorter height
-    loc='right',
-    bbox_to_anchor=(0.1, 0.0, 1, 1),  # Move it down a bit to center it
-    bbox_transform=ax.transAxes,
-    borderpad=0
-    )
+    # Define color range if not specified
+    if vmin is None or vmax is None:
+        abs_max = np.max(np.abs(simmat))
+        vmin = -abs_max
+        vmax = abs_max
 
-    cbar_ticks = [-vmax, 0, vmax]
-    cbar = plt.colorbar(im, cax=cax, ticks=cbar_ticks)
-    cbar.ax.tick_params(labelsize=50, width=3, length=6)
-    cbar.set_label(colorbar_name, fontsize=60, rotation=270, labelpad=0)
-      # Default position is something like (1.05, 0.5) 
-    cbar.ax.yaxis.label.set_position((0.98, 0.5))  #
+    im = ax.imshow(simmat, vmin=vmin, vmax=vmax, cmap=cmap, aspect="equal")
 
-    # Then manually round the tick *labels*
-    tick_labels = [f"{t:.2f}" if t != 0 else "0" for t in cbar_ticks]
-    cbar.ax.set_yticklabels(tick_labels)
+    # Optional colorbar
+    if show_colorbar:
+        divider = make_axes_locatable(ax)
+        cax = inset_axes(
+            ax,
+            width="5%",
+            height="96%",
+            loc="right",
+            bbox_to_anchor=(0.1, 0.0, 1, 1),
+            bbox_transform=ax.transAxes,
+            borderpad=0,
+        )
+        cbar_ticks = [vmin, 0, vmax]
+        cbar = plt.colorbar(im, cax=cax, ticks=cbar_ticks)
+        cbar.ax.tick_params(labelsize=tick_fontsize, width=3, length=6)
+
+        if colorbar_name:
+            cbar.set_label(
+                colorbar_name, fontsize=label_fontsize, rotation=270, labelpad=0
+            )
+            cbar.ax.yaxis.label.set_position((0.98, 0.5))
+        else:
+            cbar.ax.yaxis.label.set_visible(False)
+
+        tick_labels = [f"{t:.2f}" if t != 0 else "0" for t in cbar_ticks]
+        cbar.ax.set_yticklabels(tick_labels)
 
     # Titles and labels
-    ax.set_title(title, fontsize=60, pad=15)
-    ax.set_xlabel(x_label, fontsize=60, labelpad=14)
-    ax.set_ylabel(y_label, fontsize=60, labelpad=14)
+    ax.set_title(title, fontsize=label_fontsize, pad=15)
+    if x_label:
+        ax.set_xlabel(x_label, fontsize=label_fontsize, labelpad=14)
+    if y_label:
+        ax.set_ylabel(y_label, fontsize=label_fontsize, labelpad=14)
 
-    # Tick labels only at 0, 5, 10, 15, 20 (within matrix size)
+    # Custom tick selection
     max_idx = simmat.shape[0] - 1
-    ticks = [i for i in [0, 5, 10, 15, 20] if i <= max_idx]
+    ticks = [i for i in [0, 20] if i <= max_idx]
     ax.set_xticks(ticks)
     ax.set_yticks(ticks)
-    ax.set_xticklabels(ticks, fontsize=40)
-    ax.set_yticklabels(ticks, fontsize=40)
-
+    ax.set_xticklabels(ticks, fontsize=tick_fontsize)
+    ax.set_yticklabels(ticks, fontsize=tick_fontsize)
     ax.tick_params(length=8, width=3)
 
     plt.tight_layout()
 
-    if save_path is not None:
-        plt.savefig(save_path, dpi=dpi)
+    if save_path:
+        plt.savefig(save_path, dpi=dpi, bbox_inches="tight")
         print(f"Figure saved to: {save_path}")
 
     plt.show()
 
-#==================================
-#BRAIN PLOTS FINAL //Like pain gen project
+
+import matplotlib.pyplot as plt
+import matplotlib as mpl
+
+
+def plot_isc_colorbar(
+    vmin,
+    vmax,
+    cmap="RdBu_r",
+    label="ISC Similarity",
+    label_fontsize=60,
+    tick_fontsize=50,
+    save_path=None,
+    dpi=300,
+):
+    """
+    Plot and optionally save a standalone colorbar image with specified limits and styling.
+
+    Parameters
+    ----------
+    vmin : float
+        Minimum value of the color scale.
+    vmax : float
+        Maximum value of the color scale.
+    cmap : str
+        Colormap name.
+    label : str
+        Label for the colorbar.
+    label_fontsize : int
+        Font size for the label.
+    tick_fontsize : int
+        Font size for tick labels.
+    save_path : str or None
+        Path to save the figure. If None, shows the plot interactively.
+    dpi : int
+        DPI for saved figure.
+    """
+    fig, ax = plt.subplots(figsize=(2, 5))  # tall and narrow
+
+    norm = mpl.colors.Normalize(vmin=vmin, vmax=vmax)
+    cbar = mpl.colorbar.ColorbarBase(
+        ax, cmap=cmap, norm=norm, orientation="vertical", ticks=[vmin, 0, vmax]
+    )
+    cbar.set_label(label, fontsize=label_fontsize, rotation=270, labelpad=-10)
+    cbar.ax.tick_params(labelsize=tick_fontsize, width=3, length=6)
+
+    # Format tick labels
+    tick_labels = [f"{t:.2f}" if t != 0 else "0" for t in [vmin, 0, vmax]]
+    cbar.ax.set_yticklabels(tick_labels)
+
+    plt.tight_layout()
+
+    if save_path:
+        plt.savefig(save_path, dpi=dpi, bbox_inches="tight")
+        print(f"Colorbar saved to {save_path}")
+    else:
+        plt.show()
+
+
+# ==================================
+# BRAIN PLOTS FINAL //Like pain gen project
 # from M-E Picard FEPS + Coll et al.
 from nilearn.image import resample_to_img
 
-def save_slices(img, coords_to_plot, save_to, img_id,cmap='hot', **kwargs):
+
+def save_slices(img, coords_to_plot, save_to, img_id, cmap="hot", **kwargs):
     ticksfontsize = 14
 
     bg_img = datasets.load_mni152_template(resolution=1)
-    new_img = resample_to_img(img, bg_img, interpolation='nearest')
+    new_img = resample_to_img(img, bg_img, interpolation="nearest")
 
     for axis, coord_list in coords_to_plot.items():
         for c in coord_list:
             fig, ax = plt.subplots(figsize=(2, 2))  # matched style
             disp = plot_stat_map(
-                new_img,  
+                new_img,
                 bg_img=bg_img,
                 cmap=cmap,
                 colorbar=False,
@@ -1428,37 +1901,53 @@ def save_slices(img, coords_to_plot, save_to, img_id,cmap='hot', **kwargs):
                 display_mode=axis,
                 axes=ax,
                 vmax=None,
-                cut_coords=(c,),
+                cut_coords=(c - 2,),
                 alpha=1,
                 annotate=False,
-                interpolation='nearest'
+                interpolation="nearest",
             )
+            print(
+                " WARNING: Shifting Cut coord by -2, but the coord label is as inputed in COORDS"
+            )
+            # Temporarily bug fix
+
             # disp.annotate(size=ticksfontsize, left_right=False, xy=(0.5, -0.08))
 
             # disp.annotate(size=ticksfontsize, left_right=False, xy=(0.5, -0.08))
-            if axis == 'z': # bigger brain on z cuts
+            if axis == "z":  # bigger brain on z cuts
                 x_pos = 0.5
                 y_pos = -0.029
-            elif axis == 'y':
+            elif axis == "y":
                 x_pos = 0.5
                 y_pos = 0.1
-            elif axis == 'x':
+            elif axis == "x":
                 x_pos = 0.65
                 y_pos = 0.145
 
             ax.text(
-                x_pos, y_pos, f'{axis} = {c}',
+                x_pos,
+                y_pos,
+                f"{axis} = {c}",
                 transform=ax.transAxes,
                 fontsize=ticksfontsize,
-                ha='center', va='top',
-                bbox=dict(boxstyle="round,pad=0.3", facecolor='white', alpha=0.7, edgecolor='none')
+                ha="center",
+                va="top",
+                bbox=dict(
+                    boxstyle="round,pad=0.3",
+                    facecolor="white",
+                    alpha=0.7,
+                    edgecolor="none",
+                ),
             )
 
             fig.savefig(
-                os.path.join(save_to, f'{img_id}_sig_{axis}{c}.png'),
-                transparent=True, bbox_inches='tight', dpi=600
+                os.path.join(save_to, f"{img_id}_sig_{axis}{c}.png"),
+                transparent=True,
+                bbox_inches="tight",
+                dpi=600,
             )
             plt.close(fig)
+
 
 # ===================================
 # color bars
@@ -1470,7 +1959,6 @@ def save_slices(img, coords_to_plot, save_to, img_id,cmap='hot', **kwargs):
 
 from numbers import Number
 import numpy as np
-
 
 
 def get_cbar_ticks(vmin, vmax, offset, n_ticks=5):
@@ -1512,9 +2000,7 @@ def get_colorbar_and_data_ranges(
         vmax = None
 
     if hasattr(stat_map_data, "_mask"):
-        stat_map_data = np.asarray(
-            stat_map_data[np.logical_not(stat_map_data._mask)]
-        )
+        stat_map_data = np.asarray(stat_map_data[np.logical_not(stat_map_data._mask)])
 
     if force_min_stat_map_value is None:
         stat_map_min = np.nanmin(stat_map_data)
@@ -1564,14 +2050,18 @@ def get_colorbar_and_data_ranges(
 
     return cbar_vmin, cbar_vmax, float(vmin), float(vmax)
 
+
 import matplotlib.pyplot as plt
 from matplotlib.colorbar import ColorbarBase
 from matplotlib.colors import Normalize
 
-def save_colorbar(img, cmap, outpath, symmetric_cbar=False, offset=None, n_ticks=5, transparent=True):
+
+def save_colorbar(
+    img, cmap, outpath, symmetric_cbar=False, offset=None, n_ticks=5, transparent=True
+):
     img_data = img.get_fdata()
 
-    import numpy as np # bug fix, somehow numpy is not imported in the scritp
+    import numpy as np  # bug fix, somehow numpy is not imported in the scritp
 
     # Automatically set vmax and vmin based on actual data range
     data_max = np.nanmax(img_data)
@@ -1586,10 +2076,7 @@ def save_colorbar(img, cmap, outpath, symmetric_cbar=False, offset=None, n_ticks
         vmin = data_min  # <-- set to actual data min, not 0 explicitly
 
     cbar_vmin, cbar_vmax, _, _ = get_colorbar_and_data_ranges(
-        img_data,
-        symmetric_cbar=symmetric_cbar,
-        vmax=vmax,
-        vmin=vmin
+        img_data, symmetric_cbar=symmetric_cbar, vmax=vmax, vmin=vmin
     )
 
     # Guard against None values
@@ -1604,14 +2091,79 @@ def save_colorbar(img, cmap, outpath, symmetric_cbar=False, offset=None, n_ticks
     # Plotting the standalone colorbar
     fig, ax = plt.subplots(figsize=(0.4, 4))
     norm = Normalize(vmin=cbar_vmin, vmax=cbar_vmax)
-    cb = ColorbarBase(ax, cmap=cmap, norm=norm, ticks=ticks, orientation='vertical')
-    cb.ax.set_yticklabels([f'{t:.2f}' for t in ticks], fontsize=16)
+    cb = ColorbarBase(ax, cmap=cmap, norm=norm, ticks=ticks, orientation="vertical")
+    cb.ax.set_yticklabels([f"{t:.2f}" for t in ticks], fontsize=16)
 
-    cb.ax.yaxis.set_ticks_position('left')
-    cb.ax.yaxis.set_label_position('left')
+    cb.ax.yaxis.set_ticks_position("left")
+    cb.ax.yaxis.set_label_position("left")
     cb.outline.set_visible(False)
 
-    fig.savefig(outpath, transparent=transparent, bbox_inches='tight', dpi=300)
+    fig.savefig(outpath, transparent=transparent, bbox_inches="tight", dpi=300)
     plt.close(fig)
 
     return fig
+
+
+# src/atlas_utils.py
+
+schaeffer_region_mapping = {
+    "7Networks_LH_SomMot_6": {
+        "anatomical_label": "Left Motor cortex",
+        "region_index": 20,
+    },
+    "7Networks_LH_SomMot_14": {
+        "anatomical_label": "Left Motor cortex",
+        "region_index": 28,
+    },
+    "7Networks_LH_SomMot_16": {
+        "anatomical_label": "Left Somatosensory",
+        "region_index": 30,
+    },
+    "7Networks_LH_SalVentAttn_ParOper_1": {
+        "anatomical_label": "Left parietal operculum",
+        "region_index": 44,
+    },
+    "7Networks_LH_SalVentAttn_Med_1": {"anatomical_label": "aMCC", "region_index": 52},
+    "7Networks_LH_SalVentAttn_Med_3": {"anatomical_label": "SMA", "region_index": 54},
+    "7Networks_LH_Default_Temp_3": {
+        "anatomical_label": "Left anterior STG",
+        "region_index": 76,
+    },
+    "7Networks_LH_Default_Temp_4": {
+        "anatomical_label": "Left post. STS",
+        "region_index": 77,
+    },
+    "7Networks_RH_SomMot_7": {
+        "anatomical_label": "Right inf. Lateral Motor Cortex",
+        "region_index": 122,
+    },
+    "7Networks_RH_SomMot_16": {
+        "anatomical_label": "Right Motor Cortex",
+        "region_index": 131,
+    },
+    "7Networks_RH_SomMot_17": {
+        "anatomical_label": "Right Somatosensory",
+        "region_index": 132,
+    },
+    "7Networks_RH_SalVentAttn_Med_2": {
+        "anatomical_label": "anterior PCC",
+        "region_index": 157,
+    },
+    "7Networks_RH_SalVentAttn_Med_3": {
+        "anatomical_label": "Right pre-SMA",
+        "region_index": 158,
+    },
+    "7Networks_RH_Cont_PFCl_4": {"anatomical_label": "Right MFG", "region_index": 173},
+    "7Networks_RH_Default_Temp_3": {
+        "anatomical_label": "Right anterior STG",
+        "region_index": 187,
+    },
+    "7Networks_RH_Default_Temp_5": {
+        "anatomical_label": "Right post. STS",
+        "region_index": 189,
+    },
+    "7Networks_RH_Default_PFCdPFCm_6": {
+        "anatomical_label": "R dlPFC",
+        "region_index": 196,
+    },
+}
