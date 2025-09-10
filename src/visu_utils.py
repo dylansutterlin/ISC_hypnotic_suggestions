@@ -580,7 +580,7 @@ def project_isc_to_brain_perm(
             sig_labels_data.append(
                 {
                     "ROI": roi_idx,
-                    "Atlas Label": label,
+                    "Label": label,
                     "r Difference": round(isc_median[i], 2),
                     "p-value": f"{p_values[i]:.4f}",
                     "Coordinates": tuple(np.round(roi_coords[i], 0).astype(int)),
@@ -1422,16 +1422,43 @@ import numpy as np
 from collections import Counter
 
 
-def plot_network_radar(network_list, title="Network Distribution of Significant ROIs"):
+def plot_network_polarbar(
+    network_list,
+    max_radius=5,
+    title="Polar Bar Chart of Significant ROIs",
+    color_map=None,
+    font_size=10,
+    label_distance=1.05,
+    show_radial_ticks=True,
+    tick_fontsize=12,
+    divider_color="black",
+    divider_linewidth=1.2,
+):
     """
-    Plot a radar chart with discrete scale and fewer radial labels for clarity.
+    Create a polar bar chart showing the distribution of significant ROIs across networks.
 
     Parameters
     ----------
     network_list : list of str
-        List of network names (e.g., ['Default', 'Limbic', ...]).
+        List of network names (one per ROI).
+    max_radius : int
+        Fixed radial scale maximum.
     title : str
-        Title for the radar chart.
+        Title for the plot.
+    color_map : dict, optional
+        Mapping from network name to color.
+    font_size : int
+        Font size for network labels.
+    label_distance : float
+        Radius multiplier to control label distance from origin.
+    show_radial_ticks : bool
+        Whether to display inner circle tick labels.
+    tick_fontsize : int
+        Font size for the radial tick labels.
+    divider_color : str
+        Color of lines separating network segments.
+    divider_linewidth : float
+        Width of divider lines.
     """
     counts = Counter(network_list)
 
@@ -1447,98 +1474,68 @@ def plot_network_radar(network_list, title="Network Distribution of Significant 
         "Subcortical",
         "Cerebellum",
     ]
+    values = np.array([counts.get(net, 0) for net in network_order])
+    N = len(network_order)
+    angles = np.linspace(0, 2 * np.pi, N, endpoint=False)
 
-    values = [counts.get(n, 0) for n in network_order]
-    max_val = max(values) if max(values) > 0 else 1
+    # Assign colors
+    if color_map:
+        colors = [color_map.get(net, "lightgray") for net in network_order]
+    else:
+        base_cmap = plt.get_cmap("tab10")
+        colors = base_cmap.colors[:N]
 
-    labels = network_order
-    angles = np.linspace(0, 2 * np.pi, len(labels), endpoint=False).tolist()
-    values += values[:1]
-    angles += angles[:1]
-
-    fig, ax = plt.subplots(figsize=(8, 8), subplot_kw=dict(polar=True))
-    ax.plot(angles, values, color="tab:blue", linewidth=2)
-    ax.fill(angles, values, color="tab:blue", alpha=0.25)
-
-    ax.set_xticks(angles[:-1])
-    ax.set_xticklabels(labels, fontsize=10)
-
-    yticks = list(range(1, max_val + 1))
-    ax.set_yticks(yticks)
-
-    # Label every 2nd radial line (e.g., 2, 4, 6)
-    ytick_labels = [str(y) if y % 2 == 0 else "" for y in yticks]
-    ax.set_yticklabels(ytick_labels, fontsize=9)
-    ax.set_ylim(0, max_val)
-
-    ax.yaxis.grid(True, linestyle="dotted")
-    ax.xaxis.grid(True, linestyle="dotted")
-
-    plt.title(title, fontsize=13)
-    plt.tight_layout()
-    plt.show()
-
-
-# for multiple networks/conditions
-
-
-def plot_overlay_network_radar(
-    sig_dfs_dict, full_cond_names, title="Overlay Network Distribution"
-):
-    network_order = [
-        "Visual",
-        "SomMot",
-        "DorsAttn",
-        "SalVentAttn",
-        "Limbic",
-        "Cont",
-        "Default",
-        "TempPar",
-        "Subcortical",
-        "Cerebellum",
-    ]
-    all_used_networks = set()
-    for df in sig_dfs_dict.values():
-        nets = [roi.split("_")[2] for roi in df["ROI"]]
-        all_used_networks.update(nets)
-    network_order = [n for n in network_order if n in all_used_networks]
-
-    angles = np.linspace(0, 2 * np.pi, len(network_order), endpoint=False).tolist()
-    angles += angles[:1]
-
-    fig, ax = plt.subplots(figsize=(8, 8), subplot_kw=dict(polar=True))
-    colors = plt.cm.tab10.colors
-
-    for i, (cond, full_cond) in enumerate(full_cond_names.items()):
-        df = sig_dfs_dict[cond]
-        nets = [roi.split("_")[2] for roi in df["ROI"]]
-        counts = Counter(nets)
-        values = [counts.get(n, 0) for n in network_order]
-        values += values[:1]
-
-        ax.plot(
-            angles, values, label=full_cond, linewidth=2, color=colors[i % len(colors)]
-        )
-        ax.fill(angles, values, alpha=0.25, color=colors[i % len(colors)])
-
-    ax.set_xticks(angles[:-1])
-    ax.set_xticklabels(network_order, fontsize=12)
-    max_val = max(
-        [
-            max(Counter([roi.split("_")[2] for roi in df["ROI"]]).values())
-            for df in sig_dfs_dict.values()
-        ]
+    # Plot setup
+    fig, ax = plt.subplots(figsize=(8, 8), subplot_kw={"polar": True})
+    width = 2 * np.pi / N
+    bars = ax.bar(
+        angles,
+        values,
+        width=width,
+        bottom=0.0,
+        color=colors,
+        alpha=0.9,
+        edgecolor="white",
+        linewidth=1.2,
     )
-    yticks = list(range(1, max_val + 1))
-    ax.set_yticks(yticks)
-    ax.set_yticklabels([str(y) if y % 2 == 0 else "" for y in yticks], fontsize=10)
-    ax.set_ylim(0, max_val)
 
-    ax.yaxis.grid(True, linestyle="dotted")
-    ax.xaxis.grid(True, linestyle="dotted")
-    legend = plt.legend(loc="upper right", bbox_to_anchor=(1.1, 1.1), fontsize=12)
-    plt.setp(legend.get_texts(), fontsize=12)
-    plt.title(title, fontsize=14)
+    # Add dividers between network slices
+    for angle in angles:
+        ax.plot(
+            [angle, angle],
+            [0, max_radius],
+            color=divider_color,
+            linewidth=divider_linewidth,
+        )
+
+    # Add network labels pointing inward
+    for angle, label in zip(angles, network_order):
+        ax.text(
+            angle,
+            max_radius * label_distance,
+            label,
+            fontsize=font_size,
+            ha="center",
+            va="center",
+            rotation=0,
+            rotation_mode="anchor",
+            transform_rotates_text=False,
+        )
+
+    # Configure radial axis
+    ax.set_ylim(0, max_radius)
+    ax.set_xticks([])  # Remove angular ticks
+
+    if show_radial_ticks:
+        ax.set_yticks(range(1, max_radius + 1))
+        ax.set_yticklabels(
+            [str(y) for y in range(1, max_radius + 1)], fontsize=tick_fontsize
+        )
+    else:
+        ax.set_yticks([])
+        ax.set_yticklabels([])
+
+    ax.set_title(title, fontsize=14, pad=20)
     plt.tight_layout()
     plt.show()
 
@@ -2107,14 +2104,30 @@ def save_colorbar(
 # src/atlas_utils.py
 
 schaeffer_region_mapping = {
+    "7Networks_LH_SomMot_1": {
+        "anatomical_label": "L STG",
+        "region_index": 15,
+    },  # validation 4 sept.
+    "7Networks_LH_SomMot_2": {
+        "anatomical_label": "L planum temporale",
+        "region_index": 16,
+    },  # validation 4 sept.
     "7Networks_LH_SomMot_6": {
         "anatomical_label": "Left Motor cortex",
         "region_index": 20,
     },
+    "7Networks_LH_SomMot_7": {
+        "anatomical_label": "Left precentral gyrus",
+        "region_index": 21,
+    },  # validation 4 sept.
     "7Networks_LH_SomMot_14": {
-        "anatomical_label": "Left Motor cortex",
+        "anatomical_label": "Left Premotor cortex",
         "region_index": 28,
-    },
+    },  # validation 4 sept.
+    "7Networks_LH_SomMot_15": {
+        "anatomical_label": "Left paracentral lobule",
+        "region_index": 29,
+    },  # validation 4 sept.
     "7Networks_LH_SomMot_16": {
         "anatomical_label": "Left Somatosensory",
         "region_index": 30,
@@ -2128,11 +2141,35 @@ schaeffer_region_mapping = {
     "7Networks_LH_Default_Temp_3": {
         "anatomical_label": "Left anterior STG",
         "region_index": 76,
-    },
+    },  # validation 4 sept.
     "7Networks_LH_Default_Temp_4": {
-        "anatomical_label": "Left post. STS",
+        "anatomical_label": "Left mid. STS",
         "region_index": 77,
+    },  # validation 4 sept.
+    "7Networks_LH_Default_Temp_5": {
+        "anatomical_label": "Left post. STG",
+        "region_index": 78,
+    },  # validation 4 sept.,
+    "7Networks_LH_Default_PFCdPFCm_6": {
+        "anatomical_label": "L dlPFC",
+        "region_index": 85,
     },
+    "7Networks_LH_Default_PFC_12": {
+        "anatomical_label": "Left MFG",
+        "region_index": 94,
+    },  # validation 4 sept.
+    "7Networks_RH_SomMot_1": {
+        "anatomical_label": "R planum temporale",
+        "region_index": 116,
+    },  # validation 4 sept.
+    "7Networks_RH_SomMot_2": {
+        "anatomical_label": "R post. STG",
+        "region_index": 117,
+    },  # validation 4 sept.
+    "7Networks_RH_SomMot_4": {
+        "anatomical_label": "Right parietal operculum",
+        "region_index": 119,
+    },  # validation 4 sept.
     "7Networks_RH_SomMot_7": {
         "anatomical_label": "Right inf. Lateral Motor Cortex",
         "region_index": 122,
@@ -2145,6 +2182,10 @@ schaeffer_region_mapping = {
         "anatomical_label": "Right Somatosensory",
         "region_index": 132,
     },
+    "7Networks_RH_SalVentAttn_TempOccPar_2": {
+        "anatomical_label": "Right angular gyrus",
+        "region_index": 149,
+    },
     "7Networks_RH_SalVentAttn_Med_2": {
         "anatomical_label": "anterior PCC",
         "region_index": 157,
@@ -2153,15 +2194,23 @@ schaeffer_region_mapping = {
         "anatomical_label": "Right pre-SMA",
         "region_index": 158,
     },
+    "7Networks_RH_Cont_PFCv_1": {
+        "anatomical_label": "Right ant. insula",
+        "region_index": 169,
+    },  # validation 4 sept.
     "7Networks_RH_Cont_PFCl_4": {"anatomical_label": "Right MFG", "region_index": 173},
     "7Networks_RH_Default_Temp_3": {
         "anatomical_label": "Right anterior STG",
         "region_index": 187,
-    },
+    },  # validation 4 sept.
+    "7Networks_RH_Default_Temp_4": {
+        "anatomical_label": "Right post. MTG",
+        "region_index": 188,
+    },  # validation 4 sept.
     "7Networks_RH_Default_Temp_5": {
         "anatomical_label": "Right post. STS",
         "region_index": 189,
-    },
+    },  # validation 4 sept.
     "7Networks_RH_Default_PFCdPFCm_6": {
         "anatomical_label": "R dlPFC",
         "region_index": 196,
