@@ -1422,17 +1422,26 @@ import numpy as np
 from collections import Counter
 
 
+import matplotlib.pyplot as plt
+import numpy as np
+from collections import Counter
+
+
 def plot_network_polarbar(
     network_list,
+    all_networks=None,
     max_radius=5,
-    title="Polar Bar Chart of Significant ROIs",
+    title=None,
     color_map=None,
     font_size=10,
     label_distance=1.05,
     show_radial_ticks=True,
     tick_fontsize=12,
-    divider_color="black",
+    divider_color=None,
     divider_linewidth=1.2,
+    show_only_max_tick=True,
+    save_as=None,
+    return_fig=False,
 ):
     """
     Create a polar bar chart showing the distribution of significant ROIs across networks.
@@ -1441,10 +1450,12 @@ def plot_network_polarbar(
     ----------
     network_list : list of str
         List of network names (one per ROI).
+    all_networks : list of str, optional
+        Full set of possible network names, defines ordering.
     max_radius : int
         Fixed radial scale maximum.
-    title : str
-        Title for the plot.
+    title : str or None
+        Title for the plot. If None, no title is displayed.
     color_map : dict, optional
         Mapping from network name to color.
     font_size : int
@@ -1455,25 +1466,35 @@ def plot_network_polarbar(
         Whether to display inner circle tick labels.
     tick_fontsize : int
         Font size for the radial tick labels.
-    divider_color : str
+    divider_color : str, optional
         Color of lines separating network segments.
     divider_linewidth : float
         Width of divider lines.
+    show_only_max_tick : bool
+        If True, display only the outermost radial tick label.
+    save_as : str or None
+        If not None, path to save the figure (e.g., 'fig.png').
+    return_fig : bool
+        If True, return the matplotlib figure object.
     """
     counts = Counter(network_list)
 
-    network_order = [
-        "Visual",
-        "SomMot",
-        "DorsAttn",
-        "SalVentAttn",
-        "Limbic",
-        "Cont",
-        "Default",
-        "TempPar",
-        "Subcortical",
-        "Cerebellum",
-    ]
+    if all_networks is None:
+        network_order = [
+            "Visual",
+            "SomMot",
+            "DorsAttn",
+            "SalVentAttn",
+            "Limbic",
+            "Cont",
+            "Default",
+            "TempPar",
+            "Subcortical",
+            "Cerebellum",
+        ]
+    else:
+        network_order = all_networks
+
     values = np.array([counts.get(net, 0) for net in network_order])
     N = len(network_order)
     angles = np.linspace(0, 2 * np.pi, N, endpoint=False)
@@ -1485,7 +1506,6 @@ def plot_network_polarbar(
         base_cmap = plt.get_cmap("tab10")
         colors = base_cmap.colors[:N]
 
-    # Plot setup
     fig, ax = plt.subplots(figsize=(8, 8), subplot_kw={"polar": True})
     width = 2 * np.pi / N
     bars = ax.bar(
@@ -1499,16 +1519,22 @@ def plot_network_polarbar(
         linewidth=1.2,
     )
 
-    # Add dividers between network slices
-    for angle in angles:
+    # Divider color defaults to polar axis spine color
+    if divider_color is None:
+        divider_color = ax.spines["polar"].get_edgecolor()
+
+    # Draw dividers between network slices
+    edge_angles = [(angle - width / 2) % (2 * np.pi) for angle in angles]
+    for angle in edge_angles:
         ax.plot(
             [angle, angle],
             [0, max_radius],
             color=divider_color,
+            linestyle="dotted",
             linewidth=divider_linewidth,
         )
 
-    # Add network labels pointing inward
+    # Add network labels
     for angle, label in zip(angles, network_order):
         ax.text(
             angle,
@@ -1522,22 +1548,35 @@ def plot_network_polarbar(
             transform_rotates_text=False,
         )
 
-    # Configure radial axis
     ax.set_ylim(0, max_radius)
-    ax.set_xticks([])  # Remove angular ticks
+    ax.set_xticks([])
 
+    # Show only the max radial tick
     if show_radial_ticks:
-        ax.set_yticks(range(1, max_radius + 1))
-        ax.set_yticklabels(
-            [str(y) for y in range(1, max_radius + 1)], fontsize=tick_fontsize
-        )
+        if show_only_max_tick:
+            ax.set_yticks([max_radius])
+            ax.set_yticklabels([str(max_radius)], fontsize=tick_fontsize)
+        else:
+            ax.set_yticks(range(1, max_radius + 1))
+            ax.set_yticklabels(
+                [str(y) for y in range(1, max_radius + 1)], fontsize=tick_fontsize
+            )
     else:
         ax.set_yticks([])
         ax.set_yticklabels([])
 
-    ax.set_title(title, fontsize=14, pad=20)
+    if title:
+        ax.set_title(title, fontsize=14, pad=20)
+
     plt.tight_layout()
-    plt.show()
+
+    if save_as:
+        fig.savefig(save_as, dpi=300)
+
+    if return_fig:
+        return fig
+    else:
+        plt.show()
 
 
 def plot_median_isc_dots(

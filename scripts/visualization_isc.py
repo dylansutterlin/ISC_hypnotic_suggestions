@@ -919,6 +919,7 @@ os.makedirs(save_plots_rsa, exist_ok=True)
 n_perm = 10000
 
 rsa_tables_fdr = {} # changed for `euclidean`` in original script
+rsa_table_unc = {}
 rsa_dfs = {}
 models = ['annak', 'euclidian']
 model = "annak"
@@ -1004,14 +1005,17 @@ for correction in ['unc01', 'within_FDR', 'model-wise_FDR', 'FDR', 'bonf']:
             cut_coords_plot=(5),  # (-52, -40, 34),
             color="coolwarm",
         )
+        
+        sig_df.columns = ['ROI', 'Label', 'Spearman r', 'p-values', 'Coordinates (X,Y,Z)']
+        
+        if correction == 'unc01':
+            rsa_table_unc[rsa_cond] = sig_df
 
         if correction == 'FDR' and sig_df.shape[0] > 0:
             
             rsa_stats_imgs[rsa_cond] = (rsa_img, rsa_thresh)
             rsa_tables_fdr[rsa_cond] = sig_df
-        
-            sig_df.columns = ['ROI', 'Label', 'Spearman r', 'p-values', 'Coordinates (X,Y,Z)']
-            sig_df.to_csv(os.path.join(save_tables_rsa, f'RSA_{rsa_cond}_table_{p_thresh_str}.csv'), index=False)
+                    sig_df.to_csv(os.path.join(save_tables_rsa, f'RSA_{rsa_cond}_table_{p_thresh_str}.csv'), index=False)
             # save uncorrected stats img
             rsa_img.to_filename(os.path.join(save_tables_rsa, f'RSA_stats_img_{rsa_cond}_uncorrected.nii.gz'))
             
@@ -1039,31 +1043,42 @@ for correction in ['unc01', 'within_FDR', 'model-wise_FDR', 'FDR', 'bonf']:
 # visu_utils.plot_network_radar(sig_networks, title = f'Sig ISC during {cond_pie}')
 
 reload(visu_utils)
+renamed_networks = {'cont' : 'Frontoparietal', 'SomMot' : 'Somatomotor', 'SalVentAttn' : 'SalVentAttn',
+                  'dorsAttn' : 'DorsAttn', 'Default' : 'Default', 'limbic' : 'Limbic', 'vis' : 'Visual', 'subcortical' : 'Subcortical'}
+
 # Radar plot for IS-RSA annak / ANA-context condition
 radar_cond = 'annak_ana_run'
 sig_rois_for_radar = list(rsa_tables_fdr[radar_cond]['Label'])
-sig_networks = [label.split('_')[2] if len(label.split('_')) > 2 else 'subcortical' for label in sig_rois_for_radar]
-# 
+correlation_scores = list(rsa_tables_fdr[radar_cond]['Spearman r'])
+sig_networks_orin = [label.split('_')[2] if len(label.split('_')) > 2 else 'subcortical' for label in sig_rois_for_radar]
+sig_networks = [renamed_networks[net] for net in sig_networks_orin]
 
+# Map network names to colors
+colors = [color_map.get(net, 'lightgray') for net in sig_networks]
 
 color_map = {
-    'Default': '#1f77b4',        # blue
-    'SomMot': '#ff7f0e',         # orange
-    'SalVentAttn': '#d62728',    # red
-    'DorsAttn': '#bcbd22',       # yellow-green
-    'Cont': '#9467bd',           # purple
-    'Limbic': '#2ca02c',         # green
-    'Visual': '#17becf',         # cyan
-    'TempPar': '#e377c2',        # pink
-    'Subcortical': '#8c564b',    # brown
-    'Cerebellum': '#7f7f7f'      # gray
+    'Frontoparietal': '#7f7f7f', 
+    'Somatomotor': "#4e81a6",         # orange
+    'SalVentAttn': '#4e81a6',    # red
+    'DorsAttn': '#7f7f7f',
+    'Default': "#ff6e6e",       # yellow-green
+    'Limbic': '#7f7f7f',         # green
+    'Visual': '#7f7f7f',         # cyan      # pink
+    'Subcortical': '#7f7f7f',    # brown      # gray
 }
+all_networks = list(color_map.keys())
 
-visu_utils.plot_network_polarbar(sig_networks,
-                             title="Significant IS-RSA Networks (SHSS~ISC)",
-                             max_radius=5, font_size=15, label_distance=1,
-                             color_map=color_map)
+visu_utils.plot_network_polarbar(sig_networks, all_networks=all_networks,
+                                 title = None,
+                                  max_radius=5,
+                                  font_size=30, label_distance=1.10,
+                                  color_map=color_map,
+                                  tick_fontsize=30,
+                                  show_only_max_tick=False,
+                                  save_as="polar_chart.png")
 
+
+# visu_utils.plot_isc_colorbar(vmin=norm.vmin, vmax=norm.vmax, cmap="RdBu_r")
 #%%
 # SAVE ISC matrices for sig. regions in RSA
 #-------------------------------------------
