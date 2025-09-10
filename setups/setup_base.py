@@ -33,8 +33,8 @@ class ExperimentSetup():
         self.do_isc_analyses = True
         self.do_contrast_permutation = True
         self.contrast_conditions = ['Ana-Hyper', 'NAna-NHyper', 'ana_run-hyper_run']
-        self.contrast_to_test = [self.conditions[0:2][::-1], self.conditions[2:4], self.combined_conditions[3:]]
-        
+        self.contrast_to_test = [self.conditions[0:2][::-1], self.conditions[2:4][::-1], self.combined_conditions[3:]]
+    
         self.do_group_permutation_from_median = True # median split : ISC grp1 > ISC grp2
         self.y_variables_to_median_split = ['Chge_hypnotic_depth','SHSS_score',
                                              'raw_change_HYPER', 'raw_change_ANA',

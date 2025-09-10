@@ -183,7 +183,7 @@ behav_df = pd.read_csv(
 behav_df.index.name = 'subjects'
 behav_df = behav_df.sort_index()
 
-xlsx_path = r'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/masks/Hypnosis_variables_20190114_pr_jc.xlsx'
+xlsx_path = os.path.join(project_dir, 'masks/Hypnosis_variables_20190114_pr_jc.xlsx')
 subjects = list(setup['subjects'])
 apm_subjects = ['APM' + subj[4:] for subj in subjects]
 Y = preproc_utils.load_process_y(xlsx_path, subjects)
@@ -215,6 +215,8 @@ save_plots_1sample = os.path.join(save_visu, 'plots_1sample_isc')
 os.makedirs(save_plots_1sample, exist_ok=True)
 save_tables_1sample = os.path.join(save_visu, 'tables_1sample_isc')
 os.makedirs(save_tables_1sample, exist_ok=True)
+save_imgs_1sample = os.path.join(save_visu, 'imgs_1sample_isc')
+os.makedirs(save_imgs_1sample, exist_ok=True)
 
 # Load ISC results
 for cond in setup['conditions']: #'NHYPER']: #conditions:
@@ -234,8 +236,7 @@ for cond in setup['conditions']: #'NHYPER']: #conditions:
         print(labels_indices)
     else:
         labels_indices = list(range(len(labels)))
-        # used for coords 
-    
+        # used for coords
     # load result variables
     isc_bootstrap = isc_utils.load_pickle(os.path.join(results_dir, f'{cond}/isc_results_{cond}_{n_boot}boot_pairWise{do_pairWise}.pkl'))
     isc_rois = pd.DataFrame(isc_bootstrap['isc'], columns=labels)
@@ -327,8 +328,9 @@ for correction in ['FDR']: #['unc_01', 'FDR', 'bonf']: # between condition FDR /
             sig_isc_matrices[cond] = {}
             for sig_region_name in sig_df['Label']:
                 sig_isc_matrices[cond][sig_region_name] = isc_matrices[cond][sig_region_name]
-
-
+            
+            nib.save(isc_img, os.path.join(save_imgs_1sample, f'ISC_{cond}_uncorrected.nii.gz'))
+            # same img for all loop
         #save sign dfs as csv
         if sig_df.shape[0] > 0:
             # sig_labels = pd.DataFrame(sig_labels, columns=['ROI', 'Label', 'spearman_r', 'p_values', 'Coordinates (X,Y,Z)'])
@@ -369,7 +371,7 @@ for i, (cond, (isc_img, isc_thresh)) in enumerate(isc_imgs.items()):
     fig, ax = plt.subplots(figsize=(6, 4))
     ax.set_axis_off()
 
-    title = f"{condition_names[cond]} (FDR q < .05)"
+    title = f"{condition_names[cond]}"
     display = plot_glass_brain(
         isc_img,
         threshold=isc_thresh,
@@ -395,6 +397,15 @@ cbar
 # PUBLICATION violin plots of median ISC across all contrasts conditions
 reload(visu_utils)
 # violin plots displaying median SIc diff per region
+color_conds = {'Ana': "#004197",
+'Hyper' : "#df265e",
+'Neutral': "#a1a0a0"}
+
+violin_palette = [color_conds['Hyper'],color_conds['Ana'],
+                     color_conds['Neutral'], color_conds['Neutral'],
+                     color_conds['Ana'], color_conds['Neutral'],
+                        color_conds['Hyper'], color_conds['Neutral']]
+                  
 delta_dict = {cond: isc for cond, isc in iscs_cond.items()}
 delta_dict.update({'ANA1': iscs_cond['ANA'], 'NANA1': iscs_cond['NANA']})
 delta_dict.update({'HYPER1': iscs_cond['HYPER'], 'NHYPER1': iscs_cond['NHYPER']})
@@ -412,7 +423,10 @@ condition_labels = {
 fig = visu_utils.plot_delta_condition_violin(delta_dict, min_y = np.min(all_iscs), max_y = np.max(all_iscs)+0.05,
                                              condition_labels = condition_labels, dot_size=12, lab_rotation=75,
                                              title = 'Change in ISC per region across conditions',
-                                             ylabel = 'Median ISC')
+                                             xlabel = 'Hypnotic suggestion conditions',
+                                             ylabel = 'Median ISC',
+                                             palette = violin_palette,
+                                             save_as=os.path.join(save_plots_1sample, 'violin_medianISC_conditions.png'))
 
 #%%
 #========================
@@ -497,26 +511,6 @@ for cond in conditions:
 #for voxel wise case, ignored otherwise
 masker = isc_utils.load_pickle('/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/ISC/{model_name}/HYPER/maskers_voxelWise_lanA800_HYPER_23sub.pkl')
 
-# #%%
-# reload(visu_utils)
-# #rename conditions with full names
-# conditions_full_names = {cond : full for cond, full in zip(conditions, ['Neutral (Analg.)', 'Analgesia', 'Neutral (Hyperalg.)', 'Hyperalgesia'])} #, 'Neutral (Hyper)', 'N_Ana', 'N_Hyper'])}
-# # CAREFUL FOR NAME ORDER / CONDITIONS + full name
-# visu_utils.plot_median_isc_dots(sig_isc_tables,conditions_full_names=conditions_full_names, title="Median ISC across significant ROIs")
-
-# # Pie plot of sig regions in df
-# #------------------------------
-# # all_sugg pie-chart
-# cond_pie = 'ANA'
-# sig_rois_for_pie = list(sig_isc_tables[cond_pie]['Label'])
-# sig_networks = [label.split('_')[2] if len(label.split('_')) > 2 else 'subcortical' for label in sig_rois_for_pie]
-
-# visu_utils.plot_network_radar(sig_networks, title = f'Sig ISC during {cond_pie}')
-# # # all_sugg pie-chart
-# # cond_pie ='hyper_run'
-# # sig_rois_for_pie = list(sig_df_conditions[cond_pie]['Label'])
-# # sig_networks = [label.split('_')[2] if len(label.split('_')) > 2 else 'subcortical' for label in sig_rois_for_pie]
-# visu_utils.plot_network_radar(sig_networks, title = f'Sig ISC during {cond_pie}')
 #%%
 # BLOCK MODELS : (ANA > HYPER, etc. run1>run2)
 # ==========================
@@ -670,7 +664,7 @@ for correction in ['unc_01', 'within_FDR', 'FDR', 'bonf']: # between condition F
         )
         contrast_imgs[cont] = (diff_img, diff_thresh)
 
-        if correction == 'FDR':
+        if correction == 'within_FDR': # save within contrast threshold.
             contrast_fdr_df[cont] = sig_df
 
         if sig_df.shape[0] > 0:
@@ -846,6 +840,7 @@ for cond in combined_conditions:
         )
 
 #%%
+# Anatomical labeling significant parcels
 # Find Atlas region of interest
 def filter_atlas(atlas_img, atlas_labels_dict, keep_ids):
     atlas_data = atlas_img.get_fdata()
@@ -869,7 +864,7 @@ def plot_filtered_atlas(filtered_img, filtered_labels, cmap='tab20'):
         symmetric_cmap=False,
         
     )
-def plot_single_roi(atlas_img, roi_id, atlas_labels=None):
+def plot_single_roi(atlas_img, roi_id, atlas_labels=None, title=None):
 
     mask_img = math_img(f"img == {roi_id}", img=atlas_img)
 
@@ -878,25 +873,42 @@ def plot_single_roi(atlas_img, roi_id, atlas_labels=None):
         title += f" {atlas_labels[roi_id]}"
 
     print(f"Displaying region {roi_id}: {title}")
-    return plotting.view_img(mask_img, cmap='Reds')
+    return mask_img, plotting.view_img(mask_img, cmap='Reds', title=title, colorbar=False)
 
+#%%
+import atlasreader
+pwd_scripts = os.path.join(project_dir, 'scripts')
+os.chdir(os.path.join(pwd_scripts, 'atlas_views'))
+!ls
+from atlasreader import create_output
+
+#%%
+#
+roi_idx = 54
+masked_region, _plot = plot_single_roi(atlas, roi_idx, id_labels_dct, title = f"roi idx {roi_idx}") # 30 = Default_Temp_3 LH
+_plot
+#%%
+create_output(masked_region,voxel_thresh = 0.99, cluster_extent=5)
+atlas_df = pd.read_csv('atlasreader_peaks.csv')
+atlas_df
 #%%
 plot_single_roi(atlas, 189, id_labels_dct) # 30 = Default_Temp_3 LH
 plot_filtered_atlas(*filter_atlas(atlas, id_labels_dct, []), cmap='tab20')
+#----------------------------------------
 
 #%%
 # IS-RSA SHSS~ISC
 # ===============
 # Load results and save tables
 
-load_dir = "/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/RSA/isc-RSA_ext_conds_sugg-pain_tian216_2tails"
+load_dir = os.path.join(project_dir, 'results/imaging/RSA/isc-RSA_ext_conds_sugg-pain_tian216_2tails')
 RESULT_FILE = "rsa_SHSS-behav_isc-sugg10000perm.pkl"
 rsa_isc_sugg = isc_utils.load_pickle(os.path.join(load_dir, RESULT_FILE))
 
 RESULT_FILE = "rsa_SHSS-behav_isc-pain10000perm.pkl"
 rsa_isc_pain = isc_utils.load_pickle(os.path.join(load_dir, RESULT_FILE))
 
-save_rsa = os.path.join(load_dir, "post-hoc_VISU-tables_NEW")
+save_rsa = os.path.join(load_dir, "post-hoc_VISU-tables")
 os.makedirs(save_rsa, exist_ok=True)
 
 save_tables_rsa = os.path.join(save_rsa, 'tables_rsa')
@@ -914,8 +926,10 @@ model = "annak"
 rsa_stats_imgs = {}
 rsa_p_values = []
 
+model_p_thresh = {}
 # Load rsa results and find FDR thresh
 for model in models:
+    model_p_values = []
     for cond in ["ana_run", "hyper_run"]:  # , 'HYPER', 'ANA']: #, 'all_sugg', 'neutral']:
 
         model_cond_key = f"{model}_{cond}"
@@ -931,19 +945,24 @@ for model in models:
         p_values = rsa_df["p_values"].values
         rsa_p_values.extend(p_values)
 
+        model_p_values.extend(p_values)
+
         # !! Shift ROI id in df by 1, since starts at 0 and ends at 215 (atlas is 216)
         rsa_df['ROI'] = rsa_df['ROI'] + 1 # fixed in rsa-isc_ext_model.py, rm if re-run !!
         fdr_p = isc_utils.fdr(p_values, q=0.05)
         print(f"Within FDR threshold: {fdr_p:.4f}")
         print(f'Min p values : {p_values.min():.4f}')
         print(f'max spearman: {correlations.max():.4f}')
+    
+    model_p_thresh[model] = isc_utils.fdr(np.array(model_p_values), q=0.05)
+    print(f"FDR threshold for model {model}: {model_p_thresh[model]:.4f}")
 
 # compute across condition FDR thresh
 fdr_all_rsa = isc_utils.fdr(np.array(rsa_p_values), q=0.05)
 print(f"Across conditions FDR threshold: {fdr_all_rsa:.4f}")
 
 # Project RSA values to brain and save tables
-for correction in ['unc01', 'within_FDR', 'FDR', 'bonf']:
+for correction in ['unc01', 'within_FDR', 'model-wise_FDR', 'FDR', 'bonf']:
     for rsa_cond in rsa_dfs.keys():  # ['ana_run', 'hyper_run']: #, 'HYPER', 'ANA']: #, 'all_sugg', 'neutral']:
 
         rsa_df = rsa_dfs[rsa_cond]
@@ -961,6 +980,11 @@ for correction in ['unc01', 'within_FDR', 'FDR', 'bonf']:
         if correction == 'FDR':
             p_thresh = fdr_all_rsa
             p_thresh_str = 'FDR'+ str(round(p_thresh, 4))
+            show = True
+        if correction == 'model-wise_FDR':
+            model = rsa_cond.split('_')[0]
+            p_thresh = model_p_thresh[model]
+            p_thresh_str = f'model-wise_FDR_{model}'+ str(round(p_thresh, 4))
             show = True
         if correction == 'bonf':
             p_thresh = isc_utils.bonferroni(p_values, alpha=0.05)
@@ -988,24 +1012,62 @@ for correction in ['unc01', 'within_FDR', 'FDR', 'bonf']:
         
             sig_df.columns = ['ROI', 'Label', 'Spearman r', 'p-values', 'Coordinates (X,Y,Z)']
             sig_df.to_csv(os.path.join(save_tables_rsa, f'RSA_{rsa_cond}_table_{p_thresh_str}.csv'), index=False)
-
+            # save uncorrected stats img
+            rsa_img.to_filename(os.path.join(save_tables_rsa, f'RSA_stats_img_{rsa_cond}_uncorrected.nii.gz'))
+            
             print('Sig ROIs : ', sig_df['Label'].to_list(), '\n')
-
 #%%
-views_rsa = []
-for cond_rsa in rsa_dfs.keys():
-    view = view_img(rsa_stats_imgs[cond_rsa][0], threshold=rsa_stats_imgs[cond_rsa][1], title=f'IS-RSA SHSS~{cond_rsa} (FDR<.05)')
-    views_rsa.append(view)
+# #%%
+# reload(visu_utils)
+# #rename conditions with full names
+# conditions_full_names = {cond : full for cond, full in zip(conditions, ['Neutral (Analg.)', 'Analgesia', 'Neutral (Hyperalg.)', 'Hyperalgesia'])} #, 'Neutral (Hyper)', 'N_Ana', 'N_Hyper'])}
+# # CAREFUL FOR NAME ORDER / CONDITIONS + full name
+# visu_utils.plot_median_isc_dots(sig_isc_tables,conditions_full_names=conditions_full_names, title="Median ISC across significant ROIs")
 
-#%% Find which region to plot ISC matrix
-plot_single_roi(atlas, 187)
-keep_ids = list(rsa_tables_fdr['annak_ana_run']['ROI'].astype(float))
-filt_atlas_img, filt_labels = filter_atlas(atlas, id_labels_dct, keep_ids)
-plot_filtered_atlas(filt_atlas_img, filt_labels)
+# # Pie plot of sig regions in df
+# #------------------------------
+# # all_sugg pie-chart
+# cond_pie = 'ANA'
+# sig_rois_for_pie = list(sig_isc_tables[cond_pie]['Label'])
+# sig_networks = [label.split('_')[2] if len(label.split('_')) > 2 else 'subcortical' for label in sig_rois_for_pie]
+
+# visu_utils.plot_network_radar(sig_networks, title = f'Sig ISC during {cond_pie}')
+# # # all_sugg pie-chart
+# # cond_pie ='hyper_run'
+# # sig_rois_for_pie = list(sig_df_conditions[cond_pie]['Label'])
+# # sig_networks = [label.split('_')[2] if len(label.split('_')) > 2 else 'subcortical' for label in sig_rois_for_pie]
+# visu_utils.plot_network_radar(sig_networks, title = f'Sig ISC during {cond_pie}')
+
+reload(visu_utils)
+# Radar plot for IS-RSA annak / ANA-context condition
+radar_cond = 'annak_ana_run'
+sig_rois_for_radar = list(rsa_tables_fdr[radar_cond]['Label'])
+sig_networks = [label.split('_')[2] if len(label.split('_')) > 2 else 'subcortical' for label in sig_rois_for_radar]
+# 
+
+
+color_map = {
+    'Default': '#1f77b4',        # blue
+    'SomMot': '#ff7f0e',         # orange
+    'SalVentAttn': '#d62728',    # red
+    'DorsAttn': '#bcbd22',       # yellow-green
+    'Cont': '#9467bd',           # purple
+    'Limbic': '#2ca02c',         # green
+    'Visual': '#17becf',         # cyan
+    'TempPar': '#e377c2',        # pink
+    'Subcortical': '#8c564b',    # brown
+    'Cerebellum': '#7f7f7f'      # gray
+}
+
+visu_utils.plot_network_polarbar(sig_networks,
+                             title="Significant IS-RSA Networks (SHSS~ISC)",
+                             max_radius=5, font_size=15, label_distance=1,
+                             color_map=color_map)
 
 #%%
 # SAVE ISC matrices for sig. regions in RSA
 #-------------------------------------------
+from src.visu_utils import schaeffer_region_mapping
 
 # Fetch ISC mat from sgnificant IS-RSA regions across conditions
 # Save and plot
@@ -1044,7 +1106,18 @@ for rsa_cond in rsa_tables_fdr.keys():  # ['ana_run', 'hyper_run']: #, 'HYPER', 
             show_colorbar=True,
             save_path=fig_path
         )
+#%%
+# View RSA stats images
+views_rsa = []
+for cond_rsa in rsa_stats_imgs.keys():
+    view = view_img(rsa_stats_imgs[cond_rsa][0], threshold=rsa_stats_imgs[cond_rsa][1], title=f'IS-RSA SHSS~{cond_rsa} (FDR<.05)')
+    views_rsa.append(view)
 
+#%% Find which region to plot ISC matrix
+plot_single_roi(atlas, 173)
+keep_ids = list(rsa_tables_fdr['annak_ana_run']['ROI'].astype(float))
+filt_atlas_img, filt_labels = filter_atlas(atlas, id_labels_dct, keep_ids)
+plot_filtered_atlas(filt_atlas_img, filt_labels)
 
 #%%
 # PUBLICATION BRAIN PLOTS for IS-RSA SHSS~ISC

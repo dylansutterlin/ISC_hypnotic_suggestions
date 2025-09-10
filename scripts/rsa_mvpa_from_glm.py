@@ -339,6 +339,7 @@ def build_subject_dict(file_list):
 conditions = [
     "ANA_shock_minus_N_ANA_shock",
     "HYPER_shock_minus_N_HYPER_shock",
+    "N_ANA_shock_minus_N_HYPER_shock",
 ]
 test = "/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/GLM/model3_final-isc_23subjects_nuis_nodrift_31-03-25/second_level/ANA_shock_minus_N_ANA_shock_all_effects.pkl"
 second_lev_dir = os.path.join(results_dir, "second_level")
@@ -357,7 +358,11 @@ thresh_imgs = []
 for cond, z_img in z_imgs.items():
     # FDR thresholding
     thresholded_img, threshold = threshold_stats_img(
-        z_img, alpha=0.05, height_control="fdr", cluster_threshold=0, two_sided=True
+        z_img,
+        alpha=0.05,
+        height_control="bonferroni",
+        cluster_threshold=0,
+        two_sided=True,
     )
     print(f"{cond}: FDR threshold = {threshold:.3f}")
 
@@ -372,6 +377,13 @@ for cond, z_img in z_imgs.items():
     )
     thresh_imgs.append(thresholded_img)
     plt.show()
+
+# %%
+# Atlas reader to make cluster
+from atlasreader import create_output
+
+create_output(thresholded_img, cluster_extent=5)
+
 # %%
 view_img(thresh_imgs[1])
 # %%
@@ -414,9 +426,8 @@ sim_behav_vec_annak_pain = isc_utils.compute_behav_similarity(
 save_path = f"/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/RSA/mvpa_IS-RSA_sugg-pain_contrast-based_tian216"
 os.makedirs(save_path, exist_ok=True)
 
-
-specific_re_run = False
-if specific_re_run is False:
+compute_rsa_pain = False
+if compute_rsa_pain is True:
     # SUGGEST MVPA IS-RSA
     # sim_model = {
     #     #"cosine": cosine_sim_sugg,
@@ -475,16 +486,16 @@ if specific_re_run is False:
                 # 2 tail when testing behavioral model, as AnnaK can show reverse pattern
                 rsa_rows.append(
                     {
-                        "ROI": roi,
-                        "spearman_r": r,
+                        "ROI": roi + 1,  # corrects for 0-indexing
+                        "spearman_r": round(r, 3),
                         "p_values": round(p, 5),
                         "Coordinates": tuple(np.round(coords[i], 0).astype(int)),
                     }
                 )
 
-            results_dct[sim][cond] = pd.DataFrame(rsa_rows).sort_values(
-                by="spearman_r", ascending=False
-            )
+            results_dct[sim][cond] = pd.DataFrame(rsa_rows)  # .sort_values(
+            #     by="spearman_r", ascending=False
+            # )
             print(
                 "Max r, mean and fdr",
                 results_dct[sim][cond]["spearman_r"].max(),
@@ -493,16 +504,239 @@ if specific_re_run is False:
             )
 
     save_to = os.path.join(
-        save_path, f"IS-RSA_mvpa-sugg_behav-sugg{n_perm_rsa}perm.pkl"
+        save_path, f"IS-RSA_mvpa-pain_behav-pain{n_perm_rsa}perm.pkl"
     )
     isc_utils.save_data(save_to, results_dct)
     print(f"Saved RSA results to {save_to}")
 
-    # %%
-    # IS-RSA SHSS ~ ISC-PAIN
+else:
+    # load results
+    load_path = os.path.join(
+        save_path, f"IS-RSA_mvpa-pain_behav-pain{n_perm_rsa}perm.pkl"
+    )
+results_dct = isc_utils.load_pickle(load_path)
 
+# %%
+# VISUALISE
+rsa_stats_imgs_mvpa = {}
+rsa_tables_mvpa_fdr = {}
+model_name = "shock_contrast_chge-pain"
+save_tables_rsa = os.path.join(save_path, model_name, "tables", "rsa")
+os.makedirs(save_tables_rsa, exist_ok=True)
+
+for sim in results_dct.keys():  # similarity metric (e.g., 'euclidean', 'annak')
+    for cond in results_dct[sim].keys():  # e.g., 'Analgesia', 'Hyperalgesia'
+
+        model_id = sim + "_" + cond
+        rsa_df = results_dct[sim][cond]
+        # Ensure the dataframe rows are in the same order as the atlas labels
+
+        correlations = rsa_df["spearman_r"].values
+        p_values = rsa_df["p_values"].values
+        region_id = rsa_df["ROI"].values
+
+        for correction in ["unc01", "within_FDR", "FDR", "bonf"]:
+            show = False
+
+            if correction == "unc01":
+                p_thresh = 0.01
+                p_thresh_str = "0.01"
+
+            elif correction == "within_FDR":
+                p_thresh = isc_utils.fdr(p_values, q=0.05)
+                p_thresh_str = "within_FDR" + str(round(p_thresh, 4))
+
+            elif correction == "FDR":
+                p_thresh = isc_utils.fdr(p_values, q=0.05)  # or load global value
+                p_thresh_str = "FDR" + str(round(p_thresh, 4))
+                show = True
+
+            elif correction == "bonf":
+                p_thresh = isc_utils.bonferroni(p_values, alpha=0.05)
+                p_thresh_str = "Bonf" + str(round(p_thresh, 4))
+
+            rsa_img, rsa_thresh, sig_df, stats_img = (
+                visu_utils.project_isc_to_brain_perm(
+                    atlas_img=ATLAS,
+                    isc_median=correlations,
+                    atlas_labels=labels_roi_dct,
+                    roi_coords=coords,
+                    p_values=p_values,
+                    p_threshold=p_thresh,
+                    title=f"RSA MVPA {sim} – {cond} ({p_thresh_str})",
+                    save_path=None,
+                    show=show,
+                    display_mode="x",
+                    cut_coords_plot=(5),
+                    color="coolwarm",
+                )
+            )
+
+            if correction == "FDR" and sig_df.shape[0] > 0:
+                rsa_stats_imgs_mvpa[model_id] = (rsa_img, rsa_thresh)
+                rsa_tables_mvpa_fdr[model_id] = sig_df
+
+                sig_df.columns = [
+                    "ROI",
+                    "Label",
+                    "Spearman r",
+                    "p-values",
+                    "Coordinates (X,Y,Z)",
+                ]
+                fname = f"RSA_MVPA_{sim}_{cond}_table_{p_thresh_str}.csv"
+                sig_df.to_csv(os.path.join(save_tables_rsa, fname), index=False)
+
+                print(f"Sig ROIs for {sim} – {cond}:", sig_df["Label"].to_list(), "\n")
+# =====================================
+# Significant results for MVPA pain-activation ~ individual differences in change in pain ratings (global scores)
+# %%
+rsa_views = []
+for model_id in rsa_stats_imgs_mvpa.keys():
+    title = f"RSA MVPA {model_id}"
+    rsa_views.append(
+        view_img(rsa_stats_imgs_mvpa[model_id][0], title=title, cmap="RdBu_r")
+    )
+
+# %%
+# CAN WE DECODE sugg condition from MVPA pattern in OFC?
+
+from sklearn.model_selection import GroupKFold
+from sklearn.decomposition import PCA
+from sklearn.pipeline import Pipeline
+from sklearn.svm import SVC
+from sklearn.model_selection import cross_val_score, cross_val_predict
+from sklearn.preprocessing import LabelEncoder
+from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
+from sklearn.preprocessing import StandardScaler
+
+from nilearn.maskers import NiftiMasker
+from nilearn.image import new_img_like
+
+# %%
+roi_to_test = ["7Networks_LH_Default_PHC_1"]
+roi_to_test = ["7Networks_LH_Limbic_OFC_1"]
+# hyper contrast roi_to_test = ['7Networks_LH_Limbic_OFC_1', '7Networks_LH_Default_PFC_3', 'PUT-rh'] #, '7Networks_LH_Default_PHC_1', '7Networks_RH_DorsAttn_Post_4', '7Networks_RH_SalVentAttn_TempOccPar_2']
+# ana classif roi_to_test = ['7Networks_LH_Default_PHC_1', '7Networks_RH_DorsAttn_Post_4', '7Networks_RH_SalVentAttn_TempOccPar_2']
+
+decoding_conditions = ["ANA_shock", "N_ANA_shock"]
+decoding_conditions = ["HYPER_shock", "N_HYPER_shock"]  # , "ANA_shock", "N_ANA_shock"]
+
+kernel = "rbf"
+condition_maps = {}
+roi_maskers = {}
+
+for cond in tqdm(decoding_conditions):  # shock model!!
+    # load maps
+    # all_shock_maps = glob(os.path.join(model_res, 'all_shock', 'firstlev_localizer_*.nii.gz'))
+    shock_maps = glob(
+        os.path.join(model_res, "first_level", cond, "firstlev_localizer_*.nii.gz")
+    )
+    shock_dict = build_subject_dict(shock_maps)  # not sorted!!
+    shock_dict = {sub: shock_dict[sub] for sub in subjects}
+    condition_maps[cond] = shock_dict  # re-ordered dict
+
+atlas_data = atlas.get_fdata()
+
+# pre-load maps
+all_imgs = {}  # Structure: all_imgs[cond][sub_id] = loaded NIfTI image
+
+for cond in decoding_conditions:
+    all_imgs[cond] = {}
+    for sub_id, map_path in condition_maps[cond].items():
+        all_imgs[cond][sub_id] = nib.load(map_path)
+
+roi_maskers = {}
+
+# Initialize masker for each ROI
+for roi_label in roi_to_test:
+    roi_idx = [k for k, v in labels_roi_dct.items() if v == roi_label][0]
+    roi_mask = atlas_data == roi_idx
+    mask_img = new_img_like(atlas, roi_mask)
+    roi_maskers[roi_label] = NiftiMasker(mask_img=mask_img, standardize=False)
+
+for roi_label in tqdm(roi_to_test):
+    print(f"--------\n {roi_label}\n---------")
+    roi_masker = roi_maskers[roi_label]
+
+    X_all = []
+    y_all = []
+    subjects_all = []
+
+    for cond in decoding_conditions:
+        for sub_id, img in all_imgs[cond].items():
+            vec = roi_masker.fit_transform(img)  # shape = [1, voxels]
+            X_all.append(vec[0])
+            y_all.append(cond)
+            subjects_all.append(sub_id)
+
+    X_all = np.vstack(X_all)
+    le = LabelEncoder()
+    y_encoded = le.fit_transform(y_all)
+
+    pipeline = Pipeline(
+        [
+            ("scaler", StandardScaler()),
+            ("pca", PCA(n_components=0.80, svd_solver="full")),
+            ("svm", SVC(kernel=kernel, C=1)),
+        ]
+    )
+
+    gkf = GroupKFold(n_splits=5)
+    scores = cross_val_score(
+        pipeline, X_all, y_encoded, groups=np.array(subjects_all), cv=gkf
+    )
+
+    y_pred = cross_val_predict(pipeline, X_all, y_encoded, groups=subjects_all, cv=gkf)
+    cm = confusion_matrix(y_encoded, y_pred)
+    disp = ConfusionMatrixDisplay(cm, display_labels=le.classes_)
+    disp.plot()
+
+    print("Mean accuracy (PCA + SVM, GroupKFold-5):", np.mean(scores))
+
+    # 2D PCA for visualization
+    scaler_vis = StandardScaler()
+    X_scaled = scaler_vis.fit_transform(X_all)
+    pca_vis = PCA(n_components=2)
+    X_2d = pca_vis.fit_transform(X_scaled)
+
+    # Fit on full data for plot only
+    clf_vis = SVC(kernel=kernel, C=1)
+    clf_vis.fit(X_2d, y_encoded)
+
+    # Plot decision surface
+    x_min, x_max = X_2d[:, 0].min() - 1, X_2d[:, 0].max() + 1
+    y_min, y_max = X_2d[:, 1].min() - 1, X_2d[:, 1].max() + 1
+    xx, yy = np.meshgrid(np.linspace(x_min, x_max, 300), np.linspace(y_min, y_max, 300))
+    Z = clf_vis.decision_function(np.c_[xx.ravel(), yy.ravel()])
+    Z = Z.reshape(xx.shape)
+
+    plt.figure(figsize=(8, 6))
+    plt.contourf(xx, yy, Z, alpha=0.75, cmap=plt.cm.coolwarm)
+    scatter = plt.scatter(
+        X_2d[:, 0], X_2d[:, 1], c=y_encoded, cmap=plt.cm.coolwarm, edgecolors="k"
+    )
+    plt.title(f"Decision Surface – {roi_label}")
+    plt.xlabel("PCA 1")
+    plt.ylabel("PCA 2")
+    plt.colorbar(scatter, ticks=range(len(le.classes_)), label="Condition")
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()
+
+
+# ================================
+# %%
+views = []
+for model_id in rsa_stats_imgs_mvpa.keys():
+    title = f"RSA MVPA {model_id}"
+    view = view_img(rsa_stats_imgs_mvpa[model_id][0], title=title)
+    views.append(view)
+# %%
+# NEW MODEL SUGGESTION VAR ~ PAIN CONTRAST
+# IS-RSA SHSS ~ ISC-PAIN
+specific_re_run = True
+if specific_re_run is True:
     sim_model = {
-        "cosine": cosine_sim_sugg,
         "euclidean": sim_behav_vec,
         "annak": sim_behav_vec_annak,
     }
@@ -535,7 +769,12 @@ if specific_re_run is False:
 
             # RSA computation + perm
             rsa_rows = []  # build df
-            for i, roi in enumerate(vec_similarity_df.columns):
+            # Use tqdm to show progress bar over ROI columns
+            for i, roi in tqdm(
+                enumerate(vec_similarity_df.columns),
+                total=len(vec_similarity_df.columns),
+                desc="RSA ROIs",
+            ):
 
                 mvpa_sim_vec = vec_similarity_df[roi].values
                 r, p, dist = isc_utils.matrix_permutation(
@@ -557,9 +796,8 @@ if specific_re_run is False:
                     }
                 )
 
-            results_dct[sim][cond] = pd.DataFrame(rsa_rows).sort_values(
-                by="spearman_r", ascending=False
-            )
+            results_dct[sim][cond] = pd.DataFrame(rsa_rows)
+
             print(
                 "Max r, mean and fdr",
                 results_dct[sim][cond]["spearman_r"].max(),
@@ -571,10 +809,325 @@ if specific_re_run is False:
     os.makedirs(save_path, exist_ok=True)
 
     save_to = os.path.join(
-        save_path, f"IS-RSA_mvpa-pain_behav-sugg{n_perm_rsa}perm.pkl"
+        save_path, f"IS-RSA_mvpa-pain_behav-pain{n_perm_rsa}perm.pkl"
     )
     isc_utils.save_data(save_to, results_dct)
     print(f"Saved RSA results to {save_to}")
+
+else:
+    # load results
+    load_path = os.path.join(
+        save_path, f"IS-RSA_mvpa-pain_behav-pain{n_perm_rsa}perm.pkl"
+    )
+    results_dct = isc_utils.load_pickle(load_path)
+# %%
+# =================
+# VISUALISE PAIN-contrast ~ SHSS
+rsa_stats_imgs_mvpa = {}
+rsa_tables_mvpa_fdr = {}
+model_name = "shock_contrast_SHSS"
+save_tables_rsa = os.path.join(save_path, model_name, "tables", "rsa")
+os.makedirs(save_tables_rsa, exist_ok=True)
+
+all_p_values = []
+for sim in results_dct.keys():  # similarity metric (e.g., 'euclidean', 'annak')
+    for cond in results_dct[sim].keys():  # e.g., 'Analgesia', 'Hyperalgesia'
+
+        model_id = sim + "_" + cond
+        rsa_df = results_dct[sim][cond]
+        # Ensure the dataframe rows are in the same order as the atlas labels
+
+        correlations = rsa_df["spearman_r"].values
+        p_values = rsa_df["p_values"].values
+        region_id = rsa_df["ROI"].values
+        all_p_values.append(p_values)
+
+# global FDR
+all_p_values = np.concatenate(all_p_values)
+global_fdr_thresh = isc_utils.fdr(all_p_values, q=0.05)
+print(f"Global FDR correction pain~SHSS is : {global_fdr_thresh}")
+
+for sim in results_dct.keys():  # similarity metric (e.g., 'euclidean', 'annak')
+    for cond in results_dct[sim].keys():  # e.g., 'Analgesia', 'Hyperalgesia'
+
+        model_id = sim + "_" + cond
+        rsa_df = results_dct[sim][cond]
+        # Ensure the dataframe rows are in the same order as the atlas labels
+
+        correlations = rsa_df["spearman_r"].values
+        p_values = rsa_df["p_values"].values
+        region_id = rsa_df["ROI"].values
+
+        for correction in ["unc01", "within_FDR", "FDR", "bonf"]:
+            show = False
+
+            if correction == "unc01":
+                p_thresh = 0.01
+                p_thresh_str = "0.01"
+
+            elif correction == "within_FDR":
+                p_thresh = isc_utils.fdr(p_values, q=0.05)
+                p_thresh_str = "within_FDR" + str(round(p_thresh, 4))
+
+            elif correction == "FDR":
+                p_thresh = global_fdr_thresh  # or load global value
+                p_thresh_str = "FDR" + str(round(p_thresh, 4))
+                show = True
+
+            elif correction == "bonf":
+                p_thresh = isc_utils.bonferroni(p_values, alpha=0.05)
+                p_thresh_str = "Bonf" + str(round(p_thresh, 4))
+
+            rsa_img, rsa_thresh, sig_df, stats_img = (
+                visu_utils.project_isc_to_brain_perm(
+                    atlas_img=ATLAS,
+                    isc_median=correlations,
+                    atlas_labels=labels_roi_dct,
+                    roi_coords=coords,
+                    p_values=p_values,
+                    p_threshold=p_thresh,
+                    title=f"RSA MVPA {sim} – {cond} ({p_thresh_str})",
+                    save_path=None,
+                    show=show,
+                    display_mode="x",
+                    cut_coords_plot=(5),
+                    color="coolwarm",
+                )
+            )
+
+            if correction == "FDR" and sig_df.shape[0] > 0:
+                rsa_stats_imgs_mvpa[model_id] = (rsa_img, rsa_thresh)
+                rsa_tables_mvpa_fdr[model_id] = sig_df
+
+                sig_df.columns = [
+                    "ROI",
+                    "Label",
+                    "Spearman r",
+                    "p-values",
+                    "Coordinates (X,Y,Z)",
+                ]
+                fname = f"RSA_MVPA_{sim}_{cond}_table_{p_thresh_str}.csv"
+                sig_df.to_csv(os.path.join(save_tables_rsa, fname), index=False)
+
+                print(f"Sig ROIs for {sim} – {cond}:", sig_df["Label"].to_list(), "\n")
+# %%
+# DECODING
+roi_to_test = [
+    "7Networks_LH_Default_PHC_1"
+]  # , "7Networks_LH_SalVentAttn_FrOperIns_4"]
+roi_to_test = ["7Networks_RH_DorsAttn_Post_10", "7Networks_RH_SalVentAttn_Med_1"]
+# hyper contrast roi_to_test = ['7Networks_LH_Limbic_OFC_1', '7Networks_LH_Default_PFC_3', 'PUT-rh'] #, '7Networks_LH_Default_PHC_1', '7Networks_RH_DorsAttn_Post_4', '7Networks_RH_SalVentAttn_TempOccPar_2']
+# ana classif roi_to_test = ['7Networks_LH_Default_PHC_1', '7Networks_RH_DorsAttn_Post_4', '7Networks_RH_SalVentAttn_TempOccPar_2']
+
+decoding_conditions = ["HYPER_shock", "N_HYPER_shock", "ANA_shock", "N_ANA_shock"]
+decoding_conditions = ["ANA_shock", "HYPER_shock"]
+
+# REGESSION
+# Assuming Y is a pandas DataFrame already sorted by subject
+pain_cols = {
+    "N_ANA": ["mean_VAS_Nana_int", "mean_VAS_Nana_UnP"],
+    "ANA": ["mean_VAS_ana_int", "mean_VAS_ana_UnP"],
+    "N_HYPER": ["mean_VAS_Nhyper_int", "mean_VAS_Nhyper_UnP"],
+    "HYPER": ["mean_VAS_hyper_int", "mean_VAS_hyper_UnP"],
+}
+
+Y_pain_mean = pd.DataFrame()
+for cond, cols in pain_cols.items():
+    Y_pain_mean[cond] = Y[cols].mean(axis=1)
+
+# Load MVP in each regions based on ROIs to test
+condition_maps = {}
+roi_maskers = {}
+
+for cond in tqdm(decoding_conditions):  # shock model!!
+    # load maps
+    # all_shock_maps = glob(os.path.join(model_res, 'all_shock', 'firstlev_localizer_*.nii.gz'))
+    shock_maps = glob(
+        os.path.join(model_res, "first_level", cond, "firstlev_localizer_*.nii.gz")
+    )
+    shock_dict = build_subject_dict(shock_maps)  # not sorted!!
+    shock_dict = {sub: shock_dict[sub] for sub in subjects}
+    condition_maps[cond] = shock_dict  # re-ordered dict
+
+atlas_data = atlas.get_fdata()
+
+# pre-load maps
+all_imgs = {}  # Structure: all_imgs[cond][sub_id] = loaded NIfTI image
+
+for cond in decoding_conditions:
+    all_imgs[cond] = {}
+    for sub_id, map_path in condition_maps[cond].items():
+        all_imgs[cond][sub_id] = nib.load(map_path)
+
+roi_maskers = {}
+
+# Initialize masker for each ROI
+for roi_label in roi_to_test:
+    roi_idx = [k for k, v in labels_roi_dct.items() if v == roi_label][0]
+    roi_mask = atlas_data == roi_idx
+    mask_img = new_img_like(atlas, roi_mask)
+    roi_maskers[roi_label] = NiftiMasker(mask_img=mask_img, standardize=False)
+
+
+# %%
+from sklearn.linear_model import RidgeCV
+from sklearn.metrics import r2_score, mean_squared_error
+from sklearn.model_selection import GroupKFold
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
+from sklearn.decomposition import PCA
+import matplotlib.pyplot as plt
+import numpy as np
+
+for roi_label in tqdm(roi_to_test):
+    print(f"--------\n {roi_label}\n---------")
+    roi_masker = roi_maskers[roi_label]
+
+    X_all = []
+    y_all = []
+    subjects_all = []
+
+    for cond in decoding_conditions:
+        key = cond[:-6]  # Matches keys in Y_pain_mean: e.g., 'ANA'
+        for i, sub_id in enumerate(subjects):
+            img = all_imgs[cond][sub_id]
+            vec = roi_masker.fit_transform(img)  # shape = [1, voxels]
+            X_all.append(vec[0])
+            key_idx = Y_pain_mean.columns.get_loc(key)
+            y_all.append(Y_pain_mean.iloc[i, key_idx])
+            subjects_all.append(sub_id)
+
+    X_all = np.vstack(X_all)
+    y_all = np.array(y_all)
+    subjects_all = np.array(subjects_all)
+
+    gkf = GroupKFold(n_splits=5)
+    fold_r2s = []
+    fold_rmses = []
+    y_pred_all = np.zeros_like(y_all)
+
+    for fold_idx, (train_idx, test_idx) in enumerate(
+        gkf.split(X_all, y_all, groups=subjects_all)
+    ):
+        X_train, X_test = X_all[train_idx], X_all[test_idx]
+        y_train, y_test = y_all[train_idx], y_all[test_idx]
+
+        pipeline = Pipeline(
+            [
+                ("scaler", StandardScaler()),
+                ("pca", PCA(n_components=10, svd_solver="full")),
+                ("reg", RidgeCV(cv=5)),
+            ]
+        )
+
+        pipeline.fit(X_train, y_train)
+        y_pred = pipeline.predict(X_test)
+        y_pred_all[test_idx] = y_pred  # store full predictions
+
+        fold_r2s.append(r2_score(y_test, y_pred))
+        fold_rmses.append(mean_squared_error(y_test, y_pred, squared=False))
+
+    # Print overall performance
+    mean_r2 = r2_score(y_all, y_pred_all)
+    mean_rmse = mean_squared_error(y_all, y_pred_all, squared=False)
+    print(f"Mean R²: {mean_r2:.3f}, RMSE: {mean_rmse:.3f}")
+
+    # Scatter plot (true vs. predicted)
+    plt.figure(figsize=(6, 6))
+    plt.scatter(y_all, y_pred_all, c="steelblue", edgecolor="k", alpha=0.7)
+    plt.plot([y_all.min(), y_all.max()], [y_all.min(), y_all.max()], "r--")
+    plt.xlabel("True Pain Ratings")
+    plt.ylabel("Predicted Pain Ratings")
+    plt.title(
+        f"{roi_label} – Ridge Regression\nR² = {mean_r2:.2f}, RMSE = {mean_rmse:.2f}"
+    )
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()
+
+
+# %%
+# CLASSIFICATION
+# get pain scores for each conditions from Y
+columns = []
+kernel = "rbf"
+
+# Initialize masker for each ROI
+for roi_label in roi_to_test:
+    roi_idx = [k for k, v in labels_roi_dct.items() if v == roi_label][0]
+    roi_mask = atlas_data == roi_idx
+    mask_img = new_img_like(atlas, roi_mask)
+    roi_maskers[roi_label] = NiftiMasker(mask_img=mask_img, standardize=False)
+
+for roi_label in tqdm(roi_to_test):
+    print(f"--------\n {roi_label}\n---------")
+    roi_masker = roi_maskers[roi_label]
+
+    X_all = []
+    y_all = []
+    subjects_all = []
+
+    for cond in decoding_conditions:
+        for sub_id, img in all_imgs[cond].items():
+            vec = roi_masker.fit_transform(img)  # shape = [1, voxels]
+            X_all.append(vec[0])
+            y_all.append(cond)
+            subjects_all.append(sub_id)
+
+    X_all = np.vstack(X_all)
+    le = LabelEncoder()
+    y_encoded = le.fit_transform(y_all)
+
+    pipeline = Pipeline(
+        [
+            ("scaler", StandardScaler()),
+            ("pca", PCA(n_components=0.80, svd_solver="full")),
+            ("svm", SVC(kernel=kernel, C=1)),
+        ]
+    )
+
+    gkf = GroupKFold(n_splits=5)
+    scores = cross_val_score(
+        pipeline, X_all, y_encoded, groups=np.array(subjects_all), cv=gkf
+    )
+
+    y_pred = cross_val_predict(pipeline, X_all, y_encoded, groups=subjects_all, cv=gkf)
+    cm = confusion_matrix(y_encoded, y_pred)
+    disp = ConfusionMatrixDisplay(cm, display_labels=le.classes_)
+    disp.plot()
+
+    print("Mean accuracy (PCA + SVM, GroupKFold-5):", np.mean(scores))
+
+    # 2D PCA for visualization
+    scaler_vis = StandardScaler()
+    X_scaled = scaler_vis.fit_transform(X_all)
+    pca_vis = PCA(n_components=2)
+    X_2d = pca_vis.fit_transform(X_scaled)
+
+    # Fit on full data for plot only
+    clf_vis = SVC(kernel=kernel, C=1)
+    clf_vis.fit(X_2d, y_encoded)
+
+    # Plot decision surface
+    x_min, x_max = X_2d[:, 0].min() - 1, X_2d[:, 0].max() + 1
+    y_min, y_max = X_2d[:, 1].min() - 1, X_2d[:, 1].max() + 1
+    xx, yy = np.meshgrid(np.linspace(x_min, x_max, 300), np.linspace(y_min, y_max, 300))
+    Z = clf_vis.decision_function(np.c_[xx.ravel(), yy.ravel()])
+    Z = Z.reshape(xx.shape)
+
+    plt.figure(figsize=(8, 6))
+    plt.contourf(xx, yy, Z, alpha=0.75, cmap=plt.cm.coolwarm)
+    scatter = plt.scatter(
+        X_2d[:, 0], X_2d[:, 1], c=y_encoded, cmap=plt.cm.coolwarm, edgecolors="k"
+    )
+    plt.title(f"Decision Surface – {roi_label}")
+    plt.xlabel("PCA 1")
+    plt.ylabel("PCA 2")
+    plt.colorbar(scatter, ticks=range(len(le.classes_)), label="Condition")
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()
+
 
 # %%
 # IS-RSA SUGGESTION - PAIN

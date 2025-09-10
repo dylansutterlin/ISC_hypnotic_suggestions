@@ -7,6 +7,7 @@ from nilearn import plotting
 from nilearn.plotting import view_img 
 
 import time
+import matplotlib.pyplot as plt
 from importlib import reload
 import nibabel as nib
 import numpy as np
@@ -18,6 +19,7 @@ from nilearn.datasets import fetch_atlas_schaefer_2018
 from sklearn.utils import Bunch
 from nilearn.plotting import view_img_on_surf
 from nilearn.maskers import NiftiLabelsMasker
+from nilearn.plotting import plot_glass_brain
 
 from nilearn.plotting import find_parcellation_cut_coords
 
@@ -41,26 +43,15 @@ model_names = {
     'model5_isfc_sugg' :'model5-isfc_sugg_23-sub_schafer-200-2mm_mask-lanA800_pairWise-True_preproc_reg-mvmnt-True-8',
     'model5_isfc_shock' : 'model5-isfc_shock_23-sub_schafer-200-2mm_mask-lanA800_pairWise-True_preproc_reg-mvmnt-True-8',
     '9 avril ...' : ' ',
-    'single_trial' : 'model_single-trial_sugg_23-sub_schafer-200-2mm_mask-lanA800_pairWise-True_preproc_reg-mvmnt-True-8',
-    'single_trial_wb' : 'model_single-trial-wb_sugg_23-sub_schafer-200-2mm_mask-whole-brain_pairWise-True_preproc_reg-mvmnt-True-8',
+    'single_trial_language_mask' : 'model_single-trial_sugg_23-sub_schafer-200-2mm_mask-lanA800_pairWise-True_preproc_reg-mvmnt-True-8',
+    'single_trial_whole-brain' : 'model_single-trial-wb_sugg_23-sub_schafer-200-2mm_mask-whole-brain_pairWise-True_preproc_reg-mvmnt-True-8',
     'model5_sugg_tian' : 'model5-with-subcort_sugg_23-sub_schafer-200-2mm_mask-whole-brain_pairWise-True_preproc_reg-mvmnt-True-8',
     'model1_single-trial': 'model1_single-trial-wb_sugg_23-sub_schafer_tian-200-2mm_mask-whole-brain_pairWise-True_preproc_reg-mvmnt-True-8',
     'model2_sugg' : 'model2_sugg_23-sub_schafer_tian-200-2mm_mask-whole-brain_pairWise-True_preproc_reg-mvmnt-True-8',
     'model3_shock' : 'model3_shock_23-sub_schafer_tian-200-2mm_mask-whole-brain_pairWise-True_preproc_reg-mvmnt-True-8',
 }
 
-
-model_is = 'model3-shock'
-model_is = 'model2_sugg-sensaas'
-model_is = 'model5_sugg'
-model_is = 'model1_single-trial'
 model_is = 'model2_sugg'
-
-model_is = 'model3_shock_200'
-model_is = 'model1_sugg_200_run'
-model_is = 'model3_shock_200_run'
-model_is = 'model1_sugg_200'
-model_is = 'model1_sugg_run'
 
 ref_preproc_models = { 'model2' : model_names['model1_sugg_200']}
 ref_model_name = ref_preproc_models['model2']
@@ -78,7 +69,7 @@ results_dir = os.path.join(project_dir, f'results/imaging/ISC/{model_name}')
 setup = isc_utils.load_json(os.path.join(results_dir, "setup_parameters.json"))
 
 #create visualization dir.
-save_visu = os.path.join(results_dir, 'visualization')
+save_visu = os.path.join(results_dir, 'post-hoc_VISU-tables')
 os.makedirs(save_visu, exist_ok=True)
 
 parcel_name = setup['atlas_name']
@@ -92,7 +83,7 @@ os.makedirs(post_hoc_dir, exist_ok=True)
 # all_results_paths = utils.load_json(os.path.join(results_dir, "result_paths.json"))
 # atlas_name = 'Difumo256' # change to setup['atlas_name']
 # n_sub = setup['n_sub']
-shaeffer_only = True
+shaeffer_only = False
 if shaeffer_only:
 
     atlas_data = fetch_atlas_schaefer_2018(n_rois = 200, resolution_mm=2)
@@ -137,12 +128,51 @@ if 'SENSAAS' in setup['atlas_name']:
 else:
     roi_coords = find_parcellation_cut_coords(labels_img=atlas)
 
+from nilearn import datasets, plotting
+bg_mni =  datasets.load_mni152_template(resolution=1)
 
 #%%
+# PUBLICATION surface plot for method section
 from nilearn.plotting import plot_roi
-# Plot the atlas with labels
-plot_roi(atlas, title='SENSAAS Atlas', colorbar=True, cmap='Paired')
+import matplotlib.pyplot as plt
+from matplotlib.colors import ListedColormap
+from nibabel.freesurfer import read_annot
+from nilearn import datasets, plotting, surface
+
+base_cmap = plt.get_cmap('tab20')
+colors = base_cmap.colors * 11  # Repeat to cover 220+ parcels
+colors = np.array(colors)
+
+# plot_roi(atlas, bg_img =bg_mni, title='SENSAAS Atlas', display_mode = 'x', cut_coords = [0, -40, 45,48, 50,55, 60], view_type = 'continuous', colorbar=True, cmap=custom_cmap, linewidths=3)
+shuffle_idx = np.argsort(np.sin(np.linspace(0, np.pi, len(colors))))  # or use np.random.permutation for random
+shuffled_colors = colors[shuffle_idx]
+shuffled_cmap = ListedColormap(shuffled_colors)
+
+# Use fsaverage surface
+fsaverage = datasets.fetch_surf_fsaverage(mesh='fsaverage6')
+# Downloaded from shaeffer github repo
+annot_path = '/home/dsutterlin/Downloads/rh.Schaefer2018_200Parcels_7Networks_order.annot'
+
+# Load as GIFTI label texture
+labels, ctab, names = read_annot(annot_path)
+
+fig = plt.figure(figsize=(8, 6))
+ax = plt.gca()
+
+im = plotting.plot_surf_stat_map(
+    fsaverage.infl_right,
+    stat_map=labels,
+    hemi='right',
+    bg_on_data=True,
+    alpha=0.9,
+    colorbar=False,
+    title= None,
+    cmap=shuffled_cmap,
+    output_file = os.path.join(post_hoc_dir, "schaefer200_surface.png")
+)
+
 #%%
+from src import preproc_utils
 
 isc_results_roi = {}
 
@@ -153,30 +183,10 @@ behav_df = pd.read_csv(
 behav_df.index.name = 'subjects'
 behav_df = behav_df.sort_index()
 
-#%%
-
 xlsx_path = r'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/masks/Hypnosis_variables_20190114_pr_jc.xlsx'
 subjects = list(setup['subjects'])
 apm_subjects = ['APM' + subj[4:] for subj in subjects]
-print(apm_subjects)
-
-from src import preproc_utils
-
 Y = preproc_utils.load_process_y(xlsx_path, subjects)
-#%%
-import matplotlib.pyplot as plt
-behav_corr_df = Y
-corr_matrix = behav_corr_df.corr()
-
-plt.figure(figsize=(10, 8))
-sns.heatmap(corr_matrix, annot=True, fmt='.2f', cmap='coolwarm', square=True,
-            linewidths=0.5, cbar_kws={'label': 'Pearson r'})
-
-plt.title('Correlation Matrix of Behavioral Variables', fontsize=14)
-plt.xticks(rotation=45, ha='right')
-plt.tight_layout()
-plt.show()
-
 
 # %%
 # Bootstrap per condition visualization
@@ -186,28 +196,35 @@ reload(isc_utils)
 result_key = 'isc_results'
 conditions = ['NANA', 'ANA', 'NHYPER', 'HYPER'] if 'single-trial' not in model_name else ['N_ANA1_instrbk_1', 'N_HYPER1_instrbk_1']
 all_conditions = setup['conditions'] + setup['combined_conditions'] #['HYPER', 'ANA', 'NANA', 'NHYPER']
-# conditions = setup['conditions']
+conditions = setup['conditions']
+
 
 #%%
-# %%
-    # cond = conditions[0]
+# Visualizatino ISC 1-sample using global FDR threshold (based on x 4 conditions)
+#======================
 reload(visu_utils)
 
 iscs_cond = {}
-views = {}
-surf = {}
-interactive_views = []
-sig_dfs_one_sample = {}
+isc_p_cond = {}
+
+save_plots_1sample = os.path.join(save_visu, 'plots_1sample_isc')
+os.makedirs(save_plots_1sample, exist_ok=True)
+save_tables_1sample = os.path.join(save_visu, 'tables_1sample_isc')
+os.makedirs(save_tables_1sample, exist_ok=True)
+
+# Load ISC results
 for cond in setup['conditions']: #'NHYPER']: #conditions:
     print('----------------------------------------------------')
     print(cond)
 
-    #masker =utils.load_pickle(os.path.join(results_dir, cond, f'maskers_{atlas_name}_{cond}_{n_sub}sub.pkl'))
-    #isc_bootstrap = utils.load_pickle(all_results_paths[result_key][cond])
-    maskers = isc_utils.load_pickle(f'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/ISC/{model_name}/{cond}/maskers_{parcel_name}_{cond}_23sub.pkl')
+    maskers = isc_utils.load_pickle(os.path.join(results_dir, f'{cond}/maskers_{parcel_name}_{cond}_23sub.pkl'))
     atlas = maskers[0].labels_img # adjust number of ROI based on mask
-
     labels = list(maskers[0].region_names_.values())
+    if labels == None:
+        labels = [f'ROI_{i}' for i in range(isc_rois.shape[1])]
+
+    # accounts for a case where we masked the brain, e.g. with LAN800
+    #labels are ok, but need index to access proper coords
     if len(labels) != len(full_labels):
         labels_indices = [full_labels.index(lbl) for lbl in labels]
         print(labels_indices)
@@ -215,200 +232,531 @@ for cond in setup['conditions']: #'NHYPER']: #conditions:
         labels_indices = list(range(len(labels)))
         # used for coords 
     
-    isc_bootstrap = isc_utils.load_pickle(f'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/ISC/{model_name}/{cond}/isc_results_{cond}_{n_boot}boot_pairWise{do_pairWise}.pkl')
+    # load result variables
+    isc_bootstrap = isc_utils.load_pickle(os.path.join(results_dir, f'{cond}/isc_results_{cond}_{n_boot}boot_pairWise{do_pairWise}.pkl'))
     isc_rois = pd.DataFrame(isc_bootstrap['isc'], columns=labels)
     isc_results_roi[cond] = isc_rois
-    
     isc_median = isc_bootstrap['observed']
+    ci = isc_bootstrap['confidence_intervals']
+    p_values = isc_bootstrap['p_values']
+    dist = isc_bootstrap['distribution']
+    n_boot = setup['n_boot']
+
+    #stack for brain plotting/cond
     iscs_cond[cond] = isc_median
-    # print(isc_median, np.mean(isc_rois))
-    ci = isc_bootstrap['confidence_intervals']
-    p_values = isc_bootstrap['p_values']
-    dist = isc_bootstrap['distribution']
-    n_boot = setup['n_boot']
-    fdr_p = isc_utils.fdr(p_values, q=0.05)
-    bonf_p = isc_utils.bonferroni(p_values, alpha=0.05)
-    print(f'FDR thresh : {fdr_p}')
-    unc_p = 0.01
-    # fdr_p = 0.01
+    isc_p_cond[cond] = p_values
 
-    # sig_mask, sig_df = visu_utils.plot_isc_median_with_significance(
-    # isc_median=isc_median,
-    # p_values=p_values,
-    # atlas = atlas,
-    # atlas_labels=labels,
-    # p_threshold=fdr_p, #adjusted for HYPER !! (unc.)
-    # save_path=None,
-    # coords_bool_mask = labels_indices,
-    # show=False, # False!
-    # fdr_correction=False
-    # )  # get FDR table
+    print(f"min p value: {np.min(p_values):.6f}, and max ISC : {np.max(isc_median):.6f}")
+    print(f'Within condition FDR thresh : {isc_utils.fdr(p_values, q=0.05):.6f}, and Bonferroni : {isc_utils.bonferroni(p_values, alpha=0.05):.6f}')
 
-    # if 'HYPER' in cond: #lower to display
-    #     fdr_p = unc_p
-    #     title_view = f'ISC_{cond}_(unc. p<.01)'
-    # else : title_view = f'ISC_{cond}_(FDR<.05)'
-    
-    title_view = f'ISC_{cond}_(FDR<.05)'
+# FDR thresh across all conditions since
+all_ps = []
+all_iscs = []
+for cond in setup['conditions']:
+    p = isc_p_cond[cond]
+    all_ps.extend(p)
+    all_iscs.extend(iscs_cond[cond]) # used for global scale/colorbar in plots
+fdr_all = isc_utils.fdr(np.array(all_ps), q=0.05)
+print('\nFDR across all conditions : ', fdr_all)
+ 
+#-------------
+# Project ISc results to brain maps 
+isc_imgs = {} #used further to produce brain plots of each conditions
+sig_isc_tables = {}
 
-    # to brain plot 
-    reload(visu_utils)
-    if labels == None:
-        labels = [f'ROI_{i}' for i in range(isc_rois.shape[1])]
+# Generate stats tables for each conditions and save
+for correction in ['unc_01', 'FDR', 'bonf']: # between condition FDR / within bonferroni
+    for cond in setup['conditions']: #'NHYPER']: #conditions:
+        print('-----------------------------------------------')
+        print(cond)
 
+        maskers = isc_utils.load_pickle(os.path.join(results_dir, f'{cond}/maskers_{parcel_name}_{cond}_23sub.pkl'))
+        atlas = maskers[0].labels_img # adjust number of ROI based on mask
+        
+        isc_median = iscs_cond[cond]
+        p_values = isc_p_cond[cond]
+        show = False
 
-    #x = -48, -2, 6, 50
-    cut_coords = (5) #(-48, -2, 6, 50)
-    isc_img, isc_thresh, sig_df = visu_utils.project_isc_to_brain(
-        atlas_img=atlas,
-        isc_median=isc_median,
-        atlas_labels=id_labels_dct,
-        roi_coords = roi_coords,
-        p_values=p_values,
-        p_threshold=fdr_p,
-        title = title_view,
-        coords_bool_mask = labels_indices,
-        save_path=None,
-        show=True,
-        display_mode='x',
-        cut_coords_plot=cut_coords,
-    )
+        if correction == 'unc_01':
+            p_thresh = 0.01
+            p_thresh_str = '0.01'
+        elif correction == 'FDR':
+            # p_thresh = isc_utils.fdr(p_values, q=0.05)
+            p_thresh = fdr_all # all conditions!
+            p_thresh_str = 'FDR'+ str(round(p_thresh, 4))
+            show = True
+        elif correction == 'bonf':
+            p_thresh = isc_utils.bonferroni(p_values, alpha=0.05)
+            p_thresh_str = 'Bonf'+ str(round(p_thresh, 4))
+        
+        title_view = f'ISC_{cond}_{correction}'
+        file_id = f'ISC_{cond}_FDR05'
 
-    p_mask = p_values < fdr_p
-    sig_labels = [labels[i] for i in range(len(labels)) if p_mask[i]]
-    print('Sig ROIs :', sig_labels)
-    
-    sig_dfs_one_sample[cond] = sig_df #sig_df.sort_values(by='ISC', ascending=False)
-    
-    # views[cond] = plotting.view_img(isc_img, threshold=0,symmetric_cmap=False, title=title_view)
-    surf[cond] = view_img_on_surf(isc_img, threshold=None, surf_mesh='fsaverage')
-
-    # bar plots 
-    reload(visu_utils)
-
-    interactive_view = view_img(
-        isc_img,
-        threshold=0,
-        symmetric_cmap=False,
-        title=title_view,
-        cmap = 'Reds'
-    )
-    interactive_views.append(interactive_view)
-    # interactive_view.save_as_html(os.path.join(clean_save_to, f'{title_view}.html'))
-
-
-#frontal = PFC
- # %%
-#for voxel wise case, ignored otherwise
-masker = isc_utils.load_pickle('/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/ISC/{model_name}/HYPER/maskers_voxelWise_lanA800_HYPER_23sub.pkl')
-
-#%%
-# Combined conditions
-# ================
-from src import visu_utils
-reload(visu_utils)
-reload(isc_utils)
-
-result_key = 'isc_results'
-interactive_views = {}
-# all_conditions = ['all_sugg', 'modulation'] #'neutral']
-combined_conditions = ['all_sugg', 'ana_run', 'hyper_run', 'neutral']#setup['combined_conditions'] #['all_sugg', 'modulation', 'neutral']
-# n_scans = [468, 200, 268] #[438, 188, 250]
-views = {}
-sig_df_conditions = {}
-for i, cond in enumerate(combined_conditions):
-    print('----------------------------------------------------')
-    print(cond)
-    # scans = n_scans[i]
-    #masker =utils.load_pickle(os.path.join(results_dir, cond, f'maskers_{atlas_name}_{cond}_{n_sub}sub.pkl'))
-    #isc_bootstrap = utils.load_pickle(all_results_paths[result_key][cond])
-    # masker = utils.load_pickle(f'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/ISC/{model_name}/HYPER/maskers_schafer100_2mm_HYPER_23sub.pkl')
-    isc_bootstrap = isc_utils.load_pickle(f'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/ISC/{model_name}/concat_suggs_1samp_boot/isc_results_{cond}_{n_boot}boot_pairWise{do_pairWise}.pkl')
-    isc_rois = pd.DataFrame(isc_bootstrap['isc'], columns=labels)
-    isc_results_roi[cond] = isc_rois
-
-    isc_median = isc_bootstrap['observed']
-    ci = isc_bootstrap['confidence_intervals']
-    p_values = isc_bootstrap['p_values']
-    dist = isc_bootstrap['distribution']
-    n_boot = setup['n_boot']
-    fdr_p = isc_utils.fdr(p_values, q=0.05)
-    bonf_p = isc_utils.bonferroni(p_values, alpha=0.05)
-    print(f'FDR thresh : {fdr_p}')
-    # to brain plot 
-    reload(visu_utils)
-
-    # sig_mask, _df = visu_utils.plot_isc_median_with_significance(
-    #     isc_median=isc_median,
-    #     p_values=p_values,
-    #     atlas = atlas,
-    #     atlas_labels=labels,
-    #     p_threshold=fdr_p,
-    #     save_path=None,
-    #     coords_bool_mask = labels_indices,
-    #     show=True,
-    #     fdr_correction=False
-    # )
-
-    if 'shock' in model_name:
-        cond = cond+'_shock'
-    if cond == 'all_sugg':
-        cond_name_title = 'All suggestions' 
-    else : 
-        cond_name_title = cond
-
-    if 'hyper' in cond:
-        title_view = f'ISC {cond_name_title} (Unc. p < 0.01)'
-        fdr_p = 0.01
-        save_name = f'ISC_{cond}_unc01'
-        print('!! REDUCING p-value threshold to 0.01 !! ')
-    else:
-        title_view = f'ISC {cond_name_title} (FDR<.05)'
-        save_name = f'ISC_{cond}_FDR05'
-
-    if 'voxelWise' in parcel_name:
-        isc_median[~sig_mask] = 0
-        isc_img = masker[0].inverse_transform(isc_median)
-        isc_thresh = 0
-    else:
-        # isc_img, isc_thresh, sig_df = visu_utils.project_isc_to_brain(
-        #     atlas_path=atlas_path,
-        #     isc_median=isc_median,
-        #     atlas_labels=labels,
-        #     p_values=p_values,
-        #     p_threshold=fdr_p,
-        #     title = title_view,
-        #     coords_bool_mask = labels_indices,
-        #     save_path=None,
-        #     show=True
-        # )
+        #x = -48, -2, 6, 50
         cut_coords = (5) #(-48, -2, 6, 50)
-
         isc_img, isc_thresh, sig_df = visu_utils.project_isc_to_brain(
             atlas_img=atlas,
             isc_median=isc_median,
             atlas_labels=id_labels_dct,
             roi_coords = roi_coords,
             p_values=p_values,
-            p_threshold=fdr_p,
+            p_threshold=p_thresh, #modif in loop
             title = title_view,
             coords_bool_mask = labels_indices,
             save_path=None,
-            show=True,
+            show=show,
             display_mode='x',
             cut_coords_plot=cut_coords,
         )
-        
-    sig_df_conditions[cond] = sig_df
-    sig_dfs_one_sample[cond] = sig_df.sort_values(by='ISC', ascending=False)
 
+        isc_imgs[cond] = (isc_img, isc_thresh)
+        p_mask = p_values < p_thresh
+        sig_labels = [labels[i] for i in range(len(labels)) if p_mask[i]]
+        sig_isc_tables[cond] = sig_df #sig_df.sort_values(by='ISC', ascending=False)
+        print('Sig ROIs :', sig_labels)
+        
+        #save sign dfs as csv
+        if sig_df.shape[0] > 0:
+            # sig_labels = pd.DataFrame(sig_labels, columns=['ROI', 'Label', 'spearman_r', 'p_values', 'Coordinates (X,Y,Z)'])
+            sig_df.columns = ['Region id', 'Label', 'ISC', 'P-value', 'Coordinates (X,Y,Z)']
+            sig_df.to_csv(os.path.join(save_tables_1sample, f'ISC_{cond}_table_{correction}_thresh{round(p_thresh,4)}.csv'), index=False)
+
+#%%
+# ----------
+# PUBLICATION GLASS BRAINS per conditions
+# Save glass brain to post-hoc plot directory )
+
+# compute color bar across all values/conditions (all_iscs)
+from matplotlib import cm
+from nilearn.image import new_img_like
+
+vmin, vmax = np.min(all_iscs), np.max(all_iscs)
+fake_data = np.zeros_like(atlas.get_fdata())
+fake_data.flat[:len(all_iscs)] = all_iscs
+synthetic_img = new_img_like(atlas, fake_data)
+cmap = cm.get_cmap("Reds")
+
+cbar = visu_utils.save_colorbar(
+    img=synthetic_img,
+    cmap=cmap,
+    outpath=os.path.join(save_plots_1sample, "shared_isc_colorbar.png"),
+    symmetric_cbar=False,
+    offset=None,
+    n_ticks=3,
+    transparent=True
+)
+
+condition_names = {'HYPER' : 'Hyperalgesia', 'ANA' : 'Analgesia', 'NHYPER' : 'Control Hyperalgesia', 'NANA' : 'Control Analgesia'}
+
+for i, (cond, (isc_img, isc_thresh)) in enumerate(isc_imgs.items()):
+    # if i >= 1:
+    #     break  # Stop after the first iteration
+    print(cond)
+    fig, ax = plt.subplots(figsize=(6, 4))
+    ax.set_axis_off()
+
+    title = f"{condition_names[cond]} (FDR q < .05)"
+    display = plot_glass_brain(
+        isc_img,
+        threshold=isc_thresh,
+        colorbar=False,
+        display_mode='lr',
+        plot_abs=False,
+        cmap='Reds',
+        title=None,
+        axes=ax,
+        vmax= np.max(all_iscs)
+    )
+    y = 0.20
+    ax.text(0.1, y, 'L', transform=ax.transAxes,
+            fontsize=20, ha='center')
+    ax.text(0.9, y, 'R', transform=ax.transAxes,
+            fontsize=20, ha='center')
+
+    # Add title
+    fig.suptitle(title, fontsize=25, y=0.85)
+    fig.savefig(os.path.join(save_plots_1sample, f'glass_brain_{cond}_FDR05.png'), dpi=1000)
+cbar
+#%%
+# PUBLICATION violin plots of median ISC across all contrasts conditions
+reload(visu_utils)
+# violin plots displaying median SIc diff per region
+delta_dict = {cond: isc for cond, isc in iscs_cond.items()}
+delta_dict.update({'ANA1': iscs_cond['ANA'], 'NANA1': iscs_cond['NANA']})
+delta_dict.update({'HYPER1': iscs_cond['HYPER'], 'NHYPER1': iscs_cond['NHYPER']})
+condition_labels = ['Hyper.', 'Ana.', 'Cont. Hyper', 'Cont. Ana', 'Ana', 'Cont. Ana', 'Hyper', 'Cont. Hyper.']
+condition_labels = {
+    'HYPER1': 'Hyper.',
+    'ANA1': 'Ana.',
+    'NHYPER1': 'Cont. Hyper.',
+    'NANA1': 'Cont. Ana.',
+    'ANA': 'Ana.',
+    'NANA': 'Cont. Ana.',
+    'HYPER': 'Hyper.',
+    'NHYPER': 'Cont. Hyper.'
+}
+fig = visu_utils.plot_delta_condition_violin(delta_dict, min_y = np.min(all_iscs), max_y = np.max(all_iscs)+0.05,
+                                             condition_labels = condition_labels, dot_size=12, lab_rotation=75,
+                                             title = 'Change in ISC per region across conditions',
+                                             ylabel = 'Median ISC')
+
+ # %%
+#for voxel wise case, ignored otherwise
+masker = isc_utils.load_pickle('/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/ISC/{model_name}/HYPER/maskers_voxelWise_lanA800_HYPER_23sub.pkl')
+
+# #%%
+# reload(visu_utils)
+# #rename conditions with full names
+# conditions_full_names = {cond : full for cond, full in zip(conditions, ['Neutral (Analg.)', 'Analgesia', 'Neutral (Hyperalg.)', 'Hyperalgesia'])} #, 'Neutral (Hyper)', 'N_Ana', 'N_Hyper'])}
+# # CAREFUL FOR NAME ORDER / CONDITIONS + full name
+# visu_utils.plot_median_isc_dots(sig_isc_tables,conditions_full_names=conditions_full_names, title="Median ISC across significant ROIs")
+
+# # Pie plot of sig regions in df
+# #------------------------------
+# # all_sugg pie-chart
+# cond_pie = 'ANA'
+# sig_rois_for_pie = list(sig_isc_tables[cond_pie]['Label'])
+# sig_networks = [label.split('_')[2] if len(label.split('_')) > 2 else 'subcortical' for label in sig_rois_for_pie]
+
+# visu_utils.plot_network_radar(sig_networks, title = f'Sig ISC during {cond_pie}')
+# # # all_sugg pie-chart
+# # cond_pie ='hyper_run'
+# # sig_rois_for_pie = list(sig_df_conditions[cond_pie]['Label'])
+# # sig_networks = [label.split('_')[2] if len(label.split('_')) > 2 else 'subcortical' for label in sig_rois_for_pie]
+# visu_utils.plot_network_radar(sig_networks, title = f'Sig ISC during {cond_pie}')
+#%%
+# ==========================
+# BLOCK MODELS : (ANA > HYPER, etc. run1>run2)
+# Difference (Permutation) per condition visualization
+model_name = model_names['model2_sugg']
+results_dir = os.path.join(project_dir, f'results/imaging/ISC/{model_name}')
+setup = isc_utils.load_json(os.path.join(results_dir, "setup_parameters.json"))
+
+#create contrast output dir.
+save_plots_contrasts = os.path.join(save_visu, 'plots_contrasts_isc')
+os.makedirs(save_plots_contrasts, exist_ok=True)
+save_tables_contrasts = os.path.join(save_visu, 'tables_contrasts_isc')
+os.makedirs(save_tables_contrasts, exist_ok=True)
+
+parcel_name = setup['atlas_name']
+do_pairWise = setup['do_pairwise']
+n_boot = setup['n_boot']
+
+result_key = 'cond_contrast_permutation'
+contrasts = ['ana_run-hyper_run','Ana-Hyper', 'NAna-NHyper'] if 'single-trial' not in model_name else ['Ana-N_Ana', 'Hyper-N_Hyper']
+n_perm = setup['n_perm']
+
+sig_df_conditions_contrast = {}
+sig_dfs_contrasts = {}
+sig_rois = {}
+interactive_views=[]
+
+delta_iscs = {}
+delta_p_values = {}
+
+for i, cont in enumerate(contrasts):
+    print(f'-------\n{cont}')
+    file = os.path.join(results_dir, f'cond_contrast_permutation/isc_results_{cont}_{n_perm}perm_pairWise{do_pairWise}.pkl')
+    isc_contrast = isc_utils.load_pickle(file)
+
+    grouped_isc = isc_contrast['grouped_isc']        # Grouped ISC values
+    distribution = isc_contrast['distribution']   
+    delta_iscs[cont] = isc_contrast['observed_diff']    # Observed differences in ISC
+    delta_p_values[cont] = isc_contrast['p_value']               # P-values for the ISC contrasts
+
+    print(f"min p value: {np.min(delta_p_values[cont]):.6f}, and max ISC diff. (delta) : {np.max(delta_iscs[cont]):.6f}")
+    print(f'Within condition FDR thresh : {isc_utils.fdr(delta_p_values[cont], q=0.05):.6f}, and Bonferroni : {isc_utils.bonferroni(delta_p_values[cont], alpha=0.05):.6f}')
+
+# FDR thresh across all contrasts 
+all_delta_p = []
+all_delta_iscs = []
+for cont in contrasts:
+    all_delta_p.extend(delta_p_values[cont])
+    all_delta_iscs.extend(delta_iscs[cont]) # used for global scale/colorbar in plots
+fdr_all_block = isc_utils.fdr(np.array(all_delta_p), q=0.05)
+print('\nFDR across all block (3) contrasts : ', fdr_all)
+
+# %%
+reload(visu_utils)
+# ===========================
+# SINGLE TRIAL MODEL : (Modulation - Neutre)
+# Difference (Permutation) per condition visualization
+model_name_single_trial = model_names['model1_single-trial']
+results_dir = os.path.join(project_dir, f'results/imaging/ISC/{model_name_single_trial}')
+setup = isc_utils.load_json(os.path.join(results_dir, "setup_parameters.json"))
+
+#create visualization dir.
+save_plots_contrasts = os.path.join(save_visu, 'plots_contrasts_isc')
+os.makedirs(save_plots_contrasts, exist_ok=True)
+save_tables_contrasts = os.path.join(save_visu, 'tables_contrasts_isc')
+os.makedirs(save_tables_contrasts, exist_ok=True)
+
+parcel_name = setup['atlas_name']
+do_pairWise = setup['do_pairwise']
+n_boot = setup['n_boot']
+
+result_key = 'cond_contrast_permutation'
+contrasts_trials = ['Ana-Hyper', 'NAna-NHyper'] if 'single-trial' not in model_name_single_trial else ['Ana-N_Ana', 'Hyper-N_Hyper']
+n_perm = setup['n_perm']
+
+# contrast_imgs_txt = {}
+
+for i, cont in enumerate(contrasts_trials):
+    print(f'----------\n {cont}')
+    file = os.path.join(results_dir, f'cond_contrast_permutation/isc_results_{cont}_{n_perm}perm_pairWise{do_pairWise}.pkl')
+    isc_contrast = isc_utils.load_pickle(file)
+
+    grouped_isc = isc_contrast['grouped_isc']        # Grouped ISC values
+    distribution = isc_contrast['distribution']      
+    delta_iscs[cont] = isc_contrast['observed_diff']    # Observed differences in ISC
+    delta_p_values[cont] = isc_contrast['p_value']               # P-values for the ISC contrasts
+
+    print(f"min p value: {np.min(delta_p_values[cont]):.6f}, and max ISC diff. (delta) : {np.max(delta_iscs[cont]):.6f}")
+    print(f'Within condition FDR thresh : {isc_utils.fdr(delta_p_values[cont], q=0.05):.6f}, and Bonferroni : {isc_utils.bonferroni(delta_p_values[cont], alpha=0.05):.6f}')
+
+#%%
+# compute gloabl FDR thresh across all (5) contrasts conditions
+# p < 0.001* with 5 conditinns/ vs p < 0.003 with the 3 conditions from block model
+for cont in contrasts_trials:
+    p = delta_p_values[cont]
+    all_delta_p.extend(p)
+fdr_all = isc_utils.fdr(np.array(all_delta_p), q=0.05)
+print(f'fdr_all: {fdr_all:.6f}')
+
+#%%
+#-------
+# Create CONTRAST stats images + tables for BLOCK MODEL & TRIAL model
+# Note : within FDR thresh is always around 0.001, similar to the global FDR (5 cond.)
+contrast_imgs= {}
+contrast_fdr_df = {}
+
+for correction in ['unc_01', 'within_FDR', 'FDR', 'bonf']: # between condition FDR / within bonferroni
+    print(f'-----{correction}')
+    for i, cont in enumerate(contrasts+contrasts_trials):
+
+        observed_diff = delta_iscs[cont]
+        p_values = delta_p_values[cont]
+
+        show = False
+        save_fig = None
+        if correction == 'unc_01':
+            p_thresh = 0.01
+            p_thresh_str = '0.01'
+        elif correction == 'within_FDR':
+            p_thresh = isc_utils.fdr(p_values, q=0.05)
+            p_thresh_str = 'within_FDR'+ str(round(p_thresh, 4))
+        elif correction == 'FDR':
+            # p_thresh = isc_utils.fdr(p_values, q=0.05)
+            p_thresh = fdr_all # all contrasts!
+            p_thresh_str = 'FDR'+ str(round(p_thresh, 4))
+            show = True
+            save_fig = save_plots_contrasts + f'/ISC_contrast_{cont}_{p_thresh_str}.png'
+        elif correction == 'bonf':
+            p_thresh = isc_utils.bonferroni(p_values, alpha=0.05)
+            p_thresh_str = 'Bonf'+ str(round(p_thresh, 4))
+            show=True
+
+        print(f'Correction thresh : {p_thresh}')
+
+        if cont == 'NAna-NHyper':
+            observed_diff = -observed_diff
+            # !! Reverse contrast since the name was opposite of difference
+            # NAna has stronger ISC than Hyper (~ .20 max)
+
+        diff_img, diff_thresh, sig_df, _ = visu_utils.project_isc_to_brain_perm(
+            atlas_img=atlas,
+            isc_median=observed_diff,
+            atlas_labels=id_labels_dct,
+            roi_coords = roi_coords,
+            p_values=p_values,
+            p_threshold=p_thresh,
+            title = f"Difference in ISC between {cont} ({correction})",
+            save_path=False,
+            show=show,
+            save_fig_as = save_fig,
+            display_mode='x',
+            color='Reds'
+        )
+        contrast_imgs[cont] = (diff_img, diff_thresh)
+        if correction == 'FDR':
+            contrast_fdr_df[cont] = sig_df
+
+        if sig_df.shape[0] > 0:
+            # sig_labels = pd.DataFrame(sig_labels, columns=['ROI', 'Label', 'spearman_r', 'p_values', 'Coordinates (X,Y,Z)'])
+            sig_df.columns = ['Region id', 'Label', 'Delta_r', 'p_values', 'Coordinates (X,Y,Z)']
+            sig_df.to_csv(os.path.join(save_tables_contrasts, f'ISC_{cont}_table_{p_thresh_str}.csv'), index=False)
+
+            print('Sig ROIs : ', sig_df['Label'].to_list())
+
+#%%
+# Load 1 sample ISC for runs/contexts : Hyper & Analgesia-context
+# Will be used for plotting region ISC matrices
+# stack contrast imgs in `contrast_imgs[cont]`
+
+# Reload BLOCK model
+model_name = model_names['model2_sugg']
+results_dir = os.path.join(project_dir, f'results/imaging/ISC/{model_name}')
+setup = isc_utils.load_json(os.path.join(results_dir, "setup_parameters.json"))
+
+# Have been overwrite by trial model code !
+save_plots_contrasts = os.path.join(save_visu, 'plots_contrasts_isc')
+save_tables_contrasts = os.path.join(save_visu, 'tables_contrasts_isc')
+
+result_key = 'isc_results'
+interactive_views = {}
+combined_conditions = ['ana_run', 'hyper_run'] # 'neutral']#setup['combined_conditions'] #['all_sugg', 'modulation', 'neutral']
+isc_matrices = {}
+
+for i, cond in enumerate(combined_conditions):
+    print(f'Fetching 1 sample ISC values from BLOCK model, for contextual effect.\n {cond}')
+
+    isc_bootstrap = isc_utils.load_pickle(os.path.join(results_dir, f'concat_suggs_1samp_boot/isc_results_{cond}_{n_boot}boot_pairWise{do_pairWise}.pkl'))
+    isc_rois = pd.DataFrame(isc_bootstrap['isc'], columns=full_labels)
+    isc_matrices[cond] = {region : isc_utils.vector_to_isc_matrix(isc_rois.iloc[:,col_j],diag=0) for col_j, region in enumerate(isc_rois.columns)}
+
+    isc_median = isc_bootstrap['observed']
+    ci = isc_bootstrap['confidence_intervals']
+    p_values = isc_bootstrap['p_values']
+    dist = isc_bootstrap['distribution']
+    n_boot = setup['n_boot']
+
+    iscs_cond[cond] = isc_median # one sample variables (vs. delta_iscs for contrasts)
+    isc_p_cond[cond] = p_values
+
+# build brain images and save tables
+for correction in ['unc_01', 'within_FDR', 'FDR', 'bonf']: 
+        
+    for cond in combined_conditions:
+        print(cond)
+
+        isc_median = iscs_cond[cond]
+        p_values = isc_p_cond[cond]
+        show = False
+
+        if correction == 'unc_01':
+            p_thresh = 0.01
+            p_thresh_str = '0.01'
+        elif correction == 'FDR':
+            p_thresh = fdr_all
+            p_thresh_str = 'FDR'+ str(round(p_thresh, 4))
+            show = True
+
+        elif correction == 'bonf':
+            p_thresh = isc_utils.bonferroni(p_values, alpha=0.05)
+            p_thresh_str = 'bonf'+ str(round(p_thresh, 4))
+        elif correction == 'within_FDR':
+            p_thresh = isc_utils.fdr(p_values, q=0.05)
+            p_thresh_str = 'within_FDR'+ str(round(p_thresh, 4))
+            print('Within FDR p-threshold : ', p_thresh_str)
+        
+        cut_coords = (5) #(-48, -2, 6, 50)
+        isc_img, isc_thresh, sig_df = visu_utils.project_isc_to_brain(
+            atlas_img=atlas,
+            isc_median=isc_median,
+            atlas_labels=id_labels_dct,
+            roi_coords = roi_coords,
+            p_values=p_values,
+            p_threshold=p_thresh,
+            title = f'ISC {cond} - {p_thresh_str}',
+            coords_bool_mask = labels_indices,
+            save_path=None,
+            show=show,
+            display_mode='x',
+            cut_coords_plot=cut_coords,
+        )
+    isc_imgs[cond] = (isc_img, isc_thresh)
+
+    if sig_df.shape[0] > 0:
+        # sig_labels = pd.DataFrame(sig_labels, columns=['ROI', 'Label', 'spearman_r', 'p_values', 'Coordinates (X,Y,Z)'])
+        sig_df.columns = ['Region id', 'Label', 'Pearson_r', 'p_values', 'Coordinates (X,Y,Z)']
+        sig_df.to_csv(os.path.join(save_tables_1sample, f'ISC_{cond}_table_{p_thresh_str}.csv'), index=False)
+
+        sig_isc_tables[cond] = sig_df
+        sig_df.sort_values(by='Pearson_r', ascending=False)
+        print('Sig ROIs : ', sig_df['Label'].to_list(), '\n')
+
+#%%
+# ================
+# PUBLICATION ANATOMICAL brain plots for CONTRAST contextual effect (FDR global)
+
+contrast_ana_hyper_run, delta_thresh = contrast_imgs['ana_run-hyper_run']
+max_diff = np.max(np.abs(contrast_ana_hyper_run.get_fdata()))
+
+view_img(contrast_ana_hyper_run, threshold=delta_thresh, title='Ana-Hyper (FDR q < .05)', cmap='coolwarm', vmax=max_diff)
+plotting.plot_stat_map(contrast_ana_hyper_run, threshold=delta_thresh, title='Ana-Hyper (FDR q < .05)', cmap='Reds', vmax=max_diff, 
+                       display_mode = 'mosaic')
+#%%
+# PUBLICATION SLICES 
+COORDS = {
+    'x': [54, 42, -48, -60],
+    'y' : [-22, 6],
+    'z': [42, 58],
+
+}
+
+SAVE_TO = os.path.join(save_plots_contrasts, 'ana_run-hyper_run')
+os.makedirs(SAVE_TO, exist_ok=True)
+
+cm = 'Reds'
+
+visu_utils.save_slices(contrast_ana_hyper_run, 
+                  COORDS,
+                  SAVE_TO,
+                  img_id = 'run_contrast',
+                  cmap = 'Reds'
+                  )
+# save colorbar
+fig_path = os.path.join(SAVE_TO, 'colorbar.png')
+cb_ab = visu_utils.save_colorbar(contrast_ana_hyper_run,
+              cmap='Reds',
+              outpath=fig_path,
+              symmetric_cbar=False, # false because we dont keep negative coeff
+              offset=0,
+              n_ticks=3,
+              transparent=True)
+
+#%%
+# # Pie plot of sig regions in df
+# #------------------------------
+# all_sugg pie-chart
+cond_pie = 'ANA'
+sig_rois_for_pie = list(sig_isc_tables[cond_pie]['Label'])
+sig_networks = [label.split('_')[2] if len(label.split('_')) > 2 else 'subcortical' for label in sig_rois_for_pie]
+
+visu_utils.plot_network_radar(sig_networks, title = f'Sig ISC during {cond_pie}')
+# # all_sugg pie-chart
+# cond_pie ='hyper_run'
+# sig_rois_for_pie = list(sig_df_conditions[cond_pie]['Label'])
+# sig_networks = [label.split('_')[2] if len(label.split('_')) > 2 else 'subcortical' for label in sig_rois_for_pie]
+visu_utils.plot_network_radar(sig_networks, title = f'Sig ISC during {cond_pie}')
+#%%
+
+#%%
+display_mode = 'z'
+cut_coords = None
+im = plot_stat_map(
+    contrast_ana_hyper_run,
+    bg_img=bg_mni,
+    title=None,
+    threshold=delta_thresh,
+    vmax=max_diff,
+    black_bg=False,
+    colorbar=True,
+    display_mode=display_mode,
+    cut_coords=cut_coords,
+    cmap='Reds',
+    draw_cross=False,
+)
+plt.show()
+#%%
+if save_fig_as is not None:
+plt.savefig(save_fig_as, dpi=1000, bbox_inches="tight")
+print(f"ISC projection plot saved to {save_fig_as}")
+
+#%%
     vmax = isc_median.max()
     views[cond] = view_img_on_surf(isc_img, threshold=isc_thresh,vmax = vmax,cmap = color_isc, symmetric_cmap = False,title = title_view, surf_mesh='fsaverage')
-    reload(visu_utils)
-    p_mask = p_values < fdr_p
-    sig_labels = [labels[i] for i in range(len(labels)) if p_mask[i]]
-    print('Sig ROIs :', sig_labels)
- 
+
     interactive_view = view_img(
             isc_img,
             threshold=isc_thresh,
@@ -420,139 +768,92 @@ for i, cond in enumerate(combined_conditions):
     # interactive_view.save_as_html(os.path.join(clean_save_to, f'{title_view}.html'))
     # views[cond].save_as_html(os.path.join(clean_save_to, f'{save_name}.html'))
 
+from src import visu_utils
+reload(visu_utils)
+reload(isc_utils)
+                
 #%%
-reload(visu_utils)
-#rename conditions with full names
-conditions_full_names = {cond : full for cond, full in zip(conditions, ['Neutral (Analg.)', 'Analgesia', 'Neutral (Hyperalg.)', 'Hyperalgesia'])} #, 'Neutral (Hyper)', 'N_Ana', 'N_Hyper'])}
-# CAREFUL FOR NAME ORDER / CONDITIONS + full name
-visu_utils.plot_median_isc_dots(sig_dfs_one_sample,conditions_full_names=conditions_full_names, title="Median ISC across significant ROIs")
+    # save tables !
+    if sig_df.shape[0] > 0:
+        # sig_labels = pd.DataFrame(sig_labels, columns=['ROI', 'Label', 'spearman_r', 'p_values', 'Coordinates (X,Y,Z)'])
+        sig_df.columns = ['Region id', 'Label', 'Pearson_r', 'p_values', 'Coordinates (X,Y,Z)']
+        sig_df.to_csv(os.path.join(save_visu, f'contrast_ISC_{cont}_table-FDR.csv'), index=False)
 
-#%% save tables of interest
+        sig_df_conditions_contrast[cont] = sig_df
+        sig_dfs_contrasts[cont] = sig_df.sort_values(by='Pearson_r', ascending=False)
+        print('Sig ROIs : ', sig_df['Label'].to_list())
 
 
-# %%
-# Pie plot of sig regions in df
-#------------------------------
-reload(visu_utils)
+    views[cont] = view_img_on_surf(diff_img, threshold=diff_thresh, surf_mesh='fsaverage')
+    sig_rois[cont] = sig_df
 
-# all_sugg pie-chart
-cond_pie ='all_sugg'
-sig_rois_for_pie = sig_df_conditions[cond_pie]['ROI']
-sig_networks = [label.split('_')[2] for label in sig_rois_for_pie]
+#%%
+#SAVE CONTRAST PLOTS 
+save_plots_contrasts = os.path.join(post_hoc_dir, 'brain_plots_contrasts')
+os.makedirs(save_plots_contrasts, exist_ok=True)
 
-visu_utils.plot_network_radar(sig_networks, title = f'Sig ISC during {cond_pie}')
+cont_img, thresh_cont = contrast_imgs['ana_run-hyper_run']
+cont_name = 'ana_run-hyper_run'
+glass_fig = plot_glass_brain(
+    cont_img,
+    threshold=thresh_cont,
+    colorbar= True,
+    display_mode='lyr',
+    plot_abs=False,
+
+    cmap='Reds',
+    title=None
+)
+
+glass_fig._colorbar_ax.tick_params(labelsize=20)
+
+# Shift colorbar right
+pos = glass_fig._colorbar_ax.get_position()
+new_x0 = pos.x0 + 0.02
+glass_fig._colorbar_ax.set_position([new_x0, pos.y0, pos.width, pos.height])
+
+# Round tick labels to 2 decimal places
+ticks = glass_fig._colorbar_ax.get_yticks()
+glass_fig._colorbar_ax.set_yticklabels([f'{tick:.2f}' for tick in ticks])
+
+for name, ax in glass_fig.axes.items():
+    if name in ['left', 'right']:
+        if name == 'l':
+            ax.annotate('L', xy=(0, 1.02), xycoords='axes fraction',
+                        fontsize=25, ha='center', va='bottom')
+        elif name == 'r':
+            ax.annotate('R', xy=(1, 1.02), xycoords='axes fraction',
+                        fontsize=25, ha='center', va='bottom')
+#glass_fig.annotate(size = 18)
+glass_fig.savefig(os.path.join(save_plots_contrasts, f'glass_brain_{cont_name}_FDR05.png'), dpi=1000)
 
 
 #%%
 import matplotlib.pyplot as plt
-roi_index = 0
-plt.hist(dist[:, roi_index], bins=50, alpha=0.7, label="Bootstrap Distribution")
-plt.axvline(isc_median[roi_index], color='red', linestyle='--', label="Observed Median")
-plt.xlabel("ISC Values")
-plt.ylabel("Frequency")
-plt.title(f"Bootstrap Distribution for ROI {roi_index}")
-plt.legend()
-plt.show()
+import matplotlib.colorbar as cb
+import matplotlib.cm as cm
+import numpy as np
 
-shifted_dist = dist[:, roi_index] - np.median(dist[:, roi_index])
-plt.hist(shifted_dist, bins=50, alpha=0.7, label="Shifted Bootstrap Distribution")
-plt.axvline(isc_median[roi_index], color='red', linestyle='--', label="Observed Median")
-plt.xlabel("Shifted ISC Values")
-plt.ylabel("Frequency")
-plt.title(f"Shifted Bootstrap Distribution for ROI {roi_index}")
-plt.legend()
-plt.show()
+img_data = diff_img.get_fdata()
 
-# %%
+cmap = cm.get_cmap("Reds")
+norm = plt.Normalize(vmin=np.min(img_data), vmax=np.max(img_data))  # Adjust based on your stat range
+
+# Create figure just for colorbar
+fig, ax = plt.subplots(figsize=(2, 8))
+cb1 = cb.ColorbarBase(ax, cmap=cmap, norm=norm, orientation='vertical')
+cb1.set_label('ISC Value', fontsize=20)
+cb1.ax.tick_params(labelsize=16)
+fig.savefig("colorbar_only.png", dpi=1000, bbox_inches="tight")
+
 
 #%%
-#=====================================
-# # Bootstrap per combined conditions
-# result_key = 'isc_combined_results'
-# folder = 'concat_suggs_1samp_boot'
-# #folder = 'concat_suggs_1samp_boot'
-# combined_conditions = ['all_sugg', 'modulation', 'neutral']
-# conditions = ['Hyper', 'Ana', 'NHyper', 'NAna']
-# cond = combined_conditions[1]
-# n_scans = 191
+# Save at high resolution
+fig.savefig("high_res_surface_plot.png", dpi=1000, bbox_inches="tight")
 
-# #for cond in conditions:
-# masker =utils.load_pickle(os.path.join(results_dir, conditions[0], f'maskers_{atlas_name}_{conditions[0]}_{n_sub}sub.pkl'))
-# file = f"isc_results_{cond}_{n_scans}TRs_{setup['n_perm']}boot_pairWiseTrue.pkl"
-# isc_bootstrap = utils.load_pickle(os.path.join(results_dir, folder, file))
+# Display
+show()
 
-# isc_rois = isc_bootstrap['isc']
-# isc_median = isc_bootstrap['observed']
-# ci = isc_bootstrap['confidence_intervals']
-# p_values = isc_bootstrap['p_values']
-# dist = isc_bootstrap['distribution']
-# n_boot = setup['n_boot']
-
-# fdr_p = utils.fdr(p_values, q=0.05)
-
-#%%
-
-# %%
-# ===========================
-# Difference (Permutation) per condition visualization
-result_key = 'cond_contrast_permutation'
-# conditions = ['Hyper', 'Ana', 'NHyper', 'NAna']
-contrasts = ['ana_run-hyper_run', 'Ana-Hyper'] if 'single-trial' not in model_name else ['Ana-N_Ana', 'Hyper-N_Hyper']
-n_perm = setup['n_perm']
-# contrasts = ['Ana-N_Ana', 'Hyper-N_Hyper', 'N_ANA1_instrbk_1-N_HYPER1_instrbk_1']
-
-reload(visu_utils)
-# n_scans = [100, 100, 134] #[94, 94, 125]
-views = {}
-sig_rois = {}
-interactive_views=[]
-for i, cont in enumerate(contrasts):
-    # scans = n_scans[i]
-    # masker =utils.load_pickle(os.path.join(results_dir, cond, f'maskers_{atlas_name}_{cond}_{n_sub}sub.pkl'))
-    # file = f"isc_results_{contrast}_{n_scans}TRs_{setup['n_perm']}perm_pairWiseTrue.pkl"
-    #isc_bootstrap = utils.load_pickle(all_results_paths[result_key][cond])
-    
-    file = f'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/ISC/{model_name}/cond_contrast_permutation/isc_results_{cont}_{n_perm}perm_pairWise{do_pairWise}.pkl'
-    # isc_contrast = utils.load_pickle(os.path.join(results_dir, result_key, file))
-    isc_contrast = isc_utils.load_pickle(file)
-
-    grouped_isc = isc_contrast['grouped_isc']        # Grouped ISC values
-    observed_diff = isc_contrast['observed_diff']    # Observed differences in ISC
-    p_values = isc_contrast['p_value']               # P-values for the ISC contrasts
-    distribution = isc_contrast['distribution']      
-    fdr_p = isc_utils.fdr(p_values, q=0.05)
-    # unc_p = 0.05
- 
-    reload(visu_utils)
-    print(f'FDR thresh : {fdr_p}')
-    diff_img, diff_thresh, sig_labels = visu_utils.project_isc_to_brain_perm(
-        atlas_img=atlas,
-        isc_median=observed_diff,
-        atlas_labels=id_labels_dct,
-        roi_coords = roi_coords,
-        p_values=p_values,
-        p_threshold=fdr_p,
-        title = f"Difference in ISC between {cont}",
-        save_path=None,
-        show=True,
-         display_mode='x',
-        color='coolwarm'
-    )
-    p_mask= p_values < fdr_p
-    # sig_labels = [labels[i] for i in range(len(labels)) if p_mask[i]]
-    print('Sig ROIs :', sig_labels)
- 
-    views[cont] = view_img_on_surf(diff_img, threshold=diff_thresh, surf_mesh='fsaverage')
-    sig_rois[cont] = sig_labels
-
-    interactive_view = view_img(
-            diff_img,
-            threshold=diff_thresh,
-            title=f"Median ISC {cont} (FDR<.05)",
-            cmap='coolwarm'
-        )
-    interactive_views.append(interactive_view)
-    # interactive_view.save_as_html(os.path.join(clean_save_to, f'{cont}_all_subjs.html'))
 
 #%%
 sig_rois['Ana-Hyper'].sort_values(by='Difference', ascending=False)
@@ -626,7 +927,7 @@ for shss_grp, n_sub in zip(group_names, [11, 12]):
         
         print('FDR thresh : ', fdr_p)
         # reload(visu_utils)
-        diff_img, diff_thresh, sig_labels = visu_utils.project_isc_to_brain_perm(
+        diff_img, diff_thresh, sig_df = visu_utils.project_isc_to_brain_perm(
             atlas_path=atlas_path,
             isc_median=observed_diff,
             atlas_labels=labels,
@@ -637,11 +938,11 @@ for shss_grp, n_sub in zip(group_names, [11, 12]):
             show=True
         )
         view_title = f'{shss_grp}_{cont}_(unc_p<.01)'
-        #  sig_labels = [labels[i] for i in range(len(labels)) if p_mask[i]]
-        print('Sig ROIs :', sig_labels)
+        #  sig_df = [labels[i] for i in range(len(labels)) if p_mask[i]]
+        print('Sig ROIs :', sig_df)
  
         surf_views[shss_grp].append(view_img_on_surf(diff_img, threshold=diff_thresh, surf_mesh='fsaverage'))
-        sig_rois[shss_grp] = sig_labels
+        sig_rois[shss_grp] = sig_df
 
         view = view_img(
                 diff_img,
@@ -727,7 +1028,7 @@ for cond in conditions:
 
         title = f"{cond} diff for {y} (FDR < 0.05)"
         cut_coords = (5)
-        diff_img, diff_thresh, sig_labels = visu_utils.project_isc_to_brain_perm(
+        diff_img, diff_thresh, sig_df = visu_utils.project_isc_to_brain_perm(
             atlas_img=atlas,
             isc_median=observed_diff,
             atlas_labels=id_labels_dct,
@@ -740,8 +1041,8 @@ for cond in conditions:
             display_mode='x',
             cut_coords_plot=cut_coords,
         )
-        sig_rois_cond[cond][y] = sig_labels
-        print(sig_labels)
+        sig_rois_cond[cond][y] = sig_df
+        print(sig_df)
         views[cond][y] = plotting.view_img(diff_img,  title=f"grp diff {cond} {y}")
         # view_img_on_surf(diff_img, threshold=diff_thresh, surf_mesh='fsaverage')
 
@@ -964,7 +1265,7 @@ for i, simil_model in enumerate(models):
     # Load ISC bootstrap data
     isc_bootstrap = isc_utils.load_pickle(
         os.path.join(project_dir, f'results/imaging/ISC/{model_name}/{cond}/isc_results_{cond}_5000boot_pairWiseTrue.pkl'
-    )
+        ))
     isc_rois = pd.DataFrame(isc_bootstrap['isc'], columns=labels)
 
     # Compute similarity matrix
@@ -1121,5 +1422,3 @@ save_path=None,
 show=True,
 fdr_correction=False
 )
-
-# %%

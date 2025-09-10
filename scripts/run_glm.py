@@ -351,9 +351,10 @@ pain_reg = [reg for reg in all_regs if 'shock' in reg]
 from scipy.stats import ttest_1samp
 import seaborn as sns
 
+pain_conditions = ['ANA_shock', 'N_ANA_shock', 'HYPER_shock', 'N_HYPER_shock'] #, 'ANA_shock_minus_N_ANA_shock']
 signature_folder = os.path.join(setup.project_dir,'masks/mvpa_signatures')
 conditions_nps = {}
-for cond in ['all_shock']:
+for cond in pain_conditions:
         
     cond_files = {subj: contrasts[cond] for subj, contrasts in file_firstlev.items() if subj != 'sub-47'}
 
@@ -372,6 +373,122 @@ plt.title('Violin Plot of NPS Similarity (All Shock)')
 plt.xlabel('NPS Similarity')
 plt.tight_layout()
 plt.show()
+
+#%%
+# compare NPS between conditions ANA < Hyper
+
+# plot 4 violin plot with the distribution of each conditions
+# Prepare data for plotting
+
+# Collect similarity values for each condition
+similarity_data = {cond: np.array(conditions_nps[cond]).ravel() for cond in pain_conditions}
+
+# Create a DataFrame for seaborn
+plot_df = pd.DataFrame({
+    'similarity': np.concatenate([similarity_data[cond] for cond in pain_conditions]),
+    'condition': np.repeat(pain_conditions, [len(similarity_data[cond]) for cond in pain_conditions])
+})
+
+plt.figure(figsize=(8, 6))
+sns.barplot(data=plot_df, x='condition', y='similarity', ci='sd', palette='pastel')
+plt.title('Mean NPS Similarity by Condition')
+plt.ylabel('NPS Similarity')
+plt.xlabel('Condition')
+plt.tight_layout()
+plt.show()
+
+# Pairwise t-tests
+import itertools
+from scipy.stats import ttest_ind
+print("Pairwise t-tests between conditions:")
+for cond1, cond2 in itertools.combinations(pain_conditions, 2):
+    sim1 = similarity_data[cond1]
+    sim2 = similarity_data[cond2]
+    t_stat, p_val = ttest_ind(sim1, sim2, nan_policy='omit')
+    print(f"{cond1} vs {cond2}: t = {t_stat:.3f}, p = {p_val:.3f}")
+
+#%%
+# SIIPS for CONTRAST
+pain_conditions = ['ANA_shock', 'N_ANA_shock', 'HYPER_shock', 'N_HYPER_shock']
+signature_folder = os.path.join(setup.project_dir,'masks/mvpa_signatures')
+conditions_siips = {}
+for cond in pain_conditions:
+        
+    cond_files = {subj: contrasts[cond] for subj, contrasts in file_firstlev.items() if subj != 'sub-47'}
+
+    cond_dot = qc_utils.compute_similarity(cond_files, signature_folder, pattern = 'SIIPS', metric='dot_product')
+    conditions_siips[cond] = cond_dot
+
+    shock_similarity = np.array(cond_dot).ravel()
+    t_stat, p_val = ttest_1samp(shock_similarity, 0)
+    print(f"One-sample t-test for {cond}: t = {t_stat:.3f}, p = {p_val:.3f}")
+
+# Pairwise t-tests
+similarity_data = {cond: np.array(conditions_siips[cond]).ravel() for cond in pain_conditions}
+
+print("Pairwise t-tests between conditions:")
+for cond1, cond2 in itertools.combinations(pain_conditions, 2):
+    sim1 = similarity_data[cond1]
+    sim2 = similarity_data[cond2]
+    t_stat, p_val = ttest_ind(sim1, sim2, nan_policy='omit')
+    print(f"{cond1} vs {cond2}: t = {t_stat:.3f}, p = {p_val:.3f}")
+
+#%%
+# paired t test for siips 
+from scipy.stats import ttest_rel
+# paired t-test for SIIPS between ANA and HYPER
+ana_shock = np.array(conditions_nps['ANA_shock']).ravel()
+nana_shock = np.array(conditions_nps['N_ANA_shock']).ravel()
+hyper_shock = np.array(conditions_nps['HYPER_shock']).ravel()
+ana_siips = np.array(conditions_siips['ANA_shock']).ravel()
+nana_siips = np.array(conditions_siips['N_ANA_shock']).ravel()
+hyper_siips = np.array(conditions_siips['HYPER_shock']).ravel()
+ana_shock = ana_shock[~np.isnan(ana_shock)]
+diff_ana_nana = ana_shock - nana_shock
+
+reload(preproc_utils)
+xlsx_path = r'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/masks/Hypnosis_variables_20190114_pr_jc.xlsx'
+subjects = list(setup['subjects'])
+apm_subjects = ['APM' + subj[4:] for subj in subjects]
+print(apm_subjects)
+
+Y = preproc_utils.load_process_y(xlsx_path, subjects)
+shss_y = np.array(Y['SHSS_score'].values, dtype = float)[:-1] # sub 47 !!
+shss_ranks = shss_y.argsort() 
+# scatter plot + correl for SHSS and NPS
+hyper_nps = np.transpose(np.array(conditions_nps['ANA_shock'])).ravel()
+
+from src.visu_utils import jointplot
+jointplot(shss_y, ana_shock)
+jointplot(shss_y, nana_shock)
+jointplot(shss_y, hyper_shock)
+jointplot(shss_y, ana_siips)
+jointplot(shss_y, nana_siips)
+
+#%% RSA between pairwise siips/NPS and SHSS
+# NPS Sig for annak with anashock but not for N_ANA. Eucl. N.s.
+METRIC = 'annak'  
+Y_rsa = nana_shock    
+sim_shss = isc_utils.compute_behav_similarity(shss_y, metric=METRIC, vectorize=False)
+sim_shss_vec = isc_utils.compute_behav_similarity(shss_y, metric=METRIC, vectorize=True)
+
+
+sim_siips = isc_utils.compute_behav_similarity(Y_rsa, metric=METRIC, vectorize=True)
+sim_siips_mat = isc_utils.compute_behav_similarity(Y_rsa, metric=METRIC, vectorize=False)
+
+# sim_shss_vec_annak = isc_utils.compute_behav_similarity(ana_shock, metric='annak', vectorize=True)
+
+#compute RSA SHSS and cosine hypno
+r, p, dist = isc_utils.matrix_permutation(sim_shss_vec, sim_siips, n_permute=10000, metric="spearman", how="upper", tail=2,n_jobs = 32, return_perms=True)
+print(f"Spearman correlation between SHSS and cosine hypno: {r:.4f}, p-value: {p:.4f}")
+
+ranked_sim = sim_siips_mat[np.ix_(shss_ranks, shss_ranks)]
+
+# plot siimat as heatmap
+from src.visu_utils import plot_simmat_behav
+plot_simmat_behav(sim_siips_mat, " ")
+
+#%%
 
 # %%
 
@@ -1203,6 +1320,8 @@ for cond in pain_reg:
 from nilearn import plotting
 import seaborn as sns
 import random
+import itertools
+from scipy.stats import ttest_ind
 views = []
 for condition in all_regs:
     img = file_group[condition]

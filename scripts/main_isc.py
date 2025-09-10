@@ -121,18 +121,17 @@ model_name = setup.model_name
 results_dir = setup.results_dir
 
 # behav data
-reload(isc_utils)
-isc_data_df = isc_utils.load_isc_data(
-    base_path, folder_is="subject", model=model_is
-)  # !! change params if change base_dir
 if "single-trial" in setup.model_id:
     print("Loading single trial data")
     model_is = "instrbk"
     isc_data_df = isc_utils.load_single_trial_isc_data(base_path)
-
+else:
+    isc_data_df = isc_utils.load_isc_data(
+        base_path, folder_is="subject", model=model_is
+    )  # !! change params if change base_dir
 isc_data_df = isc_data_df.sort_values(by="subject")
 
-# exclude subjects
+# exclude subjects if specified
 isc_data_df = isc_data_df[~isc_data_df["subject"].isin(exclude_sub)].sort_values(
     by="subject"
 )
@@ -170,7 +169,7 @@ save_setup = os.path.join(setup.results_dir, "setup_parameters.json")
 with open(save_setup, "w") as fp:
     json.dump(setup.to_dict(), fp, indent=4)
 
-result_paths = {
+result_paths = {  # for all analyses results
     "isc_results": {},
     "isc_combined_results": {},
     "condition_contrast_results": {},
@@ -178,7 +177,6 @@ result_paths = {
     "rsa_isc_results": {},
     "setup_parameters": os.path.join(setup.results_dir, "setup_parameters.json"),
 }
-
 
 # %%
 reload(isc_utils)
