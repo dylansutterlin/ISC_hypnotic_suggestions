@@ -1,17 +1,68 @@
-# behavioral Plots and analyses
+# %%
+from nilearn.image import math_img
+from nilearn.plotting import plot_stat_map
+import os
+import seaborn as sns
+from nilearn import plotting
+from nilearn.plotting import view_img
 
-save_path = "/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/RSA/isc-RSA_ext_conds_sugg-pain_tian216_2tails"
-save_figures = os.path.join(
-    project_dir,
-    "results/imaging/RSA/isc-RSA_ext_conds_sugg-pain_tian216_2tails/post-hoc_figures",
+import time
+import matplotlib.pyplot as plt
+from importlib import reload
+import nibabel as nib
+import numpy as np
+import pandas as pd
+from nilearn.image import concat_imgs
+from brainiak.isc import (
+    isc,
+    bootstrap_isc,
+    permutation_isc,
+    compute_summary_statistic,
+    phaseshift_isc,
 )
-os.makedirs(save_path, exist_ok=True)
+from nilearn.maskers import MultiNiftiMapsMasker, MultiNiftiMasker
+from nilearn.datasets import fetch_atlas_schaefer_2018
+from sklearn.utils import Bunch
+from nilearn.plotting import view_img_on_surf
+from nilearn.maskers import NiftiLabelsMasker
+from nilearn.plotting import plot_glass_brain
+
+from nilearn.plotting import find_parcellation_cut_coords
+
+import src.isc_utils as isc_utils
+import src.visu_utils as visu_utils
+import src.preproc_utils as preproc_utils
+reload(visu_utils)
+reload(isc_utils)
 
 
-from src import preproc_utils
+# %% Load the data
+model_names = {
+    "model2_sugg": "model2_sugg_23-sub_schafer_tian-200-2mm_mask-whole-brain_pairWise-True_preproc_reg-mvmnt-True-8",
+    "model3_shock": "model3_shock_23-sub_schafer_tian-200-2mm_mask-whole-brain_pairWise-True_preproc_reg-mvmnt-True-8",
+}
 
-isc_results_roi = {}
+MODEL_IS = "model2_sugg"
+project_dir = "/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions"
+model_name = model_names[MODEL_IS]
 
+results_dir = os.path.join(project_dir, f"results/imaging/ISC/{model_name}")
+setup = isc_utils.load_json(os.path.join(results_dir, "setup_parameters.json"))
+
+# create visualization dir.
+save_visu = os.path.join(results_dir, "post-hoc_VISU-tables")
+os.makedirs(save_visu, exist_ok=True)
+
+save_behav = os.path.join(save_visu, "plots_from_visu_behav")
+os.makedirs(save_behav, exist_ok=True)
+
+parcel_name = setup["atlas_name"]
+do_pairWise = setup["do_pairwise"]
+n_boot = setup["n_boot"]
+
+#%%
+#==================================
+# load Y data
 behav_df = pd.read_csv(
     os.path.join(setup["project_dir"], f"results/behavioral_data_cleaned.csv"),
     index_col=0,
@@ -19,7 +70,7 @@ behav_df = pd.read_csv(
 behav_df.index.name = "subjects"
 behav_df = behav_df.sort_index()
 
-xlsx_path = r"/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/masks/Hypnosis_variables_20190114_pr_jc.xlsx"
+xlsx_path = os.path.join(project_dir, 'masks/Hypnosis_variables_20190114_pr_jc.xlsx')
 subjects = list(setup["subjects"])
 apm_subjects = ["APM" + subj[4:] for subj in subjects]
 Y = preproc_utils.load_process_y(xlsx_path, subjects)
@@ -41,22 +92,17 @@ plt.tight_layout()
 plt.show()
 
 # %%
-import matplotlib.pyplot as plt
-import seaborn as sns
-
-red_blue = ["#df265e", "#004197"]  # red blue green blue
-shss_color = "#a1a0a0"
-# FINAL JOINTPLOTS
-# plot jointplots
-from src import isc_utils
-import src.isc_utils as isc_utils
-import src.visu_utils as visu_utils
-from importlib import reload
-
+# PUBLICATION JOINTPLOTS
+# regression SHSS ~ change in pain 
+from src.visu_utils import jointplot
 reload(visu_utils)
 reload(isc_utils)
 
-from src.visu_utils import jointplot
+color_conds = {"Ana": "#004197", "Hyper": "#df265e", "Neutral": "#a1a0a0", "SHSS": "#79ab8d"}
+
+
+red_blue = ["#df265e", "#004197"]  # red blue green blue
+shss_color = "#98c3db"
 
 x_shss = np.array(Y["SHSS_score"]).astype(float)
 
@@ -69,16 +115,17 @@ for y_name in ["raw_change_ANA", "raw_change_HYPER"]:
     g = jointplot(
         x_shss,
         np.array(Y[y_name]).astype(float),
-        x_label="Hypnotic Susceptibility",
+        x_label="Hypnotic susceptibility",
         y_label=y_label,
         title=None,
         density_color_x=shss_color,
         density_color_y=y_color,
+        alpha=0.75,
     )
-    g.savefig(os.path.join(save_figures, fig_id), dpi=1000, bbox_inches="tight")
+    g.savefig(os.path.join(save_behav, fig_id), dpi=300, bbox_inches="tight")
 
 # %%
-# REGRESSION
+# REGRESSION STATS
 # # regression SHSS ~ pain
 import statsmodels.api as sm
 
@@ -97,18 +144,18 @@ model = sm.OLS(y, X).fit()
 print(model.summary())
 
 # %%
-# FINAL PAIN RATINGS PLOT
+# PUBLICATION PAIN RATINGS PLOT
 # T test + violin plot for pain ratings
 from scipy.stats import ttest_rel
 from itertools import combinations
-
+reload(visu_utils)
 # Perform paired t-test
 
 variables = {
     "Analgesia": ["mean_VAS_ana_int", "mean_VAS_ana_UnP"],
     "Hyperalgesia": ["mean_VAS_hyper_int", "mean_VAS_hyper_UnP"],
-    "Neutral (Ana.)": ["mean_VAS_Nana_int", "mean_VAS_Nana_UnP"],
-    "Neutral (Hyper.)": ["mean_VAS_Nhyper_int", "mean_VAS_Nhyper_UnP"],
+    "Control (Ana.)": ["mean_VAS_Nana_int", "mean_VAS_Nana_UnP"],
+    "Control (Hyper.)": ["mean_VAS_Nhyper_int", "mean_VAS_Nhyper_UnP"],
 }
 
 
@@ -138,40 +185,101 @@ reload(visu_utils)
 fig = visu_utils.plot_four_condition_violin(
     data_dict={
         "Analgesia": mean_df["Analgesia"],
-        "Neutral\n(Ana.)": mean_df["Neutral (Ana.)"],
+        "Control\n(Ana.)": mean_df["Control (Ana.)"],
         "Hyperalgesia": mean_df["Hyperalgesia"],
-        "Neutral\n(Hyper.)": mean_df["Neutral (Hyper.)"],
+        "Control\n(Hyper.)": mean_df["Control (Hyper.)"],
     },
     palette=palette,
     title=None,
 )
 
 fig.savefig(
-    os.path.join(save_figures, "pain_ratings_violin.png"), dpi=1000, bbox_inches="tight"
+    os.path.join(save_behav, "pain_ratings_violin.png"), dpi=1000, bbox_inches="tight"
 )
 
 
 # %%
-# cov matrix Y_sugg
-corr_matrix_sugg = np.corrcoef(np.array(Y).astype(float), rowvar=False)
-np.fill_diagonal(corr_matrix_sugg, 0)
+# Similarity matrices SHSS (ANNAK | Euclidean)
+reload(visu_utils)
+cmap = 'RdBu_r'
+# UNIVARIATE pairwise similarities : NN & AnnaK
+y = Y["SHSS_score"].values
+y = (y - np.mean(y)) / np.std(y)
+sim_mat_euclidean = isc_utils.compute_behav_similarity(
+    y, metric="euclidean", vectorize=False
+)
+sim_mat_euclidean = (sim_mat_euclidean * 2) - 1
+sim_mat_annak = isc_utils.compute_behav_similarity(
+    y, metric="annak", vectorize=False
+)
+ranked_indices = np.argsort(Y["SHSS_score"].values)
 
-plt.figure(figsize=(10, 8))
-sns.heatmap(
-    corr_matrix_sugg,
-    annot=True,
-    fmt=".2f",
-    cmap="coolwarm",
+sim_annak_ranked = sim_mat_annak[np.ix_(ranked_indices, ranked_indices)]
+sim_euclidean_ranked = sim_mat_euclidean[np.ix_(ranked_indices, ranked_indices)]
+
+visu_utils.plot_simmat_isc(
+    simmat=sim_annak_ranked,
+    x_label=None,  #' ranked subjects (SHSS)'
+    colorbar_name=None,
+    tick_fontsize=60,
+    ticks=False,
+    label_fontsize=70,
+    title=f"",
     vmin=-1,
     vmax=1,
-    xticklabels=Y.columns,
-    yticklabels=Y.columns,
-    square=True,
-    cbar_kws={"label": "Correlation", "shrink": 0.8},  # Adjust shrink to control size
+    show_colorbar=False,
+    save_path=os.path.join(save_behav, "simmat_SHSS_AnnaK.png")
 )
-cbar = plt.gca().collections[0].colorbar
-cbar.ax.tick_params(labelsize=15)  # Increase the fontsize of the color bar
-cbar.set_label("Correlation", fontsize=18)  # Increase the label size
-plt.title("Correlation Matrix of hypnotic features", fontsize=22)
-plt.xticks(rotation=45, ha="right", fontsize=15)
-plt.yticks(rotation=0, fontsize=15)
+
+visu_utils.plot_simmat_isc(
+    simmat=sim_euclidean_ranked,
+    x_label=None,  #' ranked subjects (SHSS)'
+    colorbar_name=None,
+    tick_fontsize=60,
+    ticks=False,
+    label_fontsize=70,
+    title=f"",
+    vmin=-1,
+    vmax=1,
+    show_colorbar=False,
+    save_path=os.path.join(save_behav, "simmat_SHSS_Euclidean.png")
+)
+
+#%%
+reload(visu_utils)
+tick_fontsize=75    
+tick_labels = ['Low', "", 'High']
+visu_utils.plot_isc_colorbar(
+    vmin=-1,
+    vmax=1,
+    cmap=cmap,
+    figsize=(2, 7),
+    label=None,
+    tick_fontsize=tick_fontsize,
+    tick_labels=tick_labels,
+    horizontal=False,)
+
+visu_utils.plot_isc_colorbar(
+    vmin=-1,
+    vmax=1,
+    cmap=cmap,
+    figsize=(8,3),
+    label=None,
+    tick_fontsize=tick_fontsize,
+    tick_labels=tick_labels,
+    horizontal=True,)
+#%%
+visu_utils.plot_simmat_behav(
+    simmat=sim_euclidean_ranked,
+    title= " ", )
+
+
+#%%
+        isc_mat = isc_mat[np.ix_(ranked_indices, ranked_indices)]  # reorder
+
+        vmax = np.max(np.abs(isc_mat))
+
+        fig_path = os.path.join(
+            save_sig_rsa_matrices, f"{rsa_cond}_{sig_region}_id{region_id}.png"
+        )
+

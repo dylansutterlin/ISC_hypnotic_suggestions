@@ -1022,8 +1022,19 @@ def jointplot(
 
     # Compute correlation
     slope, intercept, r_value, p_value, _ = linregress(x_valid, y_valid)
-    corr_label = f"r = {r_value:.2f}, p = {p_value:.3f}"
 
+    corr_label = f"r = {r_value:.2f}"
+    if p_value < 0.001:
+        sig_star = "***"
+        corr_label += sig_star
+    elif p_value < 0.01:
+        sig_star = "**"
+        corr_label += sig_star
+    elif p_value < 0.05:
+        sig_star = "*"
+        corr_label += sig_star
+    else:
+        corr_label = f"r = {r_value:.2f}, p = {p_value:.3f}"
     # Determine consistent limits
     x_margin = (x_valid.max() - x_valid.min()) * 0.05
     y_margin = (y_valid.max() - y_valid.min()) * 0.05
@@ -1109,6 +1120,7 @@ def plot_four_condition_violin(
     data_dict,
     palette=None,
     title="Pain Ratings by Condition",
+    x_name="Hypnotic suggestion conditions",
     save_as=None,
     min_y=0,
     max_y=110,
@@ -1239,7 +1251,7 @@ def plot_four_condition_violin(
 
     # Formatting
     ax.set_title(title, fontsize=28, y=1.02)
-    ax.set_xlabel("Hypnotic suggestions", fontsize=40, labelpad=20)
+    ax.set_xlabel(x_name, fontsize=40, labelpad=20)
     ax.set_xticklabels(ax.get_xticklabels(), fontsize=37)
     ax.set_ylabel("Pain ratings", fontsize=40)
     ax.tick_params(axis="both", which="major", labelsize=37, width=4, length=12)
@@ -1786,6 +1798,8 @@ def plot_simmat_isc(
     dpi=1000,
     figsize=(10, 10),
     tick_fontsize=40,
+    cbar_ticks=None,
+    ticks=None,
     label_fontsize=60,
 ):
     import matplotlib.pyplot as plt
@@ -1814,7 +1828,6 @@ def plot_simmat_isc(
             bbox_transform=ax.transAxes,
             borderpad=0,
         )
-        cbar_ticks = [vmin, 0, vmax]
         cbar = plt.colorbar(im, cax=cax, ticks=cbar_ticks)
         cbar.ax.tick_params(labelsize=tick_fontsize, width=3, length=6)
 
@@ -1826,24 +1839,18 @@ def plot_simmat_isc(
         else:
             cbar.ax.yaxis.label.set_visible(False)
 
-        tick_labels = [f"{t:.2f}" if t != 0 else "0" for t in cbar_ticks]
-        cbar.ax.set_yticklabels(tick_labels)
-
-    # Titles and labels
-    ax.set_title(title, fontsize=label_fontsize, pad=15)
-    if x_label:
-        ax.set_xlabel(x_label, fontsize=label_fontsize, labelpad=14)
-    if y_label:
-        ax.set_ylabel(y_label, fontsize=label_fontsize, labelpad=14)
-
-    # Custom tick selection
-    max_idx = simmat.shape[0] - 1
-    ticks = [i for i in [0, 20] if i <= max_idx]
-    ax.set_xticks(ticks)
-    ax.set_yticks(ticks)
-    ax.set_xticklabels(ticks, fontsize=tick_fontsize)
-    ax.set_yticklabels(ticks, fontsize=tick_fontsize)
-    ax.tick_params(length=8, width=3)
+    if ticks is False:
+        ax.set_xticks([])
+        ax.set_yticks([])
+    else:
+        # Custom tick selection
+        max_idx = simmat.shape[0] - 1
+        ticks = [i for i in [0, 20] if i <= max_idx]
+        ax.set_xticks(ticks)
+        ax.set_yticks(ticks)
+        ax.set_xticklabels(ticks, fontsize=tick_fontsize)
+        ax.set_yticklabels(ticks, fontsize=tick_fontsize)
+        ax.tick_params(length=8, width=3)
 
     plt.tight_layout()
 
@@ -1862,11 +1869,14 @@ def plot_isc_colorbar(
     vmin,
     vmax,
     cmap="RdBu_r",
-    label="ISC Similarity",
+    label=None,
+    figsize=None,
     label_fontsize=60,
     tick_fontsize=50,
+    tick_labels=None,
     save_path=None,
     dpi=300,
+    horizontal=False,
 ):
     """
     Plot and optionally save a standalone colorbar image with specified limits and styling.
@@ -1879,8 +1889,10 @@ def plot_isc_colorbar(
         Maximum value of the color scale.
     cmap : str
         Colormap name.
-    label : str
+    label : str or None
         Label for the colorbar.
+    figsize : tuple or None
+        Figure size in inches (width, height). If None, set automatically.
     label_fontsize : int
         Font size for the label.
     tick_fontsize : int
@@ -1889,19 +1901,37 @@ def plot_isc_colorbar(
         Path to save the figure. If None, shows the plot interactively.
     dpi : int
         DPI for saved figure.
+    horizontal : bool
+        If True, plot horizontal colorbar. Default is vertical.
     """
-    fig, ax = plt.subplots(figsize=(2, 5))  # tall and narrow
+    if figsize is None:
+        figsize = (8, 2) if horizontal else (2, 8)
+
+    fig, ax = plt.subplots(figsize=figsize)
 
     norm = mpl.colors.Normalize(vmin=vmin, vmax=vmax)
+    orientation = "horizontal" if horizontal else "vertical"
+    ticks = [vmin, 0, vmax]
+
     cbar = mpl.colorbar.ColorbarBase(
-        ax, cmap=cmap, norm=norm, orientation="vertical", ticks=[vmin, 0, vmax]
+        ax, cmap=cmap, norm=norm, orientation=orientation, ticks=ticks
     )
-    cbar.set_label(label, fontsize=label_fontsize, rotation=270, labelpad=-10)
+
+    if label:
+        if horizontal:
+            cbar.set_label(label, fontsize=label_fontsize, labelpad=10)
+        else:
+            cbar.set_label(label, fontsize=label_fontsize, rotation=270, labelpad=15)
+
     cbar.ax.tick_params(labelsize=tick_fontsize, width=3, length=6)
 
-    # Format tick labels
-    tick_labels = [f"{t:.2f}" if t != 0 else "0" for t in [vmin, 0, vmax]]
-    cbar.ax.set_yticklabels(tick_labels)
+    if tick_labels is None:
+        tick_labels = [str(t) if t != 0 else "0" for t in ticks]
+
+    if horizontal:
+        cbar.ax.set_xticklabels(tick_labels)
+    else:
+        cbar.ax.set_yticklabels(tick_labels)
 
     plt.tight_layout()
 
@@ -2177,6 +2207,10 @@ schaeffer_region_mapping = {
     },
     "7Networks_LH_SalVentAttn_Med_1": {"anatomical_label": "aMCC", "region_index": 52},
     "7Networks_LH_SalVentAttn_Med_3": {"anatomical_label": "SMA", "region_index": 54},
+    "7Networks_LH_Limbic_OFC_1" : {
+        "anatomical_label": "Left OFC",
+        "region_index": 55,
+    },  # validation 13 sept.
     "7Networks_LH_Default_Temp_3": {
         "anatomical_label": "Left anterior STG",
         "region_index": 76,
@@ -2188,15 +2222,19 @@ schaeffer_region_mapping = {
     "7Networks_LH_Default_Temp_5": {
         "anatomical_label": "Left post. STG",
         "region_index": 78,
-    },  # validation 4 sept.,
-    "7Networks_LH_Default_PFCdPFCm_6": {
-        "anatomical_label": "L dlPFC",
+    },  # validation 4 sept.
+    "7Networks_LH_Default_PFC_3": {
+        "anatomical_label": "L IFG",
         "region_index": 85,
-    },
+    }, # validation 13 sept.
     "7Networks_LH_Default_PFC_12": {
         "anatomical_label": "Left MFG",
         "region_index": 94,
     },  # validation 4 sept.
+    "7Networks_LH_Default_PHC_1" : {
+        "anatomical_label": "Left PHG",
+        "region_index": 100,
+    },  # validation 13 sept.
     "7Networks_RH_SomMot_1": {
         "anatomical_label": "R planum temporale",
         "region_index": 116,
@@ -2221,6 +2259,10 @@ schaeffer_region_mapping = {
         "anatomical_label": "Right Somatosensory",
         "region_index": 132,
     },
+    "7Networks_RH_DorsAttn_Post_4": {
+        "anatomical_label": "Right supramarginal gyrus",
+        "region_index": 138,
+    }, # validation 13 sept.
     "7Networks_RH_SalVentAttn_TempOccPar_2": {
         "anatomical_label": "Right angular gyrus",
         "region_index": 149,

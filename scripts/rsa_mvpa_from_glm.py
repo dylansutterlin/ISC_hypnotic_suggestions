@@ -421,10 +421,10 @@ sim_behav_vec_annak_pain = isc_utils.compute_behav_similarity(
     y_pain, metric="annak", vectorize=True
 )
 
-# %%
-
-save_path = f"/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/RSA/mvpa_IS-RSA_sugg-pain_contrast-based_tian216"
+save_path = os.path.join( project_dir, "results/imaging/RSA/mvpa_IS-RSA_sugg-pain_contrast-based_tian216")
 os.makedirs(save_path, exist_ok=True)
+
+# %%
 
 compute_rsa_pain = False
 if compute_rsa_pain is True:
@@ -524,6 +524,19 @@ model_name = "shock_contrast_chge-pain"
 save_tables_rsa = os.path.join(save_path, model_name, "tables", "rsa")
 os.makedirs(save_tables_rsa, exist_ok=True)
 
+all_p_values = []
+for sim in results_dct.keys():  # similarity metric (e.g., 'euclidean', 'annak')
+    for cond in results_dct[sim].keys():  # e.g., 'Analgesia', 'Hyperalgesia'
+
+        model_id = sim + "_" + cond
+        rsa_df = results_dct[sim][cond]
+        p_values = rsa_df["p_values"].values
+        all_p_values.extend(p_values)
+
+p_thresh_global = isc_utils.fdr(np.array(all_p_values), q=0.05)
+print("Global FDR threshold across all models:", p_thresh_global)
+
+# Main loop to visualize results and threshold
 for sim in results_dct.keys():  # similarity metric (e.g., 'euclidean', 'annak')
     for cond in results_dct[sim].keys():  # e.g., 'Analgesia', 'Hyperalgesia'
 
@@ -545,9 +558,10 @@ for sim in results_dct.keys():  # similarity metric (e.g., 'euclidean', 'annak')
             elif correction == "within_FDR":
                 p_thresh = isc_utils.fdr(p_values, q=0.05)
                 p_thresh_str = "within_FDR" + str(round(p_thresh, 4))
-
+                print("Within-model FDR threshold:", p_thresh)
+                show = False
             elif correction == "FDR":
-                p_thresh = isc_utils.fdr(p_values, q=0.05)  # or load global value
+                p_thresh = p_thresh_global  # or load global value
                 p_thresh_str = "FDR" + str(round(p_thresh, 4))
                 show = True
 
@@ -566,7 +580,7 @@ for sim in results_dct.keys():  # similarity metric (e.g., 'euclidean', 'annak')
                     title=f"RSA MVPA {sim} – {cond} ({p_thresh_str})",
                     save_path=None,
                     show=show,
-                    display_mode="x",
+                    display_mode="x",       
                     cut_coords_plot=(5),
                     color="coolwarm",
                 )
@@ -732,9 +746,15 @@ for model_id in rsa_stats_imgs_mvpa.keys():
     view = view_img(rsa_stats_imgs_mvpa[model_id][0], title=title)
     views.append(view)
 # %%
+# PUBLICATION
 # NEW MODEL SUGGESTION VAR ~ PAIN CONTRAST
 # IS-RSA SHSS ~ ISC-PAIN
-specific_re_run = True
+specific_re_run = False
+
+save_path = f"/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/RSA/mvpa_IS-RSA_sugg-pain_contrast-based_tian216"
+os.makedirs(save_path, exist_ok=True)
+
+
 if specific_re_run is True:
     sim_model = {
         "euclidean": sim_behav_vec,
@@ -805,9 +825,6 @@ if specific_re_run is True:
                 isc_utils.fdr(results_dct[sim][cond]["p_values"].to_numpy()),
             )
 
-    save_path = f"/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/RSA/mvpa_IS-RSA_sugg-pain_contrast-based_tian216"
-    os.makedirs(save_path, exist_ok=True)
-
     save_to = os.path.join(
         save_path, f"IS-RSA_mvpa-pain_behav-pain{n_perm_rsa}perm.pkl"
     )
@@ -816,6 +833,7 @@ if specific_re_run is True:
 
 else:
     # load results
+
     load_path = os.path.join(
         save_path, f"IS-RSA_mvpa-pain_behav-pain{n_perm_rsa}perm.pkl"
     )
@@ -826,8 +844,10 @@ else:
 rsa_stats_imgs_mvpa = {}
 rsa_tables_mvpa_fdr = {}
 model_name = "shock_contrast_SHSS"
-save_tables_rsa = os.path.join(save_path, model_name, "tables", "rsa")
-os.makedirs(save_tables_rsa, exist_ok=True)
+save_tables_shock_shss = os.path.join(save_path, model_name, "tables")
+os.makedirs(save_tables_shock_shss, exist_ok=True)
+save_plots_shock_shss = os.path.join(save_path, model_name, "plots")
+os.makedirs(save_plots_shock_shss, exist_ok=True)
 
 all_p_values = []
 for sim in results_dct.keys():  # similarity metric (e.g., 'euclidean', 'annak')
@@ -907,15 +927,144 @@ for sim in results_dct.keys():  # similarity metric (e.g., 'euclidean', 'annak')
                     "Coordinates (X,Y,Z)",
                 ]
                 fname = f"RSA_MVPA_{sim}_{cond}_table_{p_thresh_str}.csv"
-                sig_df.to_csv(os.path.join(save_tables_rsa, fname), index=False)
+                sig_df.to_csv(os.path.join(save_tables_shock_shss, fname), index=False)
 
                 print(f"Sig ROIs for {sim} – {cond}:", sig_df["Label"].to_list(), "\n")
+#%%
+# PUBLICATION IS-RSA SHSS - PAIN CONTRAST
+# View significant results and find coords to display
+shss_annak_Ana_df = rsa_tables_mvpa_fdr['annak_ANA_shock_minus_N_ANA_shock']
+shss_annak_Ana_img = rsa_stats_imgs_mvpa['annak_ANA_shock_minus_N_ANA_shock'][0]
+view_img(shss_annak_Ana_img, title="RSA MVPA annak_ANA_shock_minus_N_ANA_shock", cmap="RdBu_r")
+
+#%%
+# =====
+# MAnual viewvinf for COORDS
+import atlasreader
+from nilearn.image import math_img
+pwd_scripts = os.path.join(project_dir, "scripts")
+os.chdir(os.path.join(pwd_scripts, "atlas_views"))
+print("Current working directory:", os.getcwd())
+from atlasreader import create_output
+
+def filter_atlas(atlas_img, atlas_labels_dict, keep_ids):
+    atlas_data = atlas_img.get_fdata()
+    mask_data = np.isin(atlas_data, keep_ids) * atlas_data
+    filtered_img = new_img_like(atlas_img, mask_data)
+
+    # Build new labels dict for the kept IDs
+    new_labels = {
+        roi: label for roi, label in atlas_labels_dict.items() if roi in keep_ids
+    }
+    return filtered_img, new_labels
+
+
+# Plot the filtered atlas with clear discrete colorbar
+def plot_filtered_atlas(filtered_img, filtered_labels, cmap="tab20"):
+    label_ids = list(filtered_labels.keys())
+    label_names = list(filtered_labels.values())
+
+    return plotting.view_img(
+        filtered_img,
+        cmap=cmap,
+        colorbar=True,
+        title="Filtered Atlas",
+        symmetric_cmap=False,
+    )
+
+
+def plot_single_roi(atlas_img, roi_id, atlas_labels=None, title=None):
+
+    mask_img = math_img(f"img == {roi_id}", img=atlas_img)
+
+    title = f"ROI {roi_id}"
+    if atlas_labels and roi_id in atlas_labels:
+        title += f" {atlas_labels[roi_id]}"
+
+    print(f"Displaying region {roi_id}: {title}")
+    return mask_img, plotting.view_img(
+        mask_img, cmap="Reds", title=title, colorbar=False
+    )
+
+roi_idx = 85
+masked_region, _plot = plot_single_roi(
+    atlas, roi_idx, id_labels_dct, title=f"roi idx {roi_idx}"
+)  # 30 = Default_Temp_3 LH
+_plot
+
+create_output(masked_region, voxel_thresh=0.99, cluster_extent=5)
+atlas_df = pd.read_csv("atlasreader_peaks.csv")
+atlas_df
+#%%
+# PUBLICATION SLICES SHSS-PAIN CONTRAST: ANAAK
+# --------------------------------
+COORDS = {
+    "x": [-28, -30, 54, 56, ],
+    "y": [-34, -36],
+}
+
+SAVE_TO = os.path.join(save_plots_shock_shss, "Anak_ANA_shock_minus_N_ANA_shock")
+os.makedirs(SAVE_TO, exist_ok=True)
+IMG = rsa_stats_imgs_mvpa['annak_ANA_shock_minus_N_ANA_shock'][0]
+
+cm = "RdBu_r"
+
+visu_utils.save_slices(
+    IMG, COORDS, SAVE_TO, img_id="ana_shss", cmap=cm
+)
+# save colorbar
+fig_path = os.path.join(SAVE_TO, "colorbar.png")
+cb_ab = visu_utils.save_colorbar(
+    IMG,
+    cmap=cm,
+    outpath=fig_path,
+    symmetric_cbar=True,  # false because we dont keep negative coeff
+    offset=0,
+    n_ticks=3,
+    transparent=True,
+)
+
+#%%
+# PUBLICATION SLICES SHSS-PAIN CONTRAST: ANAAK / HYPER
+# --------------------------------
+view_img(rsa_stats_imgs_mvpa['annak_HYPER_shock_minus_N_HYPER_shock'][0]
+)
+#%%
+COORDS = {
+    "x": [-44, -24, -48, -60],
+    "y": [14, -36],
+    "z": [-20, -16, -2]
+}
+
+SAVE_TO = os.path.join(save_plots_shock_shss, "Anak_HYPER_shock_minus_N_HYPER_shock")
+os.makedirs(SAVE_TO, exist_ok=True)
+IMG = rsa_stats_imgs_mvpa['annak_HYPER_shock_minus_N_HYPER_shock'][0]
+
+cm = "RdBu_r"
+
+visu_utils.save_slices(
+    IMG, COORDS, SAVE_TO, img_id="ana_shss", cmap=cm
+)
+# save colorbar
+fig_path = os.path.join(SAVE_TO, "colorbar.png")
+cb_ab = visu_utils.save_colorbar(
+    IMG,
+    cmap=cm,
+    outpath=fig_path,
+    symmetric_cbar=True,  # false because we dont keep negative coeff
+    offset=0,
+    n_ticks=3,
+    transparent=True,
+)
+
 # %%
-# DECODING
+from nilearn.image import new_img_like, math_img
+from nilearn.maskers import NiftiMasker
+# DECODING SUGG CONDITION FROM MVPA PATTERN IN ROIS
+roi_to_test = ["7Networks_RH_DorsAttn_Post_10", "7Networks_RH_SalVentAttn_Med_1"]
 roi_to_test = [
     "7Networks_LH_Default_PHC_1"
 ]  # , "7Networks_LH_SalVentAttn_FrOperIns_4"]
-roi_to_test = ["7Networks_RH_DorsAttn_Post_10", "7Networks_RH_SalVentAttn_Med_1"]
 # hyper contrast roi_to_test = ['7Networks_LH_Limbic_OFC_1', '7Networks_LH_Default_PFC_3', 'PUT-rh'] #, '7Networks_LH_Default_PHC_1', '7Networks_RH_DorsAttn_Post_4', '7Networks_RH_SalVentAttn_TempOccPar_2']
 # ana classif roi_to_test = ['7Networks_LH_Default_PHC_1', '7Networks_RH_DorsAttn_Post_4', '7Networks_RH_SalVentAttn_TempOccPar_2']
 
@@ -976,8 +1125,6 @@ from sklearn.model_selection import GroupKFold
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
-import matplotlib.pyplot as plt
-import numpy as np
 
 for roi_label in tqdm(roi_to_test):
     print(f"--------\n {roi_label}\n---------")
@@ -1085,7 +1232,7 @@ for roi_label in tqdm(roi_to_test):
             ("svm", SVC(kernel=kernel, C=1)),
         ]
     )
-
+    
     gkf = GroupKFold(n_splits=5)
     scores = cross_val_score(
         pipeline, X_all, y_encoded, groups=np.array(subjects_all), cv=gkf
