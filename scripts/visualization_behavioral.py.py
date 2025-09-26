@@ -154,10 +154,9 @@ reload(visu_utils)
 variables = {
     "Analgesia": ["mean_VAS_ana_int", "mean_VAS_ana_UnP"],
     "Hyperalgesia": ["mean_VAS_hyper_int", "mean_VAS_hyper_UnP"],
-    "Control (Ana.)": ["mean_VAS_Nana_int", "mean_VAS_Nana_UnP"],
-    "Control (Hyper.)": ["mean_VAS_Nhyper_int", "mean_VAS_Nhyper_UnP"],
+    "Neutral (Ana.)": ["mean_VAS_Nana_int", "mean_VAS_Nana_UnP"],
+    "Neutral (Hyper.)": ["mean_VAS_Nhyper_int", "mean_VAS_Nhyper_UnP"],
 }
-
 
 cond_means = {}
 for label, cols in variables.items():
@@ -275,11 +274,34 @@ visu_utils.plot_simmat_behav(
 
 
 #%%
-        isc_mat = isc_mat[np.ix_(ranked_indices, ranked_indices)]  # reorder
+# PUBLICATION
+# thepretical similarity matrices for figures
 
-        vmax = np.max(np.abs(isc_mat))
 
-        fig_path = os.path.join(
-            save_sig_rsa_matrices, f"{rsa_cond}_{sig_region}_id{region_id}.png"
-        )
+scores = np.array([1, 3, 5.5, 8, 10])
 
+euclidean_matrix = isc_utils.compute_behav_similarity(
+    scores, metric="euclidean", vectorize=False
+)
+euclidean_matrix = (euclidean_matrix * 2) - 1  # Rescale to [-1,1]
+# === AnnaK model matrix ===
+annak_matrix = (scores[:, None] + scores[None, :]) / (2 * scores.max())  # Normalize to [0,1]
+annak_matrix = annak_matrix * 2 - 1  # Rescale to [-1,1]
+
+# Plot both
+from src.visu_utils import plot_simmat_behav, plot_simmat_isc
+reload(visu_utils)
+cmap = 'RdBu_r'
+plot_simmat_isc(euclidean_matrix, cmap=cmap)
+plot_simmat_isc(annak_matrix, cmap=cmap)
+
+#%%
+random_scores= np.array([0.03142919, 0.63641041, 0.31435598, 0.50857069, 0.90756647,
+       0.24929223]) #randomly geneated then copied
+random_matrix = isc_utils.compute_behav_similarity(
+    random_scores, metric="euclidean", vectorize=False
+)
+random_matrix = (random_matrix * 2) - 1  # Rescale to [-1,1]
+plot_simmat_isc(random_matrix, cmap=cmap)
+
+# %%
