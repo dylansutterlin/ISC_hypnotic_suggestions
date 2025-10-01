@@ -13,10 +13,6 @@ from nilearn.image import mean_img, concat_imgs
 from nilearn.plotting import plot_design_matrix, plot_stat_map
 from nilearn import plotting
 from nilearn.glm.thresholding import threshold_stats_img
-
-
-print("current working dir : ", os.getcwd())
-# %%
 from src import preproc_utils, visu_utils, qc_utils
 import src.glm_utils as utils
 
@@ -25,20 +21,15 @@ from importlib import reload
 from nilearn import datasets, image
 from datetime import datetime
 
+print("current working dir : ", os.getcwd())
 # %% [markdown]
 ## load data
-preproc_model_name = r"model2_23subjects_zscore_sample_detrend_25-02-25"  # r'model2_3subjects_zscore_sample_detrend_25-02-25'
+preproc_model_name = r'model2_23subjects_zscore_sample_detrend_25-02-25' #r'model2_3subjects_zscore_sample_detrend_25-02-25'
 model_dir = rf"/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/preproc_data/{preproc_model_name}"
-model_name = "model3_23subjects_nuis_nodrift_{}".format(
-    datetime.today().strftime("%d-%m-%y")
-)
+preproc_model_name = r"model2_23subjects_zscore_sample_detrend_25-02-25"  # r'model2_3subjects_zscore_sample_detrend_25-02-25'
 
-model_name = "model3_final-isc_23subjects_nuis_nodrift_31-03-25"  # final model, reproduced Desmarteaux et al., 2019 !! 31 mars
+MODEL_NAME = "model3_final-isc_23subjects_nuis_nodrift_31-03-25"  # final model, reproduced Desmarteaux et al., 2019 !! 31 mars
 
-# load manually
-# model_name = r'model3_23subjects_allnuis_nodrift_10-03-25'
-
-# %%
 setup_dct = preproc_utils.load_json(os.path.join(model_dir, "setup_parameters.json"))
 data_info_dct = preproc_utils.load_pickle(
     os.path.join(model_dir, "data_info_regressors.pkl")
@@ -73,9 +64,19 @@ mask = utils.load_data_mask(ref_img)
 mni_temp = datasets.load_mni152_template(resolution=1)
 mni_bg = qc_utils.resamp_to_img_mask(mni_temp, mask)
 
-save_glm = os.path.join(setup.project_dir, "results", "imaging", "GLM", model_name)
+# Output directories for adhoc analyses directly in GLM folder
+save_glm = os.path.join(setup.project_dir, "results", "imaging", "GLM", MODEL_NAME)
 os.makedirs(save_glm, exist_ok=True)
 setup.save_dir = save_glm
+
+save_glm_adhoc = os.path.join(save_glm, "adHoc_analyses_results")
+os.makedirs(save_glm_adhoc, exist_ok=True)
+save_glm_adhoc_plots = os.path.join(save_glm_adhoc, "plots")
+os.makedirs(save_glm_adhoc_plots, exist_ok=True)
+save_glm_adhoc_tables = os.path.join(save_glm_adhoc, "tables")
+os.makedirs(save_glm_adhoc_tables, exist_ok=True)
+save_glm_adhoc_rsa = os.path.join(save_glm_adhoc, "is-rsa_pattern_similarity")
+os.makedirs(save_glm_adhoc_rsa, exist_ok=True)
 
 # %%
 # ========================================
@@ -93,7 +94,6 @@ model_res = r"/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/resul
 model_res = r"/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/GLM/model3_final-isc_23subjects_nuis_nodrift_31-03-25"
 project_dir = setup.project_dir
 results_dir = setup["save_dir"]
-
 
 # # combine Schaeffer + Tian subcortical atlas or just schaefer
 SCHAEFER_ONLY = False
@@ -147,18 +147,19 @@ import seaborn as sns
 import statsmodels.api as sm
 
 reload(preproc_utils)
+reload(isc_utils)
 xlsx_path = r"/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/masks/Hypnosis_variables_20190114_pr_jc.xlsx"
 subjects = list(setup["subjects"])
 apm_subjects = ["APM" + subj[4:] for subj in subjects]
 print(apm_subjects)
 
-Y = preproc_utils.load_process_y(xlsx_path, subjects)
+Y, rawY = preproc_utils.load_process_y(xlsx_path, subjects)
 
 sugg_cols = [
-    "SHSS_score",
+    #"SHSS_score", # Excluding SHSS!
     "Chge_hypnotic_depth",
-    "Mental_relax_absChange",
     "Abs_diff_automaticity",
+    "Mental_relax_absChange"
 ]
 
 pain_cols = ["raw_change_HYPER", "raw_change_ANA"]
@@ -166,24 +167,24 @@ pain_cols = ["raw_change_HYPER", "raw_change_ANA"]
 scaler = StandardScaler()
 Y_sugg = scaler.fit_transform(np.array(Y[sugg_cols].values, dtype=float))
 Y_pain = scaler.fit_transform(np.array(Y[pain_cols].values, dtype=float))
-
+sim_metric = 'dot'
 
 # Compute pairwise cosine similarity using the previously defined function
 cosine_sim_sugg = isc_utils.compute_behav_similarity(
-    Y_sugg, metric="cosine", vectorize=False
+    Y_sugg, metric=sim_metric, vectorize=False
 )
 cosine_sim_pain = isc_utils.compute_behav_similarity(
-    Y_pain, metric="cosine", vectorize=False
+    Y_pain, metric=sim_metric, vectorize=False
 )
 
 cosine_vec_sugg = isc_utils.compute_behav_similarity(
-    Y_sugg, metric="cosine", vectorize=True
+    Y_sugg, metric=sim_metric, vectorize=True
 )
 cosine_vec_pain = isc_utils.compute_behav_similarity(
-    Y_pain, metric="cosine", vectorize=True
+    Y_pain, metric=sim_metric, vectorize=True
 )
 
-
+#%%
 # ------------
 import scipy.cluster.hierarchy as sch
 
@@ -239,9 +240,10 @@ print(f"F-statistic = {model.fvalue:.2f}, p(F) = {model.f_pvalue:.3g}")
 # RSA
 from sklearn.metrics.pairwise import cosine_similarity
 from nilearn.image import load_img
+from sklearn.metrics import pairwise_distances
+reload(isc_utils)
 
-
-def compute_inter_subject_mvpa_similarity(condition_dict, atlas_img, labels_roi_dct):
+def compute_inter_subject_mvpa_similarity(condition_dict, atlas_img, labels_roi_dct, sim_method = 'cosine'):
     """
     Computes inter-subject cosine similarity matrices (subject x subject) for each ROI
     based on multivoxel patterns from a single condition.
@@ -304,8 +306,16 @@ def compute_inter_subject_mvpa_similarity(condition_dict, atlas_img, labels_roi_
         if valid_vectors.shape[0] < 2:
             print("Too few subjects for a ROI, skipping..")
             continue
-
-        sim_matrix = cosine_similarity(valid_vectors)
+        
+        if sim_method == 'cosine':
+            sim_matrix = cosine_similarity(valid_vectors)
+        elif sim_method == 'dot':
+            sim_matrix = np.dot(valid_vectors, valid_vectors.T)
+        elif sim_method == 'euclidean':
+            dist_matrix = pairwise_distances(valid_vectors, metric='euclidean')
+            sim_matrix = -dist_matrix  # Convert distances to similarities
+        else:
+            raise ValueError(f"Unsupported similarity method '{sim_method}'. Choose 'cosine' or 'dot'.")
         similarity_matrices[roi_idx] = pd.DataFrame(
             sim_matrix, index=valid_subjects, columns=valid_subjects
         )
@@ -321,7 +331,6 @@ def compute_inter_subject_mvpa_similarity(condition_dict, atlas_img, labels_roi_
 
     return similarity_matrices, vectorized_df
 
-
 def build_subject_dict(file_list):
     """Build a dict: {subject_id: filepath} from a list of NIfTI file paths."""
     subject_dict = {}
@@ -333,7 +342,106 @@ def build_subject_dict(file_list):
         subject_dict[subj_id] = path
     return subject_dict
 
+#%%
+# PUBLICATION/ SUPP MAT : visualize suggestion activation and contrasts
+# %%
+# Visualize second-level contrast for pain
+conditions = [
+    "ANA_sugg",
+    "N_ANA_sugg",
+    "HYPER_sugg",
+    "N_HYPER_sugg",]
+condition_names = {
+    "ANA_sugg": "Analgesia",
+    "N_ANA_sugg": "Neutral (Ana.)",
+    "HYPER_sugg": "Hyperalgesia",
+    "N_HYPER_sugg": "Neutral (Hyper.)",
+}
+# test = "/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/GLM/model3_final-isc_23subjects_nuis_nodrift_31-03-25/second_level/ANA_shock_minus_N_ANA_shock_all_effects.pkl"
+second_lev_dir = os.path.join(results_dir, "second_level")
+z_imgs = {}
+for cond in conditions:
 
+    pkl = isc_utils.load_pickle(os.path.join(second_lev_dir, cond + "_all_effects.pkl"))
+    z_img = pkl["stat"]
+    img = nib.load(os.path.join(second_lev_dir, "group_" + cond + ".nii.gz"))
+    z_imgs[cond] = z_img
+
+view_img(z_img)
+
+# Threshold and plot the second-level z-map using FDR correction
+thresh_imgs = {}
+for cond, z_img in z_imgs.items():
+    # FDR thresholding
+    thresholded_img, threshold = threshold_stats_img(
+        z_img,
+        alpha=0.02, # MORE STRICT
+        height_control="fdr",
+        cluster_threshold=20,
+        two_sided=True,
+    )
+    print(f"{cond}: FDR threshold = {threshold:.3f}")
+    thresh_imgs[cond] = (thresholded_img, threshold)
+
+# === Compute global vmin/vmax ===
+all_data = np.concatenate([img.get_fdata().ravel() for img, _ in thresh_imgs.values()])
+global_absmax = np.nanmax(np.abs(all_data))  # NaNs are ignored
+global_vmin, global_vmax = np.round(-global_absmax, 2), np.round(global_absmax, 2)
+
+for cond, z_tup_img in thresh_imgs.items():
+
+    thresholded_img = z_tup_img[0]
+    threshold = z_tup_img[1]
+    # Plot thresholded map
+
+    # plot_stat_map(
+    #     thresholded_img,
+    #     bg_img=mni_bg,
+    #     display_mode="ortho",
+    #     threshold=threshold,
+    #     title=f"{cond} (FDR<0.05)",
+    #     colorbar=True,
+    # )
+    file_name = f"glassbrain_GLM_{cond}_FDR-thresh02_cluster20.png"
+    fig, ax = plt.subplots(figsize=(6, 4))
+    ax.set_axis_off()
+
+    title = f"{condition_names[cond]}"
+    display = plotting.plot_glass_brain(
+        thresholded_img,
+        threshold=threshold,
+        colorbar=False,
+        display_mode="lr",
+        plot_abs=False,
+        cmap="YlOrRd_r",
+        title=None,
+        axes=ax,
+
+        vmax=global_vmax,
+    )
+    y = 0.20
+    ax.text(0.1, y, "L", transform=ax.transAxes, fontsize=20, ha="center")
+    ax.text(0.9, y, "R", transform=ax.transAxes, fontsize=20, ha="center")
+
+    # Add title
+    fig.suptitle(title, fontsize=25, y=0.85)
+    fig.savefig(os.path.join(save_glm_adhoc_plots, file_name), dpi=300)
+
+    plt.show()
+
+#%%
+
+# === Plot one standalone colorbar with global range ===
+visu_utils.plot_isc_colorbar(
+    vmin=global_vmin,
+    vmax=global_vmax,
+    figsize =(0.4, 4),
+    cmap="YlOrRd_r",
+    label=None,
+    label_fontsize=16,
+    tick_fontsize=16,
+    save_path=os.path.join(save_glm_adhoc_plots, "colorbar_GLM_sugg.png")
+)
 # %%
 # Visualize second-level contrast for pain
 conditions = [
@@ -360,8 +468,8 @@ for cond, z_img in z_imgs.items():
     thresholded_img, threshold = threshold_stats_img(
         z_img,
         alpha=0.05,
-        height_control="bonferroni",
-        cluster_threshold=0,
+        height_control="fdr",
+        cluster_threshold=10,
         two_sided=True,
     )
     print(f"{cond}: FDR threshold = {threshold:.3f}")
@@ -436,16 +544,16 @@ if compute_rsa_pain is True:
     # }
     sim_model = {"euclidean": sim_behav_vec_pain, "annak": sim_behav_vec_annak_pain}
 
-    sugg_conditions = {"ANA_sugg_minus_N_ANA_sugg", "HYPER_sugg_minus_N_HYPER_sugg"}
     shock_conditions = {
         "ANA_shock_minus_N_ANA_shock",
         "HYPER_shock_minus_N_HYPER_shock",
     }
     results_dct = {}
-
+    similarity_matrices_dct = {}
     for sim, behav_sim_vec_i in sim_model.items():
         print(f"Performing IS-RSA with {sim} similarity metric")
         results_dct[sim] = {}
+        similarity_matrices_dct[sim] = {}
 
         for cond in tqdm(shock_conditions):  # shock model!!
             print("Performing RSA on : ", cond)
@@ -460,7 +568,7 @@ if compute_rsa_pain is True:
             sugg_dict = {sub: sugg_dict[sub] for sub in subjects}
 
             # mvpa similarity
-            similarity_matrices_dct, vec_similarity_df = (
+            similarity_matrices, vec_similarity_df = (
                 compute_inter_subject_mvpa_similarity(
                     sugg_dict, atlas_img=ATLAS, labels_roi_dct=labels_roi_dct
                 )
@@ -496,6 +604,8 @@ if compute_rsa_pain is True:
             results_dct[sim][cond] = pd.DataFrame(rsa_rows)  # .sort_values(
             #     by="spearman_r", ascending=False
             # )
+            similarity_matrices_dct[sim][cond] = similarity_matrices
+
             print(
                 "Max r, mean and fdr",
                 results_dct[sim][cond]["spearman_r"].max(),
@@ -520,8 +630,8 @@ results_dct = isc_utils.load_pickle(load_path)
 # VISUALISE
 rsa_stats_imgs_mvpa = {}
 rsa_tables_mvpa_fdr = {}
-model_name = "shock_contrast_chge-pain"
-save_tables_rsa = os.path.join(save_path, model_name, "tables", "rsa")
+RSA_MODEL_NAME = "shock_contrast_chge-pain"
+save_tables_rsa = os.path.join(save_path, RSA_MODEL_NAME, "tables", "rsa")
 os.makedirs(save_tables_rsa, exist_ok=True)
 
 all_p_values = []
@@ -747,14 +857,14 @@ for model_id in rsa_stats_imgs_mvpa.keys():
     views.append(view)
 # %%
 # PUBLICATION
-# NEW MODEL SUGGESTION VAR ~ PAIN CONTRAST
+# FINAL MODEL SUGGESTION SHSS ~ PAIN CONTRAST
 # IS-RSA SHSS ~ ISC-PAIN
-specific_re_run = False
+specific_re_run = True
 
-save_path = f"/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/RSA/mvpa_IS-RSA_sugg-pain_contrast-based_tian216"
+RSA_FOLDER = "mvpa_IS-RSA_sugg-pain_contrast-based_tian216"
+save_path = f"/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/RSA/{RSA_FOLDER}"
 os.makedirs(save_path, exist_ok=True)
-
-
+sim_metric = 'cosine'
 if specific_re_run is True:
     sim_model = {
         "euclidean": sim_behav_vec,
@@ -763,11 +873,11 @@ if specific_re_run is True:
 
     pain_conditions = {"ANA_shock_minus_N_ANA_shock", "HYPER_shock_minus_N_HYPER_shock"}
     results_dct = {}
-
+    similarity_matrices_dct = {} 
     for sim, behav_sim_vec_i in sim_model.items():
         print(f"Performing IS-RSA with {sim} similarity metric")
         results_dct[sim] = {}
-
+        similarity_matrices_dct[sim] = {}
         for cond in tqdm(pain_conditions):
             print("Performing RSA on : ", cond)
             # load maps
@@ -781,15 +891,16 @@ if specific_re_run is True:
             pain_dict = {sub: pain_dict[sub] for sub in subjects}
 
             # mvpa similarity
-            similarity_matrices_dct, vec_similarity_df = (
+            similarity_matrices, vec_similarity_df = (
                 compute_inter_subject_mvpa_similarity(
-                    pain_dict, atlas_img=ATLAS, labels_roi_dct=labels_roi_dct
+                    pain_dict, atlas_img=ATLAS, labels_roi_dct=labels_roi_dct,
+                    sim_method = sim_metric
                 )
             )
 
             # RSA computation + perm
             rsa_rows = []  # build df
-            # Use tqdm to show progress bar over ROI columns
+
             for i, roi in tqdm(
                 enumerate(vec_similarity_df.columns),
                 total=len(vec_similarity_df.columns),
@@ -817,7 +928,7 @@ if specific_re_run is True:
                 )
 
             results_dct[sim][cond] = pd.DataFrame(rsa_rows)
-
+            similarity_matrices_dct[sim][cond] = similarity_matrices
             print(
                 "Max r, mean and fdr",
                 results_dct[sim][cond]["spearman_r"].max(),
@@ -826,28 +937,37 @@ if specific_re_run is True:
             )
 
     save_to = os.path.join(
-        save_path, f"IS-RSA_mvpa-pain_behav-pain{n_perm_rsa}perm.pkl"
+        save_path, f"IS-RSA_mvpa-pain-{sim_metric}_behav-SHSS{n_perm_rsa}perm.pkl"
     )
     isc_utils.save_data(save_to, results_dct)
+    isc_utils.save_data(os.path.join(
+        save_path, f"similarity_matrices_IS-RSA_mvpa-pain-{sim_metric}_behav-SHSS{n_perm_rsa}perm.pkl"
+    ), similarity_matrices_dct)
     print(f"Saved RSA results to {save_to}")
 
 else:
     # load results
 
     load_path = os.path.join(
-        save_path, f"IS-RSA_mvpa-pain_behav-pain{n_perm_rsa}perm.pkl"
+        save_path,  f"IS-RSA_mvpa-pain-{sim_metric}_behav-SHSS{n_perm_rsa}perm.pkl"
     )
     results_dct = isc_utils.load_pickle(load_path)
+    similarity_matrices_dct = isc_utils.load_pickle(os.path.join(
+        save_path, f"similarity_matrices_IS-RSA_mvpa-pain-{sim_metric}_behav-SHSS{n_perm_rsa}perm.pkl"
+    ))
 # %%
 # =================
 # VISUALISE PAIN-contrast ~ SHSS
 rsa_stats_imgs_mvpa = {}
 rsa_tables_mvpa_fdr = {}
-model_name = "shock_contrast_SHSS"
-save_tables_shock_shss = os.path.join(save_path, model_name, "tables")
+
+RSA_MODEL_NAME = "shock_contrast_SHSS"
+save_tables_shock_shss = os.path.join(save_path, RSA_MODEL_NAME, "tables")
 os.makedirs(save_tables_shock_shss, exist_ok=True)
-save_plots_shock_shss = os.path.join(save_path, model_name, "plots")
+save_plots_shock_shss = os.path.join(save_path, RSA_MODEL_NAME, "plots")
 os.makedirs(save_plots_shock_shss, exist_ok=True)
+save_mat_shock_shss = os.path.join(save_path, RSA_MODEL_NAME, "pairwise_matrices")
+os.makedirs(save_mat_shock_shss, exist_ok=True)
 
 all_p_values = []
 for sim in results_dct.keys():  # similarity metric (e.g., 'euclidean', 'annak')
@@ -888,7 +1008,6 @@ for sim in results_dct.keys():  # similarity metric (e.g., 'euclidean', 'annak')
             elif correction == "within_FDR":
                 p_thresh = isc_utils.fdr(p_values, q=0.05)
                 p_thresh_str = "within_FDR" + str(round(p_thresh, 4))
-
             elif correction == "FDR":
                 p_thresh = global_fdr_thresh  # or load global value
                 p_thresh_str = "FDR" + str(round(p_thresh, 4))
@@ -928,18 +1047,77 @@ for sim in results_dct.keys():  # similarity metric (e.g., 'euclidean', 'annak')
                 ]
                 fname = f"RSA_MVPA_{sim}_{cond}_table_{p_thresh_str}.csv"
                 sig_df.to_csv(os.path.join(save_tables_shock_shss, fname), index=False)
-
+                #save unc. stats img
+                nib.save(stats_img, os.path.join(save_tables_shock_shss, f"RSA_MVPA_{sim}_{cond}_unc_stats_img.nii.gz"))
                 print(f"Sig ROIs for {sim} – {cond}:", sig_df["Label"].to_list(), "\n")
+#%%
+# SAVE PAIRWISE MATRICES SHSS-PAIN IS-RSA
+
+# SAVE ISC matrices for sig. regions in RSA
+# -------------------------------------------
+from src.visu_utils import schaeffer_region_mapping
+reload(visu_utils)
+
+# reassign region id for name
+# similarity_matrices_dct_new = {labels_roi_dct[id]: mat for id, mat in similarity_matrices_dct.items()}
+
+for sim_model in results_dct.keys():
+    for cond in results_dct[sim_model].keys():
+        rsa_cond = sim_model + "_" + cond
+        print(rsa_cond)
+
+        if rsa_cond in rsa_tables_mvpa_fdr.keys(): # save sig conditions only
+            sig_df = rsa_tables_mvpa_fdr[rsa_cond]
+            sim_mats_ids = similarity_matrices_dct[sim_model][cond]  # mvpa similarity matrices dct
+            sim_mats = {labels_roi_dct[id]: mat for id, mat in sim_mats_ids.items()}  # rename keys
+            
+            for sig_region in sig_df["Label"]:
+                roi_id = sig_df[sig_df["Label"] == sig_region]["ROI"].values[0]
+                if sig_region in schaeffer_region_mapping.keys():
+                    anatomical_name = schaeffer_region_mapping[sig_region]["anatomical_label"]
+                    region_id = schaeffer_region_mapping[sig_region]["region_index"]
+                else:
+                    anatomical_name = sig_region
+                    region_id = roi_id
+                # anatomical_name = schaeffer_region_mapping[sig_region]["anatomical_label"]
+                # region_id = schaeffer_region_mapping[sig_region]["region_index"]
+                mat = np.array(sim_mats[sig_region])
+                ranked_indices = np.argsort(Y["SHSS_score"].values)
+                sim_mat = mat[np.ix_(ranked_indices, ranked_indices)]  # reorder
+
+                vmax = np.max(np.abs(sim_mat))
+                # np.fill_diagonal(mat, 0)  # for visualization purposes
+                fig_path = os.path.join(
+                    save_mat_shock_shss, f"{rsa_cond}_{sig_region}_pairwise-mat.png"
+                )
+                visu_utils.plot_simmat_isc(
+                    simmat=sim_mat,
+                    title=f"{region_id}:{anatomical_name}",
+                    x_label=None,  #' ranked subjects (SHSS)'
+                    colorbar_name=None,
+                    tick_fontsize=60,
+                    label_fontsize=70,
+                    vmin=-vmax,
+                    vmax=vmax,
+                    show_colorbar=False,
+                    save_path=fig_path,
+                    ticks= None,
+                    dpi=300
+                )
+
 #%%
 # PUBLICATION IS-RSA SHSS - PAIN CONTRAST
 # View significant results and find coords to display
 shss_annak_Ana_df = rsa_tables_mvpa_fdr['annak_ANA_shock_minus_N_ANA_shock']
 shss_annak_Ana_img = rsa_stats_imgs_mvpa['annak_ANA_shock_minus_N_ANA_shock'][0]
+
 view_img(shss_annak_Ana_img, title="RSA MVPA annak_ANA_shock_minus_N_ANA_shock", cmap="RdBu_r")
 
 #%%
 # =====
 # MAnual viewvinf for COORDS
+reload(visu_utils)
+from src.visu_utils import plot_single_roi
 import atlasreader
 from nilearn.image import math_img
 pwd_scripts = os.path.join(project_dir, "scripts")
@@ -947,56 +1125,17 @@ os.chdir(os.path.join(pwd_scripts, "atlas_views"))
 print("Current working directory:", os.getcwd())
 from atlasreader import create_output
 
-def filter_atlas(atlas_img, atlas_labels_dict, keep_ids):
-    atlas_data = atlas_img.get_fdata()
-    mask_data = np.isin(atlas_data, keep_ids) * atlas_data
-    filtered_img = new_img_like(atlas_img, mask_data)
-
-    # Build new labels dict for the kept IDs
-    new_labels = {
-        roi: label for roi, label in atlas_labels_dict.items() if roi in keep_ids
-    }
-    return filtered_img, new_labels
-
-
-# Plot the filtered atlas with clear discrete colorbar
-def plot_filtered_atlas(filtered_img, filtered_labels, cmap="tab20"):
-    label_ids = list(filtered_labels.keys())
-    label_names = list(filtered_labels.values())
-
-    return plotting.view_img(
-        filtered_img,
-        cmap=cmap,
-        colorbar=True,
-        title="Filtered Atlas",
-        symmetric_cmap=False,
-    )
-
-
-def plot_single_roi(atlas_img, roi_id, atlas_labels=None, title=None):
-
-    mask_img = math_img(f"img == {roi_id}", img=atlas_img)
-
-    title = f"ROI {roi_id}"
-    if atlas_labels and roi_id in atlas_labels:
-        title += f" {atlas_labels[roi_id]}"
-
-    print(f"Displaying region {roi_id}: {title}")
-    return mask_img, plotting.view_img(
-        mask_img, cmap="Reds", title=title, colorbar=False
-    )
-
-roi_idx = 85
+roi_idx = 149
 masked_region, _plot = plot_single_roi(
     atlas, roi_idx, id_labels_dct, title=f"roi idx {roi_idx}"
 )  # 30 = Default_Temp_3 LH
 _plot
-
+#%%
 create_output(masked_region, voxel_thresh=0.99, cluster_extent=5)
 atlas_df = pd.read_csv("atlasreader_peaks.csv")
 atlas_df
 #%%
-# PUBLICATION SLICES SHSS-PAIN CONTRAST: ANAAK
+# PUBLICATION SLICES SHSS-PAIN CONTRAST: ANAAK / ANAlgesia
 # --------------------------------
 COORDS = {
     "x": [-28, -30, 54, 56, ],
@@ -1056,11 +1195,77 @@ cb_ab = visu_utils.save_colorbar(
     n_ticks=3,
     transparent=True,
 )
+#%%
+# PUBLICATION: save slices HYPERALGESIA x 2 models 
+# PUBLICATION SLICES SHSS-PAIN CONTRAST: EUCLIDEAN / ANAlgesia
+# --------------------------------
+view_img(rsa_stats_imgs_mvpa['euclidean_ANA_shock_minus_N_ANA_shock'][0])
+rsa_tables_mvpa_fdr['euclidean_ANA_shock_minus_N_ANA_shock']
+#%%
+COORDS = {
+    "x": [-28, -30, 54, 56, ],
+    "y": [-34, -36],
+}
+CONTRAST = "Anak_HYPER_shock_minus_N_ANA_shock"
+SAVE_TO = os.path.join(save_plots_shock_shss, CONTRAST)
+os.makedirs(SAVE_TO, exist_ok=True)
+IMG = rsa_stats_imgs_mvpa[CONTRAST][0]
+IMG_ID = 'hyper_annak'
+cm = "RdBu_r"
+
+visu_utils.save_slices(
+    IMG, COORDS, SAVE_TO, img_id=IMG_ID, cmap=cm
+)
+# save colorbar
+fig_path = os.path.join(SAVE_TO, "colorbar.png")
+cb_ab = visu_utils.save_colorbar(
+    IMG,
+    cmap=cm,
+    outpath=fig_path,
+    symmetric_cbar=True,  # false because we dont keep negative coeff
+    offset=0,
+    n_ticks=3,
+    transparent=True,
+)
+
+#%%
+# PUBLICATION SLICES SHSS-PAIN CONTRAST: EUCLIDEAN / HYPER
+# --------------------------------
+view_img(rsa_stats_imgs_mvpa['euclidean_HYPER_shock_minus_N_HYPER_shock'][0])
+rsa_tables_mvpa_fdr['euclidean_HYPER_shock_minus_N_HYPER_shock']
+
+#%%
+COORDS = {
+    "x": [-44, -24, -48, -60],
+    "y": [14, -36],
+    "z": [-20, -16, -2]
+}
+
+SAVE_TO = os.path.join(save_plots_shock_shss, "Anak_HYPER_shock_minus_N_HYPER_shock")
+os.makedirs(SAVE_TO, exist_ok=True)
+IMG = rsa_stats_imgs_mvpa['annak_HYPER_shock_minus_N_HYPER_shock'][0]
+
+cm = "RdBu_r"
+
+visu_utils.save_slices(
+    IMG, COORDS, SAVE_TO, img_id="ana_shss", cmap=cm
+)
+# save colorbar
+fig_path = os.path.join(SAVE_TO, "colorbar.png")
+cb_ab = visu_utils.save_colorbar(
+    IMG,
+    cmap=cm,
+    outpath=fig_path,
+    symmetric_cbar=True,  # false because we dont keep negative coeff
+    offset=0,
+    n_ticks=3,
+    transparent=True,
+)
 
 # %%
+# DECODING SUGG CONDITION FROM MVPA PATTERN IN ROIS
 from nilearn.image import new_img_like, math_img
 from nilearn.maskers import NiftiMasker
-# DECODING SUGG CONDITION FROM MVPA PATTERN IN ROIS
 roi_to_test = ["7Networks_RH_DorsAttn_Post_10", "7Networks_RH_SalVentAttn_Med_1"]
 roi_to_test = [
     "7Networks_LH_Default_PHC_1"
@@ -1275,7 +1480,257 @@ for roi_label in tqdm(roi_to_test):
     plt.tight_layout()
     plt.show()
 
+# %%
+# NEW 30 SEPT !!
+# PUBLICATION
+# DOT PRODUCT (FINAL) MODEL SUGGESTION SHSS ~ PAIN CONTRAST
+# IS-RSA SHSS ~ ISC-PAIN
+specific_re_run = False
 
+RSA_FOLDER = "mvpa_IS-RSA-DOT_sugg-pain_contrast-based_tian216"
+save_path = f"/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/RSA/{RSA_FOLDER}"
+os.makedirs(save_path, exist_ok=True)
+
+if specific_re_run is True:
+    sim_model = {
+        "euclidean": sim_behav_vec,
+        "annak": sim_behav_vec_annak,
+    }
+
+    pain_conditions = {"ANA_shock_minus_N_ANA_shock", "HYPER_shock_minus_N_HYPER_shock"}
+    results_dct = {}
+    similarity_matrices_dct = {} 
+    for sim, behav_sim_vec_i in sim_model.items():
+        print(f"Performing IS-RSA with {sim} similarity metric")
+        results_dct[sim] = {}
+        similarity_matrices_dct[sim] = {}
+        for cond in tqdm(pain_conditions):
+            print("Performing RSA on : ", cond)
+            # load maps
+            # all_shock_maps = glob(os.path.join(model_res, 'all_shock', 'firstlev_localizer_*.nii.gz'))
+            pain_maps = glob(
+                os.path.join(
+                    model_res, "first_level", cond, "firstlev_localizer_*.nii.gz"
+                )
+            )
+            pain_dict = build_subject_dict(pain_maps)  # not sorted!!
+            pain_dict = {sub: pain_dict[sub] for sub in subjects}
+
+            # mvpa similarity
+            similarity_matrices, vec_similarity_df = (
+                compute_inter_subject_mvpa_similarity(
+                    pain_dict, atlas_img=ATLAS, labels_roi_dct=labels_roi_dct
+                )
+            )
+
+            # RSA computation + perm
+            rsa_rows = []  # build df
+
+            for i, roi in tqdm(
+                enumerate(vec_similarity_df.columns),
+                total=len(vec_similarity_df.columns),
+                desc="RSA ROIs",
+            ):
+
+                mvpa_sim_vec = vec_similarity_df[roi].values
+                r, p, dist = isc_utils.matrix_permutation(
+                    behav_sim_vec_i,
+                    mvpa_sim_vec,
+                    n_permute=n_perm_rsa,
+                    metric="spearman",
+                    how="upper",
+                    tail=2,
+                    return_perms=True,
+                )
+                # 2 tail when testing behavioral model, as AnnaK can show reverse pattern
+                rsa_rows.append(
+                    {
+                        "ROI": roi,
+                        "spearman_r": r,
+                        "p_values": round(p, 5),
+                        "Coordinates": tuple(np.round(coords[i], 0).astype(int)),
+                    }
+                )
+
+            results_dct[sim][cond] = pd.DataFrame(rsa_rows)
+            similarity_matrices_dct[sim][cond] = similarity_matrices
+            print(
+                "Max r, mean and fdr",
+                results_dct[sim][cond]["spearman_r"].max(),
+                results_dct[sim][cond]["spearman_r"].mean(),
+                isc_utils.fdr(results_dct[sim][cond]["p_values"].to_numpy()),
+            )
+
+    save_to = os.path.join(
+        save_path, f"IS-RSA-DOT_mvpa-pain_behav-pain{n_perm_rsa}perm.pkl"
+    )
+    isc_utils.save_data(save_to, results_dct)
+    isc_utils.save_data(os.path.join(
+        save_path, f"similarity_matrices_IS-RSA-DOT_mvpa-pain_behav-pain{n_perm_rsa}perm.pkl"
+    ), similarity_matrices_dct)
+    print(f"Saved RSA results to {save_to}")
+
+else:
+    # load results
+
+    load_path = os.path.join(
+        save_path,  f"IS-RSA-DOT_mvpa-pain_behav-pain{n_perm_rsa}perm.pkl"
+    )
+    results_dct = isc_utils.load_pickle(load_path)
+    similarity_matrices_dct = isc_utils.load_pickle(os.path.join(
+        save_path, f"similarity_matrices_IS-RSA-DOT_mvpa-pain_behav-pain{n_perm_rsa}perm.pkl"
+    ))
+# %%
+# =================
+# VISUALISE PAIN-contrast ~ SHSS
+rsa_stats_imgs_mvpa = {}
+rsa_tables_mvpa_fdr = {}
+
+RSA_MODEL_NAME = "shock_contrast_SHSS"
+save_tables_shock_shss = os.path.join(save_path, RSA_MODEL_NAME, "tables")
+os.makedirs(save_tables_shock_shss, exist_ok=True)
+save_plots_shock_shss = os.path.join(save_path, RSA_MODEL_NAME, "plots")
+os.makedirs(save_plots_shock_shss, exist_ok=True)
+save_mat_shock_shss = os.path.join(save_path, RSA_MODEL_NAME, "pairwise_matrices")
+os.makedirs(save_mat_shock_shss, exist_ok=True)
+
+all_p_values = []
+for sim in results_dct.keys():  # similarity metric (e.g., 'euclidean', 'annak')
+    for cond in results_dct[sim].keys():  # e.g., 'Analgesia', 'Hyperalgesia'
+
+        model_id = sim + "_" + cond
+        rsa_df = results_dct[sim][cond]
+        # Ensure the dataframe rows are in the same order as the atlas labels
+
+        correlations = rsa_df["spearman_r"].values
+        p_values = rsa_df["p_values"].values
+        region_id = rsa_df["ROI"].values
+        all_p_values.append(p_values)
+
+# global FDR
+all_p_values = np.concatenate(all_p_values)
+global_fdr_thresh = isc_utils.fdr(all_p_values, q=0.05)
+print(f"Global FDR correction pain~SHSS is : {global_fdr_thresh}")
+
+for sim in results_dct.keys():  # similarity metric (e.g., 'euclidean', 'annak')
+    for cond in results_dct[sim].keys():  # e.g., 'Analgesia', 'Hyperalgesia'
+
+        model_id = sim + "_" + cond
+        rsa_df = results_dct[sim][cond]
+        # Ensure the dataframe rows are in the same order as the atlas labels
+
+        correlations = rsa_df["spearman_r"].values
+        p_values = rsa_df["p_values"].values
+        region_id = rsa_df["ROI"].values
+
+        for correction in ["unc01", "within_FDR", "FDR", "bonf"]:
+            show = False
+
+            if correction == "unc01":
+                p_thresh = 0.01
+                p_thresh_str = "0.01"
+
+            elif correction == "within_FDR":
+                p_thresh = isc_utils.fdr(p_values, q=0.05)
+                p_thresh_str = "within_FDR" + str(round(p_thresh, 4))
+                show=True
+            elif correction == "FDR":
+                p_thresh = global_fdr_thresh  # or load global value
+                p_thresh_str = "FDR" + str(round(p_thresh, 4))
+                show = True
+
+            elif correction == "bonf":
+                p_thresh = isc_utils.bonferroni(p_values, alpha=0.05)
+                p_thresh_str = "Bonf" + str(round(p_thresh, 4))
+
+            rsa_img, rsa_thresh, sig_df, stats_img = (
+                visu_utils.project_isc_to_brain_perm(
+                    atlas_img=ATLAS,
+                    isc_median=correlations,
+                    atlas_labels=labels_roi_dct,
+                    roi_coords=coords,
+                    p_values=p_values,
+                    p_threshold=p_thresh,
+                    title=f"RSA MVPA {sim} – {cond} ({p_thresh_str})",
+                    save_path=None,
+                    show=show,
+                    display_mode="x",
+                    cut_coords_plot=(5),
+                    color="coolwarm",
+                )
+            )
+
+            if correction == "FDR" and sig_df.shape[0] > 0:
+                rsa_stats_imgs_mvpa[model_id] = (rsa_img, rsa_thresh)
+                rsa_tables_mvpa_fdr[model_id] = sig_df
+
+                sig_df.columns = [
+                    "ROI",
+                    "Label",
+                    "Spearman r",
+                    "p-values",
+                    "Coordinates (X,Y,Z)",
+                ]
+                fname = f"RSA_MVPA_{sim}_{cond}_table_{p_thresh_str}.csv"
+                sig_df.to_csv(os.path.join(save_tables_shock_shss, fname), index=False)
+                #save unc. stats img
+                nib.save(stats_img, os.path.join(save_tables_shock_shss, f"RSA_MVPA_{sim}_{cond}_unc_stats_img.nii.gz"))
+                print(f"Sig ROIs for {sim} – {cond}:", sig_df["Label"].to_list(), "\n")
+#%%
+# SAVE PAIRWISE MATRICES SHSS-PAIN IS-RSA
+
+# SAVE ISC matrices for sig. regions in RSA
+# -------------------------------------------
+from src.visu_utils import schaeffer_region_mapping
+reload(visu_utils)
+
+# reassign region id for name
+# similarity_matrices_dct_new = {labels_roi_dct[id]: mat for id, mat in similarity_matrices_dct.items()}
+
+for sim_model in results_dct.keys():
+    for cond in results_dct[sim_model].keys():
+        rsa_cond = sim_model + "_" + cond
+        print(rsa_cond)
+
+        if rsa_cond in rsa_tables_mvpa_fdr.keys(): # save sig conditions only
+            sig_df = rsa_tables_mvpa_fdr[rsa_cond]
+            sim_mats_ids = similarity_matrices_dct[sim_model][cond]  # mvpa similarity matrices dct
+            sim_mats = {labels_roi_dct[id]: mat for id, mat in sim_mats_ids.items()}  # rename keys
+            
+            for sig_region in sig_df["Label"]:
+                roi_id = sig_df[sig_df["Label"] == sig_region]["ROI"].values[0]
+                if sig_region in schaeffer_region_mapping.keys():
+                    anatomical_name = schaeffer_region_mapping[sig_region]["anatomical_label"]
+                    region_id = schaeffer_region_mapping[sig_region]["region_index"]
+                else:
+                    anatomical_name = sig_region
+                    region_id = roi_id
+                # anatomical_name = schaeffer_region_mapping[sig_region]["anatomical_label"]
+                # region_id = schaeffer_region_mapping[sig_region]["region_index"]
+                mat = np.array(sim_mats[sig_region])
+                ranked_indices = np.argsort(Y["SHSS_score"].values)
+                sim_mat = mat[np.ix_(ranked_indices, ranked_indices)]  # reorder
+
+                vmax = np.max(np.abs(sim_mat))
+                # np.fill_diagonal(mat, 0)  # for visualization purposes
+                fig_path = os.path.join(
+                    save_mat_shock_shss, f"{rsa_cond}_{sig_region}_pairwise-mat.png"
+                )
+                visu_utils.plot_simmat_isc(
+                    simmat=sim_mat,
+                    title=f"{region_id}:{anatomical_name}",
+                    x_label=None,  #' ranked subjects (SHSS)'
+                    colorbar_name=None,
+                    tick_fontsize=60,
+                    label_fontsize=70,
+                    vmin=-vmax,
+                    vmax=vmax,
+                    show_colorbar=False,
+                    save_path=fig_path,
+                    ticks= None,
+                    dpi=300
+                )
+#==========================================
 # %%
 # IS-RSA SUGGESTION - PAIN
 # SUGGEST MVPA IS-RSA
