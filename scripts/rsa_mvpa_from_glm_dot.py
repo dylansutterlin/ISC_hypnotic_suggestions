@@ -297,12 +297,12 @@ sim_behav_vec_annak = isc_utils.compute_behav_similarity(
 # FINAL MODEL SUGGESTION SHSS ~ PAIN CONTRAST
 # IS-RSA SHSS ~ ISC-PAIN
 specific_re_run = True
-
-save_path = f"/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/RSA/mvpa_IS-RSA-EUCLIDEAN_sugg-pain_contrast-based_tian216"
+NEURAL_SIM = 'DOT'  # 'cosine' or 'dot' or 'euclidean'
+save_path = f"/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/RSA/mvpa_IS-RSA-{NEURAL_SIM}_sugg-pain_contrast-based_tian216"
 os.makedirs(save_path, exist_ok=True)
 
 if specific_re_run is True:
-    SIM_METHOD = 'euclidean'  # 'cosine' or 'dot' or 'euclidean'
+
     sim_model = {
         "euclidean": sim_behav_vec,
         "annak": sim_behav_vec_annak,
@@ -331,7 +331,7 @@ if specific_re_run is True:
             similarity_matrices, vec_similarity_df = (
                 compute_inter_subject_mvpa_similarity(
                     pain_dict, atlas_img=ATLAS, labels_roi_dct=labels_roi_dct,
-                    sim_method=SIM_METHOD
+                    sim_method=NEURAL_SIM
                 )
             )
 
@@ -374,11 +374,11 @@ if specific_re_run is True:
             )
 
     save_to = os.path.join(
-        save_path, f"IS-RSA-EUCLIDEAN_mvpa-pain_behav-pain{n_perm_rsa}perm.pkl"
+        save_path, f"IS-RSA-mvpa_pain-{NEURAL_SIM}_behav-sugg_{n_perm_rsa}perm.pkl"
     )
     isc_utils.save_data(save_to, results_dct)
     isc_utils.save_data(os.path.join(
-        save_path, f"similarity_matrices_IS-RSA-EUCLIDEAN_mvpa-pain_behav-pain{n_perm_rsa}perm.pkl"
+        save_path, f"IS-RSA-mvpa_pain-{NEURAL_SIM}_behav-sugg_{n_perm_rsa}perm.pkl"
     ), similarity_matrices_dct)
     print(f"Saved RSA results to {save_to}")
 
@@ -386,11 +386,11 @@ else:
     # load results
 
     load_path = os.path.join(
-        save_path, f"IS-RSA-EUCLIDEAN_mvpa-pain_behav-pain{n_perm_rsa}perm.pkl"
+        save_path, f"IS-RSA-mvpa_pain-{NEURAL_SIM}_behav-sugg_{n_perm_rsa}perm.pkl"
     )
     results_dct = isc_utils.load_pickle(load_path)
     similarity_matrices_dct = isc_utils.load_pickle(os.path.join(
-        save_path, f"similarity_matrices_IS-RSA-EUCLIDEAN_mvpa-pain_behav-pain{n_perm_rsa}perm.pkl"
+        save_path, f"similarity_matrices_IS-RSA-mvpa_pain-{NEURAL_SIM}_behav-sugg_{n_perm_rsa}perm.pkl"
     ))
 # %%
 # =================
@@ -489,11 +489,14 @@ for sim in results_dct.keys():  # similarity metric (e.g., 'euclidean', 'annak')
 #%%
 # PUBLICATION IS-RSA SHSS - PAIN CONTRAST
 # View significant results and find coords to display
-shss_annak_Ana_df = rsa_tables_mvpa_fdr['annak_ANA_shock_minus_N_ANA_shock']
-shss_annak_Ana_img = rsa_stats_imgs_mvpa['annak_ANA_shock_minus_N_ANA_shock'][0]
-
-view_img(shss_annak_Ana_img, title="RSA MVPA annak_ANA_shock_minus_N_ANA_shock", cmap="RdBu_r")
-
+# Sequentially display interactive plots for each condition
+views = []
+for conditions in rsa_tables_mvpa_fdr.keys():
+    img = rsa_stats_imgs_mvpa[conditions][0]
+    display = view_img(img, title=f"RSA MVPA {conditions}", cmap="RdBu_r")
+    views.append(display)
+# %%
+views[3]
 #%%
 # =====
 # MAnual viewvinf for COORDS
