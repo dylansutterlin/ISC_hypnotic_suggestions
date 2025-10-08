@@ -227,14 +227,13 @@ for var, mat in NN_sim_matrices.items():
 from src.mvpa_rsa_utils import compute_inter_subject_mvpa_similarity, build_subject_dict
 
 for NEURAL_SIM in ['euclidean', 'dot', 'cosine', 'pearson']:
-    specific_re_run = False
+    specific_re_run = True
     # NEURAL_SIM = 'euclidean'  # 'cosine' or 'dot' or 'euclidean'
     # BEHAV_ID = "SHSS"  # "SHSS" or "chge-pain"
     effect_type = 'stat' #'effect_size' #'z_score'
-    save_path = f"/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/RSA/IS-RSA-mvpa-{NEURAL_SIM}-{effect_type}_sugg-pain_contrast-based_tian216"
+    save_path = f"/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/RSA/IS-RSA-mvpa-{NEURAL_SIM}-{effect_type}_contrast-based_tian216"
     os.makedirs(save_path, exist_ok=True)
-    for BEHAV_ID in annak_sim_matrices.keys():
-        
+
     if specific_re_run is True:
         
         print(f"Running IS-RSA for neural sim: {NEURAL_SIM}")
