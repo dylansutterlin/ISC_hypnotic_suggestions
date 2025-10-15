@@ -281,7 +281,7 @@ results_dct = results_dct_all[final_metric]
 similarity_matrices_dct = similarity_matrices_dct_all[final_metric]
 save_path = f"/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/RSA/IS-RSA-mvpa-{final_metric}-{effect_type}_contrast-based_tian216" #_{ANNAK_VERSION}-annak"
 #%%
-compute_median_test = False
+COMPUTE_MEDIAN_TEST = False
 # if compute_median_test:
 from sklearn.preprocessing import MinMaxScaler
 from brainiak.isc import bootstrap_isc
@@ -291,54 +291,96 @@ issc_dfs = {}
 issc_matrices = {}
 issc_values = {}
 issc_p_cond = {}
+issc_dfs = {}
 n_boot=10000
 
 save_1sample_sim = os.path.join(save_path, 'one_sample_sim')
 os.makedirs(save_1sample_sim, exist_ok=True)
+save_tables_1sample_sim = os.path.join(save_1sample_sim, 'tables')
+os.makedirs(save_tables_1sample_sim, exist_ok=True)
+save_plots_1sample_sim = os.path.join(save_1sample_sim, 'plots')
+os.makedirs(save_plots_1sample_sim, exist_ok=True)
 
-#reformat sim matrices in columns (n_pairs x parcels)
-for cond in pain_conditions:
+if COMPUTE_MEDIAN_TEST:
+    #reformat sim matrices in columns (n_pairs x parcels)
+    for cond in pain_conditions:
+        print(f"Computing 1-sample median sim>0 test for condition {cond}")
+        regions_dct = similarity_matrices_dct['euclidean'][cond] #same for both sim models
+        column_dict = {}
 
-    regions_dct = similarity_matrices_dct['euclidean'][cond] #same for both sim models
-    column_dict = {}
+        for region in tqdm(regions_dct.keys()):
+            sim_mat = np.array(regions_dct[region])
+            np.fill_diagonal(sim_mat, 0)
+            vec_sim = isc_utils.isc_matrix_to_vector(sim_mat).T
+            vec_sim = MinMaxScaler(feature_range=(-1, 1)).fit_transform(vec_sim.reshape(-1,1)).ravel()
+            column_dict[region] = vec_sim
 
-    for region in tqdm(regions_dct.keys()):
-        sim_mat = np.array(regions_dct[region])
-        np.fill_diagonal(sim_mat, 0)
-        vec_sim = isc_utils.isc_matrix_to_vector(sim_mat).T
-        vec_sim = MinMaxScaler(feature_range=(-1, 1)).fit_transform(vec_sim.reshape(-1,1)).ravel()
-        column_dict[region] = vec_sim
+        issc_df = pd.DataFrame(column_dict)
+        issc_dfs[cond] = issc_df
+        
+        observed, ci, p_values, distribution = bootstrap_isc(np.array(issc_df), summary_statistic='median', pairwise=True, n_bootstraps=n_boot, ci_percentile=95,side='right', random_state=None)
 
-    issc_df = pd.DataFrame(column_dict)
-    issc_dfs[cond] = issc_df
-    
-    observed, ci, p_values, distribution = bootstrap_isc(np.array(issc_df), summary_statistic='median', pairwise=True, n_bootstraps=n_boot, ci_percentile=95,side='right', random_state=None)
+        #project sign median to brain
+        issc_matrices[cond] = {
+                region: isc_utils.vector_to_isc_matrix(issc_df.iloc[:, col_j], diag=1)
+                for col_j, region in enumerate(issc_df.columns)
+            }
 
-    #project sign median to brain
-    issc_matrices[cond] = {
-            region: isc_utils.vector_to_isc_matrix(issc_df.iloc[:, col_j], diag=1)
-            for col_j, region in enumerate(issc_df.columns)
-        }
+        issc_values[cond] = observed
+        issc_p_cond[cond] = p_values
 
-    issc_values[cond] = observed
-    issc_p_cond[cond] = p_values
+        print(
+            f"min p value: {np.min(p_values):.6f}, and max ISC : {np.max(observed):.6f}"
+        )
+        print(
+            f"Within condition FDR thresh : {isc_utils.fdr(p_values, q=0.05):.6f}, and Bonferroni : {isc_utils.bonferroni(p_values, alpha=0.05):.6f}"
+        )
+        isc_utils.save_data(os.path.join(save_1sample_sim, f"issc_mvpa_pain_{cond}_{n_boot}boot.pkl"), (observed, ci, p_values, distribution))
+else:
+    #load results
 
-    print(
-        f"min p value: {np.min(p_values):.6f}, and max ISC : {np.max(observed):.6f}"
-    )
-    print(
-        f"Within condition FDR thresh : {isc_utils.fdr(p_values, q=0.05):.6f}, and Bonferroni : {isc_utils.bonferroni(p_values, alpha=0.05):.6f}"
-    )
-    isc_utils.save_data(os.path.join(save_1sample_sim, f"issc_mvpa_pain_{cond}_{n_boot}boot.pkl"), (observed, ci, p_values, distribution))
+    for cond in pain_conditions:
+        observed, ci, p_values, distribution = isc_utils.load_pickle(os.path.join(save_1sample_sim, f"issc_mvpa_pain_{cond}_{n_boot}boot.pkl"))
+        issc_values[cond] = observed
+        issc_p_cond[cond] = p_values
+
+        issc_dfs_data = []
+
+        for region_id, region in labels_roi_dct.items():
+            region_idx = region_id - 1
+            correlation = observed[region_idx]
+            p_value = p_values[region_idx]
+            region_coords = coords[region_idx, :]
+            issc_dfs_data.append(
+                {
+                    "ROI": region_id,
+                    "Label": region,
+                    "r Difference": round(correlation, 2),
+                    "p_value": f"{p_value:.4f}",
+                    "Coordinates": tuple(np.round(region_coords, 0).astype(int)),
+                }
+            )
+        issc_dfs[cond] = pd.DataFrame(issc_dfs_data)
+
+
 #%%
+# PUBLICATION SPR 
 # Visualization 1 sample test
 reload(visu_utils)
 one_sample_fdr_imgs = {}
+one_sample_fdr_tables = {}
+
+global_p_values = np.concatenate([issc_dfs[cond]["p_value"].values.astype(float) for cond in issc_dfs.keys()])
+global_p_thresh = isc_utils.fdr(global_p_values, q=0.05)
+print(f"Global FDR correction IS-RSA MVPA pain is : {global_p_thresh}"
+      )
+
 for cond in issc_values.keys():
     observed = issc_values[cond]
     p_values = issc_p_cond[cond]
 
-    p_thresh = isc_utils.fdr(p_values, q=0.05)
+    p_thresh = isc_utils.bonferroni(global_p_values, alpha=0.05)
+    p_thresh_str = "Bonf" + str(round(p_thresh, 4))
     issc_img, isc_thresh, sig_df, unc_img = visu_utils.project_isc_to_brain(
                 atlas_img=atlas,
                 isc_median=observed,
@@ -354,23 +396,24 @@ for cond in issc_values.keys():
                 cut_coords_plot=None,
             )
     one_sample_fdr_imgs[cond] = (issc_img, isc_thresh)
-    display = plotting.plot_glass_brain(
-        unc_img,
-        display_mode="lyrz",
-        colorbar=True,
-        cmap="coolwarm",
-        threshold=0,              # ensures transparent background
-        plot_abs=False,
-        # vmax=np.max(np.abs(unc_img.get_fdata())),
-        # vmin=-np.max(np.abs(unc_img.get_fdata())),
-        title=f"RSA MVPA {cond}",
-    )
+    one_sample_fdr_tables[cond] = sig_df
+    
+    if sig_df.shape[0] > 0:
+        sig_df.columns = [
+            "ROI",
+            "Label",
+            "Spearman_r",
+            "p_value",
+            "Coordinates (X,Y,Z)",
+        ]
+        fname = f"IS-RSA_MVPA_pain_{cond}_table_FDR{round(p_thresh,4)}.csv"
+        sig_df.to_csv(os.path.join(save_tables_1sample_sim, fname), index=False)
+        print(f"Sig ROIs for IS-RSA MVPA pain {cond}:", sig_df["Label"].to_list(), "\n")
+        view = view_img(issc_img, threshold=isc_thresh, title=f'ISSC MVPA pain {cond} ({p_thresh_str})')
+        view.save_as_html(os.path.join(save_plots_1sample_sim, f"viewer_IS-RSA_MVPA_pain_{cond}_{p_thresh_str}{round(p_thresh,4)}.html"))
 
-    # Add strict FDR contours (black, thick)
-    with warnings.catch_warnings():
-        warnings.filterwarnings("ignore", category=UserWarning)
-        display.add_contours(issc_img, colors="black", linewidths=1.5)
-    # views.append(view_img(fdr_img, threshold=0, title=f"RSA MVPA {sim} – {cond}"))
+        unc_img.to_filename(os.path.join(save_1sample_sim, f"IS-RSA_MVPA_pain_{cond}_unc_stats_img.nii.gz"))
+
 #%%
 # PUBLICATION plot glass brain from thresholed FDR img
 display = plotting.plot_glass_brain(
@@ -396,6 +439,9 @@ display = plotting.plot_glass_brain(
     # vmin=-np.max(np.abs(unc_img.get_fdata())),
     title=f"RSA MVPA {'HYPER_shock_minus_N_HYPER_shock'}",
 )
+#%%
+
+
 #%%
 # =================
 # VISUALISE PAIN-contrast ~ SHSS
@@ -575,26 +621,29 @@ Y_names = {
     "pain_diff_Ana": "pain_diff_Ana",
     "pain_diff_Hyper": "pain_diff_Hyper",
 }
+reload(visu_utils)
 from src.visu_utils import schaeffer_region_mapping
-save_mat_shock_shss = os.path.join(save_path, RSA_MODEL_NAME, "COSINE_pairwise_matrices")
-os.makedirs(save_mat_shock_shss, exist_ok=True)
 
+VISU_METRIC = 'cosine'
+save_sim_mat_shock_shss = os.path.join(save_path, RSA_MODEL_NAME, f"sig_{VISU_METRIC}_similarity_matrices")
+os.makedirs(save_sim_mat_shock_shss, exist_ok=True)
+#%%
 from sklearn.preprocessing import MinMaxScaler
-def rescale_matrix(mat, feature_range=(-10, 10)):
+def rescale_matrix(mat, feature_range=(-1, 1)):
     scaler = MinMaxScaler(feature_range=feature_range)
     flat = mat.flatten().reshape(-1, 1)
     scaled = scaler.fit_transform(flat).reshape(mat.shape)
     return scaled
 
 all_sim_mats = {}
-for sim_model in results_dct_all['cosine'].keys():
+for sim_model in results_dct_all[VISU_METRIC].keys():
     for cond in results_dct[sim_model].keys():
         rsa_cond = sim_model + "_" + cond
         print(rsa_cond)
 
         if rsa_cond in rsa_tables_mvpa_fdr.keys(): # save sig conditions only
             sig_df = rsa_tables_mvpa_fdr[rsa_cond]
-            sim_mats_ids = similarity_matrices_dct_all['cosine'][sim_model][cond]  # mvpa similarity matrices dct
+            sim_mats_ids = similarity_matrices_dct_all[VISU_METRIC][sim_model][cond]  # mvpa similarity matrices dct
             sim_mats = {labels_roi_dct[id]: mat for id, mat in sim_mats_ids.items()}  # rename keys
             
             for sig_region in sig_df["Label"]:
@@ -613,24 +662,25 @@ for sim_model in results_dct_all['cosine'].keys():
                 np.fill_diagonal(sim_mat, 0)  # for visualization purposes
                 vmax = np.max(np.abs(sim_mat))
                 sim_mat = rescale_matrix(sim_mat, feature_range=(-1, 1))
+                np.fill_diagonal(sim_mat, 1)  # set diag to 1 for visualization purposes
                 all_sim_mats[sig_region] = sim_mat
 
                 fig_path = os.path.join(
-                    save_mat_shock_shss, f"{rsa_cond}_{sig_region}_pairwise-mat.png"
+                    save_sim_mat_shock_shss, f"{rsa_cond}_{roi_id}_{sig_region}_pairwise-mat.png"
                 )
                 visu_utils.plot_simmat_isc(
                     simmat=all_sim_mats[sig_region],  # last one
-                    title=f"{region_id}:{anatomical_name}",
+                    title=f"{anatomical_name}",
                     x_label=None,  #' ranked subjects (SHSS)'
                     colorbar_name=None,
                     tick_fontsize=60,
                     label_fontsize=70,
                     vmin=-1,
                     vmax=1,
-                    show_colorbar=True,
+                    show_colorbar=False,
                     save_path=fig_path,
                     ticks= None,
-                    dpi=300
+                    dpi=400
                 )
 
 #%%
