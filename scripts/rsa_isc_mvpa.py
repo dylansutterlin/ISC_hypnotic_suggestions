@@ -407,16 +407,37 @@ seed_regions_hyper_context = {}
 seed_regions_ana_matrices = {}
 seed_regions_hyper_matrices = {}
 
+# only positive seeds 
+# for sim_model in rsa_tables_fdr.keys(): # ONLY POSITIVE REGIONS
+#     if 'ana' in sim_model:
+#         region_ids = list(rsa_tables_fdr[sim_model]['ROI'][rsa_tables_fdr[sim_model]['Spearman r']>0].values)
+#         region_name = list(rsa_tables_fdr[sim_model]['Label'][rsa_tables_fdr[sim_model]['Spearman r']>0].values)
+
+#         cond_dct = {id:name for id, name in zip(region_ids, region_name)}
+#         seed_regions_ana_context = {**seed_regions_ana_context, **cond_dct}
+#     elif 'hyper' in sim_model:
+#         region_ids = list(rsa_tables_fdr[sim_model]['ROI'][rsa_tables_fdr[sim_model]['Spearman r']>0].values)
+#         region_name = list(rsa_tables_fdr[sim_model]['Label'][rsa_tables_fdr[sim_model]['Spearman r']>0].values)
+#         cond_dct = {id:name for id, name in zip(region_ids, region_name)}
+#         seed_regions_hyper_context = {**seed_regions_hyper_context, **cond_dct}
+
+# # get matrices
+# for region_id, region in seed_regions_ana_context.items():
+#     seed_regions_ana_matrices[region] = isc_matrices['ana_run'][region]
+# for region_id, region in seed_regions_hyper_context.items():
+#     seed_regions_hyper_matrices[region] = isc_matrices['hyper_run'][region]
+
+# all seeds positive and negative
 for sim_model in rsa_tables_fdr.keys(): # ONLY POSITIVE REGIONS
     if 'ana' in sim_model:
-        region_ids = list(rsa_tables_fdr[sim_model]['ROI'][rsa_tables_fdr[sim_model]['Spearman r']>0].values)
-        region_name = list(rsa_tables_fdr[sim_model]['Label'][rsa_tables_fdr[sim_model]['Spearman r']>0].values)
+        region_ids = list(rsa_tables_fdr[sim_model]['ROI'].values)
+        region_name = list(rsa_tables_fdr[sim_model]['Label'].values)
 
         cond_dct = {id:name for id, name in zip(region_ids, region_name)}
         seed_regions_ana_context = {**seed_regions_ana_context, **cond_dct}
     elif 'hyper' in sim_model:
-        region_ids = list(rsa_tables_fdr[sim_model]['ROI'][rsa_tables_fdr[sim_model]['Spearman r']>0].values)
-        region_name = list(rsa_tables_fdr[sim_model]['Label'][rsa_tables_fdr[sim_model]['Spearman r']>0].values)
+        region_ids = list(rsa_tables_fdr[sim_model]['ROI'].values)
+        region_name = list(rsa_tables_fdr[sim_model]['Label'].values)
         cond_dct = {id:name for id, name in zip(region_ids, region_name)}
         seed_regions_hyper_context = {**seed_regions_hyper_context, **cond_dct}
 
@@ -425,6 +446,7 @@ for region_id, region in seed_regions_ana_context.items():
     seed_regions_ana_matrices[region] = isc_matrices['ana_run'][region]
 for region_id, region in seed_regions_hyper_context.items():
     seed_regions_hyper_matrices[region] = isc_matrices['hyper_run'][region]
+
 
 #%%
 # LOAD MVPA SIM MATRICES for RSA
@@ -475,7 +497,7 @@ os.makedirs(save_tables_rsa, exist_ok=True)
 from tqdm import tqdm
 
 n_perm_rsa = 10000
-LOAD_RESULTS_ONLY = True
+LOAD_RESULTS_ONLY = False
 
 if LOAD_RESULTS_ONLY:
     rsa_isc_mvpa_results = isc_utils.load_pickle(os.path.join(
@@ -584,13 +606,14 @@ for cond in combined_conditions:
 global_p_thresh = isc_utils.fdr(np.array(global_p_values), q=0.05)
 print(f"Global FDR threshold across conditions : {global_p_thresh:.4f}")
 
-correction = "FDR"  # "unc01", "within_FDR", "cond-wise_FDR", "FDR", "bonf"
+# correction = "FDR"  # "unc01", "within_FDR", "cond-wise_FDR", "FDR", "bonf"
 
 liberal_rsa_imgs = {}
 fdr_rsa_imgs = {}
 for correction in ['FDR', 'unc01']:
     print(f'\n Correction : {correction}')
     for cond in combined_conditions:
+        print(f"Projecting results for {cond}\n--------------------")
         cond_results = rsa_isc_mvpa_results[cond]
         for seed_name in cond_results.keys():
             seed_df = cond_results[seed_name]
@@ -603,7 +626,8 @@ for correction in ['FDR', 'unc01']:
             if correction == "FDR":
                 p_thresh = global_p_thresh
                 p_thresh_str = "FDR" + str(round(p_thresh, 4))
-                show = True
+                show = False
+                print(f"FDR threshold for {cond} - {seed_name}: {p_thresh:.4f}")
             elif correction == "unc01":
                 p_thresh = 0.01
                 p_thresh_str = "0.01"
@@ -625,7 +649,7 @@ for correction in ['FDR', 'unc01']:
                 color="coolwarm",
             )
             liberal_rsa_imgs[f"{cond}_{seed_name}"] = (rsa_img, rsa_thresh)
-            if correction == "FDR":
+            if correction == "unc01":
                 fdr_rsa_imgs[f"{cond}_{seed_name}"] = (rsa_img, rsa_thresh)
 
                 if sig_df.shape[0]>0:
@@ -642,10 +666,24 @@ for correction in ['FDR', 'unc01']:
                     sig_df.to_csv(
                         os.path.join(
                             save_tables_rsa,
-                            f"IS-RSA-ISC-sugg_mvpa-pain-{final_metric}_{cond}_seed-{seed_name}_table_FDR{round(global_p_thresh,4)}.csv",
+                            f"IS-RSA-ISC-sugg_mvpa-pain-{final_metric}_{cond}_seed-{seed_name}_table_{p_thresh_str}.csv",
                         ),
                         index=False,
                     )
+                    view = plotting.view_img(
+                        rsa_img,
+                        threshold=rsa_thresh,
+                        title=f"IS-RSA SHSS~{cond} seed-{seed_name} ({p_thresh_str})",
+                        bg_img=bg_mni,
+                        cmap="coolwarm",
+                    )
+                    view.save_as_html(
+                        os.path.join(
+                            save_plots_rsa,
+                            f"view_{final_metric}_{cond}_isc-mvpa_seed-{seed_name}_{p_thresh_str}.html"
+                        )
+                    )
+
 #%%
 # #--==============================================================================
 # # %%
