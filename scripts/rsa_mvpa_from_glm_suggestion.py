@@ -443,7 +443,7 @@ os.makedirs(save_path, exist_ok=True)
 # %%
 from src.mvpa_rsa_utils import compute_inter_subject_mvpa_similarity, build_subject_dict
 
-compute_rsa_sugg = True
+compute_rsa_sugg = False
 if compute_rsa_sugg is True:
     # SUGGEST MVPA IS-RSA
     # sim_model = {
@@ -457,6 +457,10 @@ if compute_rsa_sugg is True:
         "ANA_sugg_minus_N_ANA_sugg",
         "HYPER_sugg_minus_N_HYPER_sugg",
     }
+    print(sugg_conditions)
+    for cond in sugg_conditions:
+        print(f"will perform sequentially on {cond}")
+        
     results_dct = {}
     similarity_matrices_dct = {}
     for sim, behav_sim_vec_i in sim_model.items():
@@ -514,6 +518,7 @@ if compute_rsa_sugg is True:
             results_dct[sim][cond] = pd.DataFrame(rsa_rows)  # .sort_values(
             #     by="spearman_r", ascending=False
             # )
+
             similarity_matrices_dct[sim][cond] = similarity_matrices
 
             print(
@@ -527,6 +532,9 @@ if compute_rsa_sugg is True:
         save_path, f"IS-RSA_mvpa-sugg_SHSS{n_perm_rsa}perm.pkl"
     )
     isc_utils.save_data(save_to, results_dct)
+    save_to_mat = os.path.join(save_path, f"similarity_mat_IS-RSA-mvpa_sugg-{NEURAL_SIM}_SHSS_behav_{n_perm_rsa}perm.pkl"
+    )
+    isc_utils.save_data(save_to_mat, similarity_matrices_dct)
     print(f"Saved RSA results to {save_to}")
 
 else:
@@ -535,12 +543,14 @@ else:
         save_path, f"IS-RSA_mvpa-sugg_SHSS{n_perm_rsa}perm.pkl"
             )
     results_dct = isc_utils.load_pickle(load_path)
-
+    similarity_matrices_dct = isc_utils.load_pickle(os.path.join(save_path, f"similarity_mat_IS-RSA-mvpa_sugg-{NEURAL_SIM}_SHSS_behav_{n_perm_rsa}perm.pkl"
+        )    )
 # %%
 # VISUALISE
 rsa_stats_imgs_mvpa = {}
 rsa_tables_mvpa_fdr = {}
-RSA_MODEL_NAME = "shock_contrast_chge-pain"
+rsa_fdr_imgs_mvpa = {}
+RSA_MODEL_NAME = "sugg_contrast_SHSS"
 save_tables_rsa = os.path.join(save_path, RSA_MODEL_NAME, "tables")
 os.makedirs(save_tables_rsa, exist_ok=True)
 save_plots_rsa = os.path.join(save_path, RSA_MODEL_NAME, "plots")
@@ -570,7 +580,7 @@ for sim in results_dct.keys():  # similarity metric (e.g., 'euclidean', 'annak')
         p_values = rsa_df["p_values"].values
         region_id = rsa_df["ROI"].values
 
-        for correction in ["unc01", "within_FDR", "FDR", "bonf"]:
+        for correction in ["within_FDR", 'FDR'] : #, "FDR", "bonf"]:
             show = False
 
             if correction == "unc01":
