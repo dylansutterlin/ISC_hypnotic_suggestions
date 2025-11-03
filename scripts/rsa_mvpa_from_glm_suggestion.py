@@ -443,7 +443,7 @@ os.makedirs(save_path, exist_ok=True)
 # %%
 from src.mvpa_rsa_utils import compute_inter_subject_mvpa_similarity, build_subject_dict
 
-compute_rsa_sugg = False
+compute_rsa_sugg = True
 if compute_rsa_sugg is True:
     # SUGGEST MVPA IS-RSA
     # sim_model = {
@@ -453,10 +453,11 @@ if compute_rsa_sugg is True:
     # }
     sim_model = {"euclidean": sim_behav_vec, "annak": sim_behav_vec_annak}
 
-    sugg_conditions = {
+    sugg_conditions = [
         "ANA_sugg_minus_N_ANA_sugg",
-        "HYPER_sugg_minus_N_HYPER_sugg",
-    }
+        "HYPER_sugg_minus_N_HYPER_sugg"
+    ]
+
     print(sugg_conditions)
     for cond in sugg_conditions:
         print(f"will perform sequentially on {cond}")
@@ -470,6 +471,7 @@ if compute_rsa_sugg is True:
 
         for cond in tqdm(sugg_conditions):  # shock model!!
             print("Performing RSA on : ", cond)
+
             # load maps
             # all_shock_maps = glob(os.path.join(model_res, 'all_shock', 'firstlev_localizer_*.nii.gz'))
             sugg_maps = glob(
@@ -603,10 +605,10 @@ for sim in results_dct.keys():  # similarity metric (e.g., 'euclidean', 'annak')
 
             rsa_img, rsa_thresh, sig_df, stats_img = (
                 visu_utils.project_isc_to_brain_perm(
-                    atlas_img=ATLAS,
+                    atlas_img=atlas,
                     isc_median=correlations,
-                    atlas_labels=labels_roi_dct,
-                    roi_coords=coords,
+                    atlas_labels=id_labels_dct,
+                    roi_coords=roi_coords,
                     p_values=p_values,
                     p_threshold=p_thresh,
                     title=f"RSA MVPA {sim} – {cond} ({p_thresh_str})",
@@ -618,7 +620,7 @@ for sim in results_dct.keys():  # similarity metric (e.g., 'euclidean', 'annak')
                 )
             )
 
-            if correction == "FDR" and sig_df.shape[0] > 0:
+            if correction == "within_FDR" and sig_df.shape[0] > 0:
                 rsa_stats_imgs_mvpa[model_id] = (rsa_img, rsa_thresh)
                 rsa_tables_mvpa_fdr[model_id] = sig_df
 
@@ -633,6 +635,8 @@ for sim in results_dct.keys():  # similarity metric (e.g., 'euclidean', 'annak')
                 sig_df.to_csv(os.path.join(save_tables_rsa, fname), index=False)
 
                 print(f"Sig ROIs for {sim} – {cond}:", sig_df["Label"].to_list(), "\n")
+                view = view_img(rsa_img, title=f"RSA MVPA {sim} – {cond} ({p_thresh_str})", cmap="RdBu_r")
+                view.save_as_html(os.path.join(save_plots_rsa, f"RSA_MVPA_{sim}_{cond}_FDR.html"))
 # =====================================
 # Significant results for MVPA pain-activation ~ individual differences in change in pain ratings (global scores)
 # %%
@@ -643,8 +647,8 @@ for model_id in rsa_stats_imgs_mvpa.keys():
         view_img(rsa_stats_imgs_mvpa[model_id][0], title=title, cmap="RdBu_r")
     )
 
-'''
 # %%
+'''
 # CAN WE DECODE sugg condition from MVPA pattern in OFC?
 
 from sklearn.model_selection import GroupKFold
