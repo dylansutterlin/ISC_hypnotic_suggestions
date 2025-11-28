@@ -50,7 +50,7 @@ reload(isc_utils)
 
 
 # %%
-# Change setup file if running interactive environment (Cells, Jupyter, etc.)
+# Change setup file if running interactive environment 
 def is_interactive():
     return hasattr(sys, "ps1") or "ipykernel" in sys.modules
 
