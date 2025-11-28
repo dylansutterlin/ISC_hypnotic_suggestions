@@ -52,8 +52,11 @@ OUPUT/CODE for :
 
 
 # IS-RSA
+
+## Suggestion (ISC)
 INPUT : Pre-computed ISC models results path
     - Specified in model_names to fetch proper ISC model
+
 - Does many specific tests : 
     - ISC (sugg / pain) ~ SHSS scores (univ.) / pain scores(univ.) / cosine-based multivariate
     - ISC-sugg ~ ISC-pain
@@ -61,12 +64,12 @@ INPUT : Pre-computed ISC models results path
 OUTPUT : 
 - !! there is a copy of the script inside output folder! 
 
-`isc-RSA_ext_conds_sugg-pain_tian216_2tails` Final output for IS-RSA 
+FILE: `isc-RSA_ext_conds_sugg-pain_tian216_2tails` Final output for IS-RSA 
     - Based on pairwise ISC (schaeffer+Tian; 216 parcels) suggestion & pain models 
         - model_sugg = model_names['model2_sugg']
         - model_pain = model_names['model3_shock']
 
-- pkl files names according to the model test.
+- pkl files names according to the model tested.
     - Contains [Euclidean, annak] model in dict with each conditions tested inside
         - Main conditions are ana_run, hyper_run, but also contain hyper, ana for comparison
 
@@ -84,4 +87,46 @@ OUTPUT :
 
 # Cross model IS-RSA : ISC-suggestion ~ contrast-based MVPA similarity pain
 
+## IS-RSA pain (multivarie)
+FILE: rsa_mvpa_from_glm_pain_variables.py
+    - Extracts 1st level GLM contrast maps for `all_pain_conditions` (hyper>N_hyper & Ana>N_ANA maps)
+    - Runs inter-subject multivoxel spatial similarity for each ROI
+    - One sample test (median upper trig > 0)/ROI, for two pain conditions
+
+    Hyperparams/: 
+    - `NEURAL_SIM` : dot product and cosine sim. Dot product final, cosine for visualization. Models reproduce between the metric
+    - `BEHAV_ID` : tests IS-RSA with SHSS_score, change in pain score for Analgesia and Hyperalgesi 
+
+    ** Note :Change in pain Ana only tests with brain data from the Ana>N_Ana maps, and similarly for the hyper variable with the hyper maps. SHSS is tested with both brain conditions
+
+    USE: Final SHSS model in paper. chge_pain_ana ~ PHG to confirm the implication in behavioral pain modulation.
+
+
+//script overlaps with `rsa_mvpa_from_glm_dot.py` : initial script for SHSS ~ pain_MVPA rsa
+
+### Visualization for `rsa_mvpa_from_glm_pain_variables.py`
+
+
+
+(old earlier script V)
+### Multivariate spatial IS-RSA from GLM
+
+script use to procude and visualize: `rsa_mvpa_from_glm.py`
+- saves in `MODEL_NAME` ('model3_final-isc_23subjects_nuis_nodrift_31-03-25') 
+    adhoc_analyses_results
+        - plots
+            - PUBLICATION: glass brain GLM plots for suggestions 
+        - is-rsa_patterns_similarity:
+            - pairwise cosine pattern similarity per conditions
+
+## IS-RSA (path 3) seed ISC with target IS-MVPA
+FILE : rsa_isc_mvpa.py
+    - Run 
+    - Visu (manual hyperparam change)
+
+
+
+# Visualization Published Manuscript:
+
+## ISC
 
