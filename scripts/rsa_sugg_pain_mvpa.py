@@ -208,7 +208,7 @@ for sim in sugg_results_dct.keys():  # similarity metric (e.g., 'euclidean', 'an
         p_values = rsa_df["p_values"].values
         region_id = rsa_df["ROI"].values
 
-        for correction in ["within_FDR", 'unc01'] : #, "FDR", "bonf"]:
+        for correction in ["FDR", 'unc01'] : #, "FDR", "bonf"]:
             show = False
 
             if correction == "unc01":
@@ -219,7 +219,7 @@ for sim in sugg_results_dct.keys():  # similarity metric (e.g., 'euclidean', 'an
                 p_thresh = isc_utils.fdr(p_values, q=0.05)
                 p_thresh_str = "within_FDR" + str(round(p_thresh, 4))
                 print("Within-model FDR threshold:", p_thresh)
-                show = True
+                show = False
                 
             elif correction == "FDR":
                 p_thresh = p_thresh_global  # or load global value
@@ -250,8 +250,8 @@ for sim in sugg_results_dct.keys():  # similarity metric (e.g., 'euclidean', 'an
                 sugg_rsa_liberal_imgs_mvpa[model_id] = (rsa_img, rsa_thresh)
                 sugg_rsa_liberal_tables_mvpa[model_id] = sig_df
                 
-            if correction == "within_FDR" and sig_df.shape[0] > 0:
-                sugg_rsa_stats_imgs_mvpa[model_id] = (rsa_img, rsa_thresh)
+            if correction == "FDR" and sig_df.shape[0] > 0:
+                sugg_rsa_fdr_imgs_mvpa[model_id] = (rsa_img, rsa_thresh)
                 sugg_rsa_tables_mvpa_fdr[model_id] = sig_df
 
                 sig_df.columns = [
