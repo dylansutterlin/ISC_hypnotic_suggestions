@@ -102,7 +102,7 @@ def load_process_y(xlsx_path, subjects):
         row = filledY.loc[namei]
         Y.loc[namei] = row
 
-    return Y
+    return Y, rawY
 
 # def load_process_y_extended(xlsx_path, subjects):
 
