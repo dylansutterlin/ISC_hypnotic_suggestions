@@ -72,69 +72,27 @@ n_boot = setup["n_boot"]
 # post_hoc_dir = os.path.join(results_dir, "post_hoc_results")
 # os.makedirs(post_hoc_dir, exist_ok=True)
 
-# %%
-# all_results_paths = utils.load_json(os.path.join(results_dir, "result_paths.json"))
-# atlas_name = 'Difumo256' # change to setup['atlas_name']
-# n_sub = setup['n_sub']
-shaeffer_only = False
-if shaeffer_only:
+# %% Load atlas: Schaefer + Tian 216 ROIs
+from src.nilearn_helper import Atlas
+from nilearn import datasets
 
-    atlas_data = fetch_atlas_schaefer_2018(n_rois=200, resolution_mm=2)
-    atlas = nib.load(atlas_data["maps"])
-    atlas_path = atlas_data[
-        "maps"
-    ]  # os.path.join(project_dir,os.path.join(project_dir, 'masks', 'k50_2mm', '*.nii*'))
-    # labels_bytes = list(atlas_data['labels'])
-    full_labels = [
-        str(label, "utf-8") if isinstance(label, bytes) else str(label)
-        for label in atlas_data["labels"]
-    ]
-    roi_index = [full_labels.index(lbl) + 1 for lbl in full_labels]
-    id_labels_dct = dict(zip(roi_index, full_labels))
+# Combined Schaefer + Tian subcortical (216 ROIs)
+atlas_obj = Atlas("schaefer_tian216")
+coords = atlas_obj.get_coords()
+id_labels_dct = atlas_obj.id_labels_dct
+labels_roi_dct = id_labels_dct # ctl H to change ...
+atlas_labels = list(atlas_obj.id_labels_dct.values())
+atlas = atlas_obj.maps
+atlas_masker = atlas_obj.get_masker(
+    atlas_obj.maps,
+    atlas_obj.probabilistic,
+    kwargs={
+        "smoothing_fwhm": None,
+        "standardize": True,
+        "memory_level": 2,
 
-# ---------------
-# up to date scheaffer + subcortical regions
-else:
-    atlas = nib.load(
-        "/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/masks/Tian2020_schaeffer200_subcortical16/combined_schaefer200_tian16_DSG.nii.gz"
-    )
-    id_labels_dct = isc_utils.load_json(
-        "/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/masks/Tian2020_schaeffer200_subcortical16/roi_labels_dict_DSG.json"
-    )
-    # remove background
-    id_labels_dct.pop("0")
-    full_labels = list(id_labels_dct.values())
-    roi_index = list(id_labels_dct.keys())
-
-atlas_masker = NiftiLabelsMasker(
-    labels_img=atlas, labels=full_labels, standardize=False
+    }
 )
-atlas_masker.fit()
-
-# # Sensaas
-# # condition_target = ['all_sugg', 'A'
-# atlas = nib.load('/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/masks/sensaas/SENSAAS_MNI_ICBM_152_2mm.nii')
-# atlas_data = pd.read_csv('/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/masks/sensaas/SENSAAS_description.csv')
-# # atlas = qc_utils.resamp_to_img_mask(atlas_native, ref_img)
-# # view_img(atlas, threshold=0.5, title='SENSAAS atlas')
-# #sensaas ids and labels
-# roi_index = atlas_data['Index'].values
-# atlas_data['annot_abbreviation'] = atlas_data['Abbreviation'] + '_' + atlas_data['Hemisphere']
-# full_labels = atlas_data['annot_abbreviation'].values
-# id_labels_dct = dict(zip(atlas_data['Index'], atlas_data['annot_abbreviation']))
-
-if "SENSAAS" in setup["atlas_name"]:
-    roi_coords = list(
-        zip(
-            atlas_data["Xmm"].astype(float),
-            atlas_data["Ymm"].astype(float),
-            atlas_data["Zmm"].astype(float),
-        )
-    )
-else:
-    roi_coords = find_parcellation_cut_coords(labels_img=atlas)
-
-from nilearn import datasets, plotting
 
 bg_mni = datasets.load_mni152_template(resolution=1)
 
@@ -164,7 +122,7 @@ Y, rawY = preproc_utils.load_process_y(xlsx_path, subjects)
 # Will be used for plotting region ISC matrices
 # stack contrast imgs in `contrast_imgs[cont]`
 
-# Reload BLOCK model
+# Reload ISC BLOCK model --> get ISC matrices
 model_name = model_names["model2_sugg"]
 results_dir = os.path.join(project_dir, f"results/imaging/ISC/{model_name}")
 setup = isc_utils.load_json(os.path.join(results_dir, "setup_parameters.json"))
@@ -172,9 +130,10 @@ setup = isc_utils.load_json(os.path.join(results_dir, "setup_parameters.json"))
 result_key = "isc_results"
 interactive_views = {}
 combined_conditions = [
-    "ana_run",
-    "hyper_run",
-]  # 'neutral']#setup['combined_conditions'] #['all_sugg', 'modulation', 'neutral']
+    "ANA",]
+#     "ana_run",
+#     "hyper_run",
+# ]  # 'neutral']#setup['combined_conditions'] #['all_sugg', 'modulation', 'neutral']
 
 isc_matrices = {}
 iscs_cond = {}
@@ -191,13 +150,18 @@ for i, cond in enumerate(combined_conditions):
 
         f"Fetching 1 sample ISC values from BLOCK model, for contextual effect.\n {cond}"
     )
-    isc_bootstrap = isc_utils.load_pickle(
-        os.path.join(
-            results_dir,
-            f"concat_suggs_1samp_boot/isc_results_{cond}_{n_boot}boot_pairWise{do_pairWise}.pkl",
+    if cond =='ANA':
+        isc_bootstrap = isc_utils.load_pickle(os.path.join(results_dir, f"{cond}/isc_results_{cond}_{n_boot}boot_pairWise{do_pairWise}.pkl"))
+    else:
+            
+        isc_bootstrap = isc_utils.load_pickle(
+            os.path.join(
+                results_dir,
+                f"concat_suggs_1samp_boot/isc_results_{cond}_{n_boot}boot_pairWise{do_pairWise}.pkl",
+            )
         )
-    )
-    isc_rois = pd.DataFrame(isc_bootstrap["isc"], columns=full_labels)
+    
+    isc_rois = pd.DataFrame(isc_bootstrap["isc"], columns=atlas_labels)
     isc_matrices[cond] = {
         region: isc_utils.vector_to_isc_matrix(isc_rois.iloc[:, col_j], diag=0)
         for col_j, region in enumerate(isc_rois.columns)
@@ -228,7 +192,6 @@ print("\nFDR across all conditions : ", fdr_all_1samp)
 # # %%
 # IS-RSA SHSS~ISC
 # ===============
-# Load results and save tables
 
 load_dir = os.path.join(
     project_dir, "results/imaging/RSA/isc-RSA_ext_conds_sugg-pain_tian216_2tails"
@@ -238,9 +201,9 @@ RESULT_FILE = "rsa_SHSS-behav_isc-sugg10000perm.pkl"
 rsa_isc_sugg = isc_utils.load_pickle(os.path.join(load_dir, RESULT_FILE))
 rsa_isc_sugg['euclidean'] = rsa_isc_sugg.pop('euclidian') # fix typo in original script 
 
-load_dir = os.path.join(
-    project_dir, "results/imaging/RSA/isc-RSA_tian216_sugg-pain_combined_conds"
-)
+# load_dir = os.path.join(
+#     project_dir, "results/imaging/RSA/isc-RSA_tian216_sugg-pain_combined_conds"
+# ) # Check final model modif nov. 25 !! See results/X/folder for cp scripts
 
 save_rsa = os.path.join(load_dir, "post-hoc_VISU-tables")
 os.makedirs(save_rsa, exist_ok=True)
@@ -269,8 +232,9 @@ model_p_values = []
 condition_wise_p_values = {}
 
 for cond in [
-        "ana_run",
-        "hyper_run",
+        "ANA",
+        # "ana_run",
+        # "hyper_run",
     ]:  # , 'HYPER', 'ANA']: #, 'all_sugg', 'neutral']:
     for model in models:
 
@@ -333,12 +297,13 @@ for correction in ["unc01", "within_FDR", "cond-wise_FDR", "FDR", "bonf"]:
             p_thresh = isc_utils.fdr(p_values, q=0.05)
             p_thresh_str = "within_FDR" + str(round(p_thresh, 4))
             print(f"Within FDR threshold for {rsa_cond}: {p_thresh:.4f}")
+            show=True
 
         if correction == "FDR":
             p_thresh = fdr_all_rsa
             p_thresh_str = "FDR" + str(round(p_thresh, 4))
             print(f"FDR threshold for {rsa_cond}: {p_thresh:.4f}")
-            show = True
+            show = False
 
         if correction == "cond-wise_FDR":
             model = rsa_cond.split("_")[0]
@@ -356,7 +321,7 @@ for correction in ["unc01", "within_FDR", "cond-wise_FDR", "FDR", "bonf"]:
             atlas_img=atlas,
             isc_median=correlations,
             atlas_labels=id_labels_dct,
-            roi_coords=roi_coords,
+            roi_coords=coords,
             p_values=p_values,
             p_threshold=p_thresh,  #!!
             title=f"IS-RSA SHSS~{rsa_cond} ({p_thresh_str})",  # "RSA-ISC: Suggestion-Pain Similarity (FDR<.05)",
@@ -373,7 +338,7 @@ for correction in ["unc01", "within_FDR", "cond-wise_FDR", "FDR", "bonf"]:
             rsa_table_unc[rsa_cond] = sig_df
             rsa_liberal_imgs[rsa_cond] = (rsa_img, rsa_thresh)
 
-        if correction == "FDR" and sig_df.shape[0] > 0:
+        if correction == "unc01" and sig_df.shape[0] > 0:
             
             rsa_fdr_imgs[rsa_cond] = (rsa_img, rsa_thresh)
             rsa_tables_fdr[rsa_cond] = sig_df
@@ -419,7 +384,7 @@ for NEURAL_SIM in ['dot', 'cosine']: #, 'dot']: #, 'cosine']: #, 'dot']: #['eucl
     save_path = f"/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/RSA/IS-RSA-mvpa-{NEURAL_SIM}-{effect_type}_contrast-based_tian216" #_{ANNAK_VERSION}-annak"
     os.makedirs(save_path, exist_ok=True)
 
-    BEHAV_ID = "SHSS_score"  # "SHSS" or "chge-pain" or "pain_diff_Ana" or "pain_diff_Hyper" or "total_change_pain"
+    BEHAV_ID = "pain_diff_Ana"  # "SHSS" or "chge-pain" or "pain_diff_Ana" or "pain_diff_Hyper" or "total_change_pain"
     pain_conditions = ["ANA_shock_minus_N_ANA_shock", "HYPER_shock_minus_N_HYPER_shock"]
    
 
@@ -433,11 +398,10 @@ for NEURAL_SIM in ['dot', 'cosine']: #, 'dot']: #, 'cosine']: #, 'dot']: #['eucl
     ))
 
 # main results with dot-based similarity
-final_metric = 'dot'
-results_dct = results_dct_all[final_metric]
-similarity_matrices_dct = similarity_matrices_dct_all[final_metric]
-save_path = f"/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/RSA/IS-RSA-mvpa-{final_metric}-{effect_type}_contrast-based_tian216" #_{ANNAK_VERSION}-annak"
-
+NEURAL_SIM = 'dot'
+results_dct = results_dct_all[NEURAL_SIM]
+similarity_matrices_dct = similarity_matrices_dct_all[NEURAL_SIM]
+save_path = f"/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/RSA/IS-RSA-mvpa-{NEURAL_SIM}-{effect_type}_contrast-based_tian216" #_{ANNAK_VERSION}-annak"
 
 rsa_stats_imgs_fdr = {}
 rsa_tables_mvpa_fdr = {}
@@ -500,6 +464,7 @@ for sim in results_dct.keys():  # similarity metric (e.g., 'euclidean', 'annak')
             elif correction == "within_FDR":
                 p_thresh = isc_utils.fdr(p_values, q=0.05)
                 p_thresh_str = "within_FDR" + str(round(p_thresh, 4))
+                show=False
             elif correction == "within_cond_FDR": # whole brain * 2 models
                 condition_vals = ana_p_values if 'ANA' in model_id else hyper_p_values
                 p_thresh = isc_utils.fdr(condition_vals, q=0.05)
@@ -521,7 +486,7 @@ for sim in results_dct.keys():  # similarity metric (e.g., 'euclidean', 'annak')
                     atlas_img=atlas,
                     isc_median=correlations,
                     atlas_labels=id_labels_dct,
-                    roi_coords=roi_coords,
+                    roi_coords=coords,
                     p_values=p_values,
                     p_threshold=p_thresh,
                     title=f"RSA MVPA {sim} – {cond} ({p_thresh_str})",
@@ -559,40 +524,51 @@ for sim in results_dct.keys():  # similarity metric (e.g., 'euclidean', 'annak')
                 view.save_as_html(os.path.join(save_plots_shock_shss, f"viewer_RSA_{sim}_{cond}_{p_thresh_str}.html"))
 
 #%%
-# SAVE TARGET REGION FROM SIGNIFICANT PATH 2
+# SAVE TARGET REGION FROM SIGNIFICANT PATH 2 (RSA SHSS~suggestion_ISC)
 # Use liberal thresholding as a good compromise between choosing 
 # target regions only FDR sig, vs. whole brain
 
 # FDR region only
-# target_roi_ana = {}
-# target_roi_hyper = {}
-# for model_id in rsa_tables_mvpa_fdr.keys():
-#     if 'ANA' in model_id:
-#         region_ids = list(rsa_tables_mvpa_fdr[model_id]['ROI'].values)
-#         region_name = list(rsa_tables_mvpa_fdr[model_id]['Label'].values)
-
-#         cond_dct = {id:name for id, name in zip(region_ids, region_name)}
-#         target_roi_ana = {**target_roi_ana, **cond_dct}
-#     elif 'HYPER' in model_id:
-#         region_ids = list(rsa_tables_mvpa_fdr[model_id]['ROI'].values)
-#         region_name = list(rsa_tables_mvpa_fdr[model_id]['Label'].values)
-#         cond_dct = {id:name for id, name in zip(region_ids, region_name)}
-#         target_roi_hyper = {**target_roi_hyper, **cond_dct}
-
 target_roi_ana = {}
 target_roi_hyper = {}
 for model_id in rsa_tables_mvpa_fdr.keys():
     if 'ANA' in model_id:
-        region_ids = list(rsa_tables_mvpa_liberal[model_id]['ROI'].values)
-        region_name = list(rsa_tables_mvpa_liberal[model_id]['Label'].values)
+        region_ids = list(rsa_tables_mvpa_fdr[model_id]['ROI'].values)
+        region_name = list(rsa_tables_mvpa_fdr[model_id]['Label'].values)
 
         cond_dct = {id:name for id, name in zip(region_ids, region_name)}
         target_roi_ana = {**target_roi_ana, **cond_dct}
     elif 'HYPER' in model_id:
-        region_ids = list(rsa_tables_mvpa_liberal[model_id]['ROI'].values)
-        region_name = list(rsa_tables_mvpa_liberal[model_id]['Label'].values)
+        region_ids = list(rsa_tables_mvpa_fdr[model_id]['ROI'].values)
+        region_name = list(rsa_tables_mvpa_fdr[model_id]['Label'].values)
         cond_dct = {id:name for id, name in zip(region_ids, region_name)}
         target_roi_hyper = {**target_roi_hyper, **cond_dct}
+
+# target_roi_ana = {}
+# target_roi_hyper = {}
+# for model_id in rsa_tables_mvpa_fdr.keys():
+#     if 'ANA' in model_id:
+#         region_ids = list(rsa_tables_mvpa_liberal[model_id]['ROI'].values)
+#         region_name = list(rsa_tables_mvpa_liberal[model_id]['Label'].values)
+
+#         cond_dct = {id:name for id, name in zip(region_ids, region_name)}
+#         target_roi_ana = {**target_roi_ana, **cond_dct}
+#     elif 'HYPER' in model_id:
+#         region_ids = list(rsa_tables_mvpa_liberal[model_id]['ROI'].values)
+#         region_name = list(rsa_tables_mvpa_liberal[model_id]['Label'].values)
+#         cond_dct = {id:name for id, name in zip(region_ids, region_name)}
+#         target_roi_hyper = {**target_roi_hyper, **cond_dct}
+
+# manually add left NAc because of Desmarteau et al., 2021
+# target_roi_ana['202'] = 'AMY-rh'
+# target_roi_ana['205'] = 'NAc-rh'
+# target_roi_ana['210'] = 'AMY-lh'
+# target_roi_ana['213'] = 'NAc-lh'
+
+# target_roi_hyper['202'] = 'AMY-rh'
+# target_roi_hyper['205'] = 'NAc-rh'
+# target_roi_hyper['210'] = 'AMY-lh'
+# target_roi_hyper['213'] = 'NAc-lh'
 
 #%%
 
@@ -623,10 +599,10 @@ seed_regions_hyper_matrices = {}
 # for region_id, region in seed_regions_hyper_context.items():
 #     seed_regions_hyper_matrices[region] = isc_matrices['hyper_run'][region]
 
-# all seeds positive and negative from unc01 is-rsa SHSS ~ mv pain results 
-for sim_model in rsa_tables_fdr.keys(): # ONLY POSITIVE REGIONS
-    if 'ana' in sim_model:
-        region_ids = list(rsa_tables_fdr[sim_model]['ROI'].values)
+# all seeds positive and negative FDR corr. is-rsa SHSS ~ mv pain results 
+for sim_model in rsa_tables_fdr.keys():
+    if 'ana' in sim_model or 'ANA' in sim_model:
+        region_ids = list(rsa_tables_fdr[sim_model]['ROI'].values )
         region_name = list(rsa_tables_fdr[sim_model]['Label'].values)
 
         cond_dct = {id:name for id, name in zip(region_ids, region_name)}
@@ -643,16 +619,15 @@ for region_id, region in seed_regions_ana_context.items():
 for region_id, region in seed_regions_hyper_context.items():
     seed_regions_hyper_matrices[region] = isc_matrices['hyper_run'][region]
 
-
 #%%
 # initialize results for ISC-MVPA RSA
 # ================================
 
 # final mvpa sim model defined before (dot model = final)
-results_dct = results_dct_all[final_metric]
-similarity_matrices_mvpa = similarity_matrices_dct_all[final_metric]['euclidean']
+results_dct = results_dct_all[NEURAL_SIM]
+similarity_matrices_mvpa = similarity_matrices_dct_all[NEURAL_SIM]['euclidean']
 # save_mvpa_rsa = f"/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/RSA/IS-RSA-mvpa-{final_metric}-{effect_type}_contrast-based_tian216" #_{ANNAK_VERSION}-annak"
-save_rsa_isc_mvpa = os.path.join(save_rsa_isc_mvpa_dir, f"isc_mvpa-{effect_type}-maps_{final_metric}-neural-sim_liberal01_targets")
+save_rsa_isc_mvpa = os.path.join(save_rsa_isc_mvpa_dir, f"isc_mvpa-{effect_type}-maps_{NEURAL_SIM}-neural-ANAonly_painDiffANA") #_liberal01_targets")
 os.makedirs(save_rsa_isc_mvpa, exist_ok=True)
 
 # Have been overwrite by trial model code !
@@ -665,13 +640,16 @@ os.makedirs(save_tables_rsa, exist_ok=True)
 #%%
 # PERFORM RSA between seed ISC matrices and MVPA similarity matrices
 from tqdm import tqdm
-
-n_perm_rsa = 10000
+if BEHAV_ID == "pain_diff_Ana":
+    combined_conditions = ["ana_run"]
+    
+n_perm_rsa = 10
 LOAD_RESULTS_ONLY = False
-
+TAIL=2
+neural_sim = 'dot' # for visu only, NEURAL_SIM is defined earlier !
 if LOAD_RESULTS_ONLY:
     rsa_isc_mvpa_results = isc_utils.load_pickle(os.path.join(
-        save_rsa_isc_mvpa, f"IS-RSA-ISC-sugg_mvpa-pain-{NEURAL_SIM}_{n_perm_rsa}perm.pkl"
+        save_rsa_isc_mvpa, f"IS-RSA-ISC-sugg_mvpa-pain-{neural_sim}_{n_perm_rsa}perm_{TAIL}tails.pkl"
     ))
     seed_matrices_conds = {}
     target_matrices_conds = {}
@@ -686,18 +664,21 @@ if LOAD_RESULTS_ONLY:
 else:
         
     rsa_isc_mvpa_results = {}
+    distributions_all = {}
     for cond in tqdm(combined_conditions, desc="Conditions"):
-        if 'ana' in cond:
+        if 'ana' in cond or 'ANA' in cond:
             seed_matrices = seed_regions_ana_matrices
             labels_roi_dct = seed_regions_ana_context
-            target_mvpa_matrices = similarity_matrices_mvpa['ANA_shock_minus_N_ANA_shock']
-        elif 'hyper' in cond:
+            target_mvpa_matrices_full_brain = similarity_matrices_mvpa['ANA_shock_minus_N_ANA_shock']
+            target_mvpa_matrices = {roi_id: mat for roi_id, mat in target_mvpa_matrices_full_brain.items() if roi_id in target_roi_ana.keys()}
+        elif 'hyper' in cond or 'HYPER' in cond:
             seed_matrices = seed_regions_hyper_matrices
             labels_roi_dct = seed_regions_hyper_context
-            target_mvpa_matrices = similarity_matrices_mvpa['HYPER_shock_minus_N_HYPER_shock']
+            target_mvpa_matrices_full_brain = similarity_matrices_mvpa['HYPER_shock_minus_N_HYPER_shock']
+            target_mvpa_matrices = {roi_id: mat for roi_id, mat in target_mvpa_matrices_full_brain.items() if roi_id in target_roi_hyper.keys()}
         print("Performing RSA on : ", cond)
         rsa_isc_mvpa_results[cond] = {}
-
+        distributions_all[cond] = {}
         for seed_id, seed_name in tqdm(labels_roi_dct.items(), desc="Seed regions"):
             seed_matrix = seed_matrices[seed_name]
             np.fill_diagonal(seed_matrix, 0)  # fill diag with 0 for similarity
@@ -720,21 +701,22 @@ else:
                     n_permute=n_perm_rsa,
                     metric="spearman",
                     how="upper",
-                    tail=2,
+                    tail=TAIL,
                     return_perms=True,
                 )
                 # 2 tail when testing behavioral model, as AnnaK can show reverse pattern
                 rsa_rows.append(
                     {
                         "ROI": target_id,
-                        "label": id_labels_dct[str(target_id)],
+                        "label": id_labels_dct[target_id],
                         "spearman_r": r,
                         "p_values": round(p, 5),
-                        "Coordinates": tuple(np.round(roi_coords[i], 0).astype(int)),
+                        "Coordinates": tuple(np.round(coords[i], 0).astype(int)),
                     }
                 )
 
             rsa_isc_mvpa_results[cond][seed_name] = pd.DataFrame(rsa_rows)
+            distributions_all[cond][seed_name] = dist
             print(
                 "Max r, mean and fdr",
                 rsa_isc_mvpa_results[cond][seed_name]["spearman_r"].max(),
@@ -754,19 +736,30 @@ else:
             save_rsa_isc_mvpa, f"seed_similarity_ISC_mat_{cond}.pkl"
         ), seed_matrices)
         isc_utils.save_data(os.path.join(save_rsa_isc_mvpa, f"target_similarity_MVPA_mat_{cond}.pkl"), target_mvpa_matrices)
+        isc_utils.save_data(os.path.join(save_rsa_isc_mvpa, f"IS-RSA-ISC-sugg_mvpa-pain-{NEURAL_SIM}_distributions_{cond}.pkl"), distributions_all)
         print(f"Saved RSA results to {save_to}")
 
 #%%
 # VISUALIZATION 
+reload(visu_utils)
+
 cond_p_values = {}
 global_p_values = []
+combined_seed_dfs = {}
 for cond in combined_conditions:
     cond_results = rsa_isc_mvpa_results[cond]
     cond_p_values[cond] = []
-
+    if 'ana' in cond: #manual addition 24 oct.
+        restrict_target_rois = list(target_roi_ana.values())
+    else:
+        restrict_target_rois = list(target_roi_hyper.values())
+    
     for seed_name in cond_results.keys():
         seed_df = cond_results[seed_name]
+        #restrict
+        seed_df = seed_df[seed_df['label'].isin(restrict_target_rois)]
         cond_p_values[cond].extend(seed_df['p_values'].values)
+        combined_seed_dfs[f"{cond}_{seed_name}"] = seed_df
     cond_p_values[cond] = np.array(cond_p_values[cond])
 
     global_p_values.extend(cond_p_values[cond])
@@ -777,14 +770,22 @@ global_p_thresh = isc_utils.fdr(np.array(global_p_values), q=0.05)
 print(f"Global FDR threshold across conditions : {global_p_thresh:.4f}")
 
 # correction = "FDR"  # "unc01", "within_FDR", "cond-wise_FDR", "FDR", "bonf"
-
+#%%
 liberal_rsa_imgs = {}
 fdr_rsa_imgs = {}
 sig_seed_dfs = {}
 target_dfs = {}
-for correction in ['unc01']: #, 'unc01']:
+
+def find_dct_key_by_value(dct, value):
+    for k, v in dct.items():
+        if v == value:
+            return k
+    return None
+
+for correction in ['within_FDR']: #, 'unc01']:
     print(f'\n Correction : {correction}')
     for cond in combined_conditions:
+        
         print(f"Projecting results for {cond}\n--------------------")
         cond_results = rsa_isc_mvpa_results[cond]
         sig_seed_dfs[cond] = {}
@@ -796,28 +797,30 @@ for correction in ['unc01']: #, 'unc01']:
         restrict_rois_names = list(restrict_target_rois.values())
 
         for seed_name in cond_results.keys():
-            print("Seed region : ", seed_name, "\n")
+            seed_id = find_dct_key_by_value(id_labels_dct, seed_name)
+            print(f"Seed region (id): {seed_name} ({seed_id}) \n")
              # get significant results
             # get seed to whole brain (216) RSA dfs
             seed_df = cond_results[seed_name]
             target_dfs[seed_name] = seed_df
-            full_brain_correlations = seed_df["spearman_r"].values
-            full_brain_p_values = seed_df["p_values"].values
-            # target_p_values = full_brain_p_values[seed_df['ROI'].isin(restrict_rois_ids_int)]
+            # full_brain_correlations = seed_df["spearman_r"].values
+            # full_brain_p_values = seed_df["p_values"].values
             
-            # constraining to certain predifined ROIs (from sig/unc MVPA RSA during pain)
-            print('restrincting tests to target ROIS : ', restrict_rois_names)
-            seed_df_restricted_target = seed_df[seed_df['ROI'].isin(restrict_rois_ids_int)]
-            target_indices = list(seed_df_restricted_target['ROI'].isin(restrict_rois_ids_int).index)
-            target_rois_p_values = full_brain_p_values[target_indices]
+            # # constraining to certain predifined ROIs (from sig/unc MVPA RSA during pain)
+            # print('restrincting tests to target ROIS : ', restrict_rois_names)
+            # seed_df_restricted_target = seed_df[seed_df['ROI'].isin(restrict_rois_ids_int)]
+            # target_indices = list(seed_df_restricted_target['ROI'].isin(restrict_rois_ids_int).index)
+            # target_rois_p_values = full_brain_p_values[target_indices]
+            brain_correlations = seed_df["spearman_r"].values
+            brain_p_values = seed_df["p_values"].values
 
             if correction == "FDR":
                 p_thresh = global_p_thresh
                 p_thresh_str = "FDR" + str(round(p_thresh, 4))
-                show = False
+                show = True
                 print(f"FDR threshold for {cond} - {seed_name}: {p_thresh:.4f}")
             elif correction == "within_FDR":
-                p_thresh = isc_utils.fdr(target_rois_p_values, q=0.05) # only on tested target rois
+                p_thresh = isc_utils.fdr(brain_p_values, q=0.05) # only on tested target rois
                 p_thresh_str = "within_FDR" + str(round(p_thresh, 4))
                 print(f"Within FDR threshold for {cond} - {seed_name}: {p_thresh:.4f}")
                 show = True
@@ -826,6 +829,9 @@ for correction in ['unc01']: #, 'unc01']:
                 p_thresh_str = "0.01"
                 show = True
 
+            if brain_p_values.min() > p_thresh:
+                print(f"No significant ROIs for {cond} - {seed_name} at p<{p_thresh}")
+                continue
             # keep only target elements
             # from nilearn.image import new_img_like
             # def filter_atlas(atlas_img, atlas_labels_dict, keep_ids):
@@ -843,10 +849,10 @@ for correction in ['unc01']: #, 'unc01']:
             # project to brain
             rsa_img, rsa_thresh, sig_df, unc_img = visu_utils.project_isc_to_brain_perm(
                 atlas_img=atlas,
-                isc_median=full_brain_correlations,
+                isc_median=brain_correlations,
                 atlas_labels={k: v for k, v in id_labels_dct.items() if k in restrict_rois_ids},
-                roi_coords=roi_coords,
-                p_values=full_brain_p_values,
+                roi_coords=coords,
+                p_values=brain_p_values,
                 p_threshold=p_thresh,  #!!
                 title=f"IS-RSA SHSS~{cond} ({p_thresh_str})",  # "RSA-ISC: Suggestion-Pain Similarity (FDR<.05)",
                 save_path=None,
@@ -873,7 +879,7 @@ for correction in ['unc01']: #, 'unc01']:
                 sig_df.to_csv(
                     os.path.join(
                         save_tables_rsa,
-                        f"IS-RSA-ISC-sugg_mvpa-pain-{final_metric}_{cond}_seed-{seed_name}_table_{p_thresh_str}.csv",
+                        f"IS-RSA-ISC-sugg_mvpa-pain-{neural_sim}_{cond}_seed-{seed_name}_table_{p_thresh_str}.csv",
                     ),
                     index=False,
                 )
@@ -887,7 +893,7 @@ for correction in ['unc01']: #, 'unc01']:
                 view.save_as_html(
                     os.path.join(
                         save_plots_rsa,
-                        f"view_{final_metric}_{cond}_isc-mvpa_seed-{seed_name}_{p_thresh_str}.html"
+                        f"view_{neural_sim}_{cond}_isc-mvpa_seed-{seed_name}_{p_thresh_str}.html"
                     )
                 )
 
