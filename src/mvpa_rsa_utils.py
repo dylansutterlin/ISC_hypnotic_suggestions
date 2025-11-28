@@ -4,6 +4,9 @@ from sklearn.metrics import pairwise_distances
 import numpy as np
 import pandas as pd
 import os
+from sklearn.covariance import LedoitWolf
+from scipy.spatial import distance
+
 
 def compute_inter_subject_mvpa_similarity(condition_dict, atlas_img, labels_roi_dct, sim_method = 'cosine'):
     """
@@ -75,7 +78,15 @@ def compute_inter_subject_mvpa_similarity(condition_dict, atlas_img, labels_roi_
             sim_matrix = np.dot(valid_vectors, valid_vectors.T)
         elif sim_method == 'euclidean':
             dist_matrix = pairwise_distances(valid_vectors, metric='euclidean')
-            sim_matrix = -dist_matrix  # Convert distances to similarities
+            sim_matrix = 1 - (dist_matrix / np.max(dist_matrix)) # diag =1 and between 0-1 simil
+        elif sim_method == 'pearson':
+            sim_matrix = np.corrcoef(valid_vectors)  # correlation between rows
+        elif sim_method == 'mahalanobis':
+            cov = LedoitWolf().fit(valid_vectors).covariance_
+            inv_cov = np.linalg.inv(cov)
+            dist_matrix = pairwise_distances(valid_vectors, metric='mahalanobis', VI=inv_cov)
+            sim_matrix = 1 - (dist_matrix / np.max(dist_matrix))  # normalize like Euclidean
+
         else:
             raise ValueError(f"Unsupported similarity method '{sim_method}'. Choose 'cosine' or 'dot'.")
         similarity_matrices[roi_idx] = pd.DataFrame(
