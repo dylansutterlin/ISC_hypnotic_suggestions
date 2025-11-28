@@ -121,7 +121,7 @@ contrasts_spec = {
     "N_HYPER_sugg_minus_N_ANA_sugg": (1, -1),
     "ANA_sugg+HYPER_sugg_minus_N_ANA_sugg+N_HYPER_sugg": (1.5, -1),
     "ANA_sugg+N_ANA_sugg_minus_HYPER_sugg+N_HYPER_sugg": (1, -1),
-    "N_ANA_shock_minus_N_HYPER_shock": (1, -1), # eq. N cond?
+    "N_ANA_shock_minus_N_HYPER_shock": (1, -1), # 2 x 9 = 3 x 6 shocks
     "ANA_shock_minus_N_ANA_shock": (1, -1),
     "HYPER_shock_minus_N_HYPER_shock": (1, -1),
     "ANA_shock+HYPER_shock_minus_N_ANA_shock+N_HYPER_shock": (1, -1)
@@ -131,7 +131,7 @@ loc_contrasts_vectors = {}
 first_level_models = {}
 contrast_maps = {}
 first_lev_files = {}
-
+effect_type = 'stat' #stat = t map, bc specified #'effect_size' #'z_score' #
 save_first_lev = os.path.join(save_glm, 'first_level')
 os.makedirs(save_first_lev, exist_ok=True)
 
@@ -177,12 +177,13 @@ for sub, subject in enumerate(subjects):
 
         # print(f"{condition}...")
         if i < MAX_CONT:
-            print(f"contrast for {condition}...")
-            contrast_map = first_level_model.compute_contrast(contrast_vector, output_type="z_score")
+            print(f"contrast for {condition}...") #Note: stat_type is None by default, output type matters
+            contrast_map = first_level_model.compute_contrast(contrast_vector, stat_type='t', output_type=effect_type)
+             # save contrast map in dict
             sub_contrasts[condition] = contrast_map
 
             # Save contrast maps
-            contrasts_files[condition] = os.path.join(save_first_lev, condition, f"firstlev_localizer_{subject}.nii.gz")
+            contrasts_files[condition] = os.path.join(save_first_lev, condition, f"firstlev_{effect_type}_{subject}.nii.gz")
             contrast_map.to_filename(contrasts_files[condition])
             i += 1
         else :
@@ -318,7 +319,7 @@ print("Done with all GLM processing!")
 #============================
 # VISUALIZATION
 #============================
-
+'''
 def prep_visu_glm(results_p):
 
     # dot_p = os.path.join(results_p, 'GLM_results', 'NPS_dot_pain.pkl')
