@@ -95,45 +95,25 @@ model_res = r"/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/resul
 project_dir = setup.project_dir
 results_dir = setup["save_dir"]
 
-# # combine Schaeffer + Tian subcortical atlas or just schaefer
-SCHAEFER_ONLY = False
+# %% Load atlas: Schaefer + Tian 216 ROIs
+from src.nilearn_helper import Atlas
 
-atlas = nib.load(
-    "/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/masks/Tian2020_schaeffer200_subcortical16/combined_schaefer200_tian16_DSG.nii.gz"
+# Combined Schaefer + Tian subcortical (216 ROIs)
+atlas_obj = Atlas("schaefer_tian216")
+coords = atlas_obj.get_coords()
+id_labels_dct = atlas_obj.id_labels_dct
+labels_roi_dct = id_labels_dct # ctl H to change ...
+atlas = atlas_obj.maps
+atlas_masker = atlas_obj.get_masker(
+    atlas_obj.maps,
+    atlas_obj.probabilistic,
+    kwargs={
+        "smoothing_fwhm": None,
+        "standardize": True,
+        "memory_level": 2,
+
+    }
 )
-id_labels_dct = isc_utils.load_json(
-    "/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/masks/Tian2020_schaeffer200_subcortical16/roi_labels_dict_DSG.json"
-)
-# remove background
-id_labels_dct.pop("0")
-labels = list(id_labels_dct.values())
-roi_index = [i + 1 for i in range(len(labels))]  # no background, 0
-
-atlas_masker = NiftiLabelsMasker(labels_img=atlas, labels=labels, standardize=False)
-atlas_masker.fit()
-
-if SCHAEFER_ONLY:
-    atlas_data = fetch_atlas_schaefer_2018(n_rois=200, resolution_mm=2)
-    atlas = nib.load(atlas_data["maps"])
-    # atlas_path = atlas_data['maps'] #os.path.join(project_dir,os.path.join(project_dir, 'masks', 'k50_2mm', '*.nii*'))
-    # labels_bytes = list(atlas_data['labels'])
-    labels = [
-        str(label, "utf-8") if isinstance(label, bytes) else str(label)
-        for label in atlas_data["labels"]
-    ]
-    # roi_index = [i+1 for i in range(len(labels))] # no background, 0
-    atlas_labels = dict(zip(roi_index, labels))
-
-else:
-    atlas_masker = NiftiLabelsMasker(
-        labels_img=atlas, atlas_labels=labels, standardize=False
-    )
-    atlas_masker.fit()
-    atlas_labels = dict(zip(roi_index, labels))
-    labels = list(atlas_labels.values())
-
-coords = find_parcellation_cut_coords(labels_img=atlas)
-labels_roi_dct = dict(zip(roi_index, labels))
 
 ATLAS = atlas
 
@@ -608,7 +588,7 @@ for sim in results_dct.keys():  # similarity metric (e.g., 'euclidean', 'annak')
                     atlas_img=atlas,
                     isc_median=correlations,
                     atlas_labels=id_labels_dct,
-                    roi_coords=roi_coords,
+                    roi_coords=coor,
                     p_values=p_values,
                     p_threshold=p_thresh,
                     title=f"RSA MVPA {sim} – {cond} ({p_thresh_str})",

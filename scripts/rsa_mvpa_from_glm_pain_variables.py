@@ -95,47 +95,27 @@ model_res = r"/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/resul
 project_dir = setup.project_dir
 results_dir = setup["save_dir"]
 
-# # combine Schaeffer + Tian subcortical atlas or just schaefer
-SCHAEFER_ONLY = False
+# %% Load atlas: Schaefer + Tian 216 ROIs
+from src.nilearn_helper import Atlas
 
-atlas = nib.load(
-    "/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/masks/Tian2020_schaeffer200_subcortical16/combined_schaefer200_tian16_DSG.nii.gz"
+# Combined Schaefer + Tian subcortical (216 ROIs)
+atlas_obj = Atlas("schaefer_tian216")
+coords = atlas_obj.get_coords()
+id_labels_dct = atlas_obj.id_labels_dct
+labels_roi_dct = id_labels_dct # ctl H to change ...
+
+atlas_masker = atlas_obj.get_masker(
+    atlas_obj.maps,
+    atlas_obj.probabilistic,
+    kwargs={
+        "smoothing_fwhm": None,
+        "standardize": True,
+        "memory_level": 2,
+
+    }
 )
-id_labels_dct = isc_utils.load_json(
-    "/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/masks/Tian2020_schaeffer200_subcortical16/roi_labels_dict_DSG.json"
-)
-# remove background
-id_labels_dct.pop("0")
-labels = list(id_labels_dct.values())
-roi_index = [i + 1 for i in range(len(labels))]  # no background, 0
+ATLAS = atlas_obj.maps
 
-atlas_masker = NiftiLabelsMasker(labels_img=atlas, labels=labels, standardize=False)
-atlas_masker.fit()
-
-if SCHAEFER_ONLY:
-    atlas_data = fetch_atlas_schaefer_2018(n_rois=200, resolution_mm=2)
-    atlas = nib.load(atlas_data["maps"])
-    # atlas_path = atlas_data['maps'] #os.path.join(project_dir,os.path.join(project_dir, 'masks', 'k50_2mm', '*.nii*'))
-    # labels_bytes = list(atlas_data['labels'])
-    labels = [
-        str(label, "utf-8") if isinstance(label, bytes) else str(label)
-        for label in atlas_data["labels"]
-    ]
-    # roi_index = [i+1 for i in range(len(labels))] # no background, 0
-    atlas_labels = dict(zip(roi_index, labels))
-
-else:
-    atlas_masker = NiftiLabelsMasker(
-        labels_img=atlas, atlas_labels=labels, standardize=False
-    )
-    atlas_masker.fit()
-    atlas_labels = dict(zip(roi_index, labels))
-    labels = list(atlas_labels.values())
-
-coords = find_parcellation_cut_coords(labels_img=atlas)
-labels_roi_dct = dict(zip(roi_index, labels))
-
-ATLAS = atlas
 # %%
 from sklearn.preprocessing import StandardScaler
 from src import preproc_utils
@@ -154,105 +134,68 @@ Y, rawY = preproc_utils.load_process_y(xlsx_path, subjects)
 from sklearn.preprocessing import StandardScaler
 xlsx_preproc = os.path.join(project_dir, 'masks/Preprocessed_sugg_pain_behavioral.xlsx' )
 behavioral_df = pd.read_excel(xlsx_preproc)  
-scaler = StandardScaler(with_std=False) # keep variance, just mean center
+z_score_scaler = StandardScaler(with_std=True) # keep variance, just mean center
 
 behav_interest = {}
-behav_interest['pain_diff_Ana'] = np.array(behavioral_df['pain_diff_Ana'], dtype='float')
-behav_interest['pain_diff_Hyper'] = np.array(behavioral_df['pain_diff_Hyper'], dtype='float')
-behav_interest['total_change_pain'] = np.array(behavioral_df['total_chge_pain_hypAna'], dtype='float')
-behav_interest['SHSS_score'] = np.array(behavioral_df['SHSS_score'], dtype='float')
-behav_interest['resid_pain_diff_Ana'] = np.array(behavioral_df['resid_pain_diff_Ana'], dtype='float')
-behav_interest['resid_pain_diff_Hyper'] = np.array(behavioral_df['resid_pain_diff_Hyper'], dtype='float')
+behav_interest['pain_diff_Ana'] = z_score_scaler.fit_transform(np.array(behavioral_df['pain_diff_Ana'], dtype='float').reshape(-1, 1))
+behav_interest['pain_diff_Hyper'] = z_score_scaler.fit_transform(np.array(behavioral_df['pain_diff_Hyper'], dtype='float').reshape(-1, 1))
+behav_interest['SHSS_score'] = z_score_scaler.fit_transform(np.array(behavioral_df['SHSS_score'], dtype='float').reshape(-1, 1))
 
-chge_ana = np.array(behavioral_df['pain_diff_Ana'], dtype='float')
-chge_hyper = np.array(behavioral_df['pain_diff_Hyper'], dtype='float')
-chge_ana[chge_ana > 0] = 0 #cap to 0 for no modulation
-chge_hyper[chge_hyper < 0] = 0
-absolute_pain_modulation = np.abs(chge_ana) + np.abs(chge_hyper)
-sc_absolute_pain_modulation = scaler.fit_transform(absolute_pain_modulation.reshape(-1,1))
 # %%
 # ===========================
 # MAIN CODE
 from tqdm import tqdm
 from nilearn.glm.thresholding import threshold_stats_img
 reload(isc_utils)
+
 mvpa_save_to = os.path.join(results_dir, "mvpa_similarity")
 os.makedirs(mvpa_save_to, exist_ok=True)
 
 n_perm_rsa = 10000
 
-# UNIVARIATE pairwise similarities : NN & AnnaK
-y = Y["SHSS_score"].values
-y = (y - np.mean(y)) / np.std(y)
-sim_behav_vec = isc_utils.compute_behav_similarity(
-    y, metric="euclidean", vectorize=True
-)
-sim_behav_vec_annak = isc_utils.compute_behav_similarity(
-    y, metric="annak", vectorize=True
-)
-
-# compute pairwise beahv for pain modualtion
-y_pain = Y["total_chge_pain_hypAna"].values
-y_pain = (y_pain - np.mean(y_pain)) / np.std(y_pain)
-
-sim_behav_vec_pain = isc_utils.compute_behav_similarity(
-    y_pain, metric="euclidean", vectorize=True
-)
-sim_behav_vec_annak_pain = isc_utils.compute_behav_similarity(
-    y_pain, metric="annak", vectorize=True
-)
-
 # secondary pain variables
 ANNAK_VERSION = 'mean'
 annak_sim_matrices = {}
-annak_sim_matrices['SHSS_score'] = isc_utils.compute_behav_similarity(y, metric="annak", annak_version=ANNAK_VERSION, vectorize=False)
-annak_sim_matrices['total_change_pain'] = isc_utils.compute_behav_similarity(behav_interest['total_change_pain'], metric="annak", annak_version=ANNAK_VERSION, vectorize=False)
-# annak_sim_matrices['resid_pain_diff_Ana'] = isc_utils.compute_behav_similarity(behav_interest['resid_pain_diff_Ana'], metric="annak", vectorize=False)
-# annak_sim_matrices['resid_pain_diff_Hyper'] = isc_utils.compute_behav_similarity(behav_interest['resid_pain_diff_Hyper'], metric="annak", vectorize=False)
+annak_sim_matrices['SHSS_score'] = isc_utils.compute_behav_similarity(behav_interest['SHSS_score'], metric="annak", annak_version=ANNAK_VERSION, vectorize=False)
 annak_sim_matrices['pain_diff_Ana'] = isc_utils.compute_behav_similarity(behav_interest['pain_diff_Ana'], metric="annak", annak_version=ANNAK_VERSION, vectorize=False)
 annak_sim_matrices['pain_diff_Hyper'] = isc_utils.compute_behav_similarity(behav_interest['pain_diff_Hyper'], metric="annak", annak_version=ANNAK_VERSION, vectorize=False)
-# # annak_sim_matrices['Ana_diff_global_neutral'] = isc_utils.compute_behav_similarity(behav_interest['Ana_diff_global_neutral'], metric="annak", vectorize=False)
 
 NN_sim_matrices = {}
-NN_sim_matrices['SHSS_score'] = isc_utils.compute_behav_similarity(y, metric="euclidean", vectorize=False)
-# NN_sim_matrices['total_change_pain'] = isc_utils.compute_behav_similarity(behav_interest['total_change_pain'], metric="euclidean", vectorize=False)
+NN_sim_matrices['SHSS_score'] = isc_utils.compute_behav_similarity(behav_interest['SHSS_score'], metric="euclidean", vectorize=False)
 NN_sim_matrices['pain_diff_Ana'] = isc_utils.compute_behav_similarity(behav_interest['pain_diff_Ana'], metric="euclidean", vectorize=False)
 NN_sim_matrices['pain_diff_Hyper'] = isc_utils.compute_behav_similarity(behav_interest['pain_diff_Hyper'], metric="euclidean", vectorize=False)
 
 # %%
 # PUBLICATION
-# FINAL MODEL Pain-specific ~ PAIN CONTRAST
+# FINAL MODEL behav ~ PAIN CONTRAST
 # IS-RSA SHSS ~ ISC-PAIN
 from src.mvpa_rsa_utils import compute_inter_subject_mvpa_similarity, build_subject_dict
 
-for NEURAL_SIM in ['dot']: #, 'dot']: #, 'cosine']: #, 'dot']: #['euclidean', 'dot']: #'cosine', 'pearson']:
+for NEURAL_SIM in ['dot', 'cosine']: #, 'dot']: #, 'cosine']: #, 'dot']: #['euclidean', 'dot']: #'cosine', 'pearson']:
     specific_re_run = True
     # NEURAL_SIM = 'euclidean'  # 'cosine' or 'dot' or 'euclidean'
-    # BEHAV_ID = "SHSS"  # "SHSS" or "chge-pain"
+    BEHAV_ID = "SHSS_score"  # only used if specific_re_run is False
     effect_type = 'stat' #'effect_size' #'z_score'
-    save_path = f"/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/RSA/IS-RSA-mvpa-{NEURAL_SIM}-{effect_type}_contrast-based_tian216_reproduced" #_{ANNAK_VERSION}-annak"
-    os.makedirs(save_path, exist_ok=True)
-    ONLY_ON = [list(annak_sim_matrices.keys())][0]
+    SAVE_PATH = f"/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/RSA/IS-RSA-mvpa-{NEURAL_SIM}-{effect_type}_contrast-based_tian216_reproduced" 
+    os.makedirs(SAVE_PATH, exist_ok=True)
+
+    ONLY_ON = ['SHSS_score', 'pain_diff_Ana', 'pain_diff_Hyper']
 
     # BEHAV_ID = "pain_diff_Ana"  # "SHSS" or "chge-pain" or "pain_diff_Ana" or "pain_diff_Hyper" or "total_change_pain"
-    pain_conditions = ["ANA_shock_minus_N_ANA_shock", "HYPER_shock_minus_N_HYPER_shock"]
+    all_pain_conditions = ["ANA_shock_minus_N_ANA_shock", "HYPER_shock_minus_N_HYPER_shock"]
     if specific_re_run is True:
         
         print(f"Running IS-RSA for neural sim: {NEURAL_SIM}")
         for BEHAV_ID in ONLY_ON:
             print(f"Running IS-RSA for BEHAV: {BEHAV_ID}")
 
-
             if BEHAV_ID == "SHSS_score":
                 sim_model = {
-                    "euclidean": sim_behav_vec,
-                    "annak": sim_behav_vec_annak,
+                    "euclidean": isc_utils.compute_behav_similarity(behav_interest['SHSS_score'], metric="euclidean", vectorize=True),
+                    "annak": isc_utils.compute_behav_similarity(behav_interest['SHSS_score'], metric="annak", annak_version=ANNAK_VERSION, vectorize=True),
                 }
-            if BEHAV_ID == "total_change_pain":
-                sim_model = {
-                    "euclidean": sim_behav_vec_pain,
-                    "annak": sim_behav_vec_annak_pain,
-                }
+                pain_conditions = all_pain_conditions
+                
             if BEHAV_ID == "pain_diff_Ana":
                 sim_model = {
                     "euclidean": isc_utils.compute_behav_similarity(
@@ -262,7 +205,7 @@ for NEURAL_SIM in ['dot']: #, 'dot']: #, 'cosine']: #, 'dot']: #['euclidean', 'd
                         behav_interest['pain_diff_Ana'], metric="annak", annak_version=ANNAK_VERSION, vectorize=True
                     ),
                 }
-                pain_conditions = [pain_conditions[0]]
+                pain_conditions = [all_pain_conditions[0]]
             if BEHAV_ID == "pain_diff_Hyper":
                 sim_model = {
                     "euclidean": isc_utils.compute_behav_similarity(
@@ -272,7 +215,7 @@ for NEURAL_SIM in ['dot']: #, 'dot']: #, 'cosine']: #, 'dot']: #['euclidean', 'd
                         behav_interest['pain_diff_Hyper'], metric="annak", annak_version=ANNAK_VERSION, vectorize=True
                     ),
                 }
-                pain_conditions = [pain_conditions[1]]
+                pain_conditions = [all_pain_conditions[1]]
 
             results_dct = {}
             similarity_matrices_dct = {}
@@ -342,11 +285,11 @@ for NEURAL_SIM in ['dot']: #, 'dot']: #, 'cosine']: #, 'dot']: #['euclidean', 'd
                     print(pd.DataFrame(rsa_rows).sort_values(by='p_values').head(10))
 
             save_to = os.path.join(
-                save_path, f"IS-RSA-mvpa_pain-{NEURAL_SIM}_behav-{BEHAV_ID}_{n_perm_rsa}perm.pkl"
+                SAVE_PATH, f"IS-RSA-mvpa_pain-{NEURAL_SIM}_behav-{BEHAV_ID}_{n_perm_rsa}perm.pkl"
             )
             isc_utils.save_data(save_to, results_dct)
             isc_utils.save_data(os.path.join(
-                save_path, f"similarity_mat_IS-RSA-mvpa_pain-{NEURAL_SIM}_behav-{BEHAV_ID}_{n_perm_rsa}perm.pkl"
+                SAVE_PATH, f"similarity_mat_IS-RSA-mvpa_pain-{NEURAL_SIM}_behav-{BEHAV_ID}_{n_perm_rsa}perm.pkl"
             ), similarity_matrices_dct)
             print(f"Saved RSA results to {save_to}")
 
@@ -354,31 +297,32 @@ for NEURAL_SIM in ['dot']: #, 'dot']: #, 'cosine']: #, 'dot']: #['euclidean', 'd
         # load results
 
         load_path = os.path.join(
-            save_path, f"IS-RSA-mvpa_pain-{NEURAL_SIM}_behav-{BEHAV_ID}_{n_perm_rsa}perm.pkl"
+            SAVE_PATH, f"IS-RSA-mvpa_pain-{NEURAL_SIM}_behav-{BEHAV_ID}_{n_perm_rsa}perm.pkl"
         )
         results_dct = isc_utils.load_pickle(load_path)
         similarity_matrices_dct = isc_utils.load_pickle(os.path.join(
-            save_path, f"similarity_mat_IS-RSA-mvpa_pain-{NEURAL_SIM}_behav-{BEHAV_ID}_{n_perm_rsa}perm.pkl"
+            SAVE_PATH, f"similarity_mat_IS-RSA-mvpa_pain-{NEURAL_SIM}_behav-{BEHAV_ID}_{n_perm_rsa}perm.pkl"
         ))
 
 #%%
 compute_median_test = True
-# if compute_median_test:
+
 from sklearn.preprocessing import MinMaxScaler
 from brainiak.isc import bootstrap_isc
 reload(isc_utils)
 import warnings
+
 issc_dfs = {}
 issc_matrices = {}
 issc_values = {}
 issc_p_cond = {}
 n_boot=10000
 
-save_1sample_sim = os.path.join(save_path, 'one_sample_sim')
+save_1sample_sim = os.path.join(SAVE_PATH, 'one_sample_sim')
 os.makedirs(save_1sample_sim, exist_ok=True)
 
 #reformat sim matrices in columns (n_pairs x parcels)
-for cond in pain_conditions:
+for cond in all_pain_conditions:
 
     regions_dct = similarity_matrices_dct['euclidean'][cond] #same for both sim models
     column_dict = {}
@@ -395,7 +339,7 @@ for cond in pain_conditions:
     
     observed, ci, p_values, distribution = bootstrap_isc(np.array(issc_df), summary_statistic='median', pairwise=True, n_bootstraps=n_boot, ci_percentile=95,side='right', random_state=None)
 
-    #project sign median to brain
+    #project sign meedian to brain
     issc_matrices[cond] = {
             region: isc_utils.vector_to_isc_matrix(issc_df.iloc[:, col_j], diag=1)
             for col_j, region in enumerate(issc_df.columns)
