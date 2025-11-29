@@ -241,7 +241,7 @@ for NEURAL_SIM in ['dot', 'cosine']: #, 'dot']: #, 'cosine']: #, 'dot']: #['eucl
     effect_type = 'stat' #'effect_size' #'z_score' # stat = t maps
     save_path = f"/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/RSA/IS-RSA-mvpa-{NEURAL_SIM}-{effect_type}_contrast-based_tian216_reproduced" #_{ANNAK_VERSION}-annak"
 
-    BEHAV_ID = "pain_diff_Hyper"  # "SHSS" or "chge-pain" or "pain_diff_Ana" or "pain_diff_Hyper" or "total_change_pain"
+    BEHAV_ID = "pain_diff_Ana"  # "SHSS" or "chge-pain" or "pain_diff_Ana" or "pain_diff_Hyper" or "total_change_pain"
     pain_conditions = ["ANA_shock_minus_N_ANA_shock", "HYPER_shock_minus_N_HYPER_shock"]
    
     # load results
@@ -425,7 +425,19 @@ for i, (cond, (rsa_img, rsa_thresh)) in enumerate(one_sample_fdr_imgs.items()):
     )
 cbar
 
+#%%
 
+# from src.MEP_brain_vizu import plot_3D_brain_maps
+
+# img_path =os.path.join(save_1sample_sim, f"IS-RSA_MVPA_pain_{cond}_unc_stats_img.nii.gz")
+
+# plot_3D_brain_maps(
+#     path_data=img_path,
+#     path_output=save_plots_1sample_sim,
+#     views=["lateral", "medial"],
+#     thresh=isc_thresh,
+#     extension="png",
+# )
 #%%
 # PUBLICATION: IS-RSA pain contrast ~ SHSS_score
 # =================
@@ -588,7 +600,7 @@ for model_id in rsa_stats_imgs_mvpa_unc.keys():
             views.append(view_img(fdr_img, threshold=0, title=f"RSA MVPA {sim} – {cond}"))
         
 
-#%%
+#%%–5 p.m.
 # PLOT SIM MATRICES
 def normalize_matrix(sim_matrix, mode="minmax"):
     if mode == "minmax":
@@ -620,7 +632,7 @@ def rescale_matrix(mat, feature_range=(-1, 1)):
     flat = mat.flatten().reshape(-1, 1)
     scaled = scaler.fit_transform(flat).reshape(mat.shape)
     return scaled
-
+SHOW_MAT  = False
 all_sim_mats = {}
 all_sim_mats_ranked = {}
 for sim_model in results_dct_all[VISU_METRIC].keys():
@@ -656,21 +668,21 @@ for sim_model in results_dct_all[VISU_METRIC].keys():
                 fig_path = os.path.join(
                     save_sim_mat_shock_shss, f"{rsa_cond}_{roi_id}_{sig_region}_pairwise-mat.png"
                 )
-                visu_utils.plot_simmat_isc(
-                    simmat=all_sim_mats_ranked[sig_region],  # last one
-                    title=f"{anatomical_name}\n(rho = {sig_df[sig_df['Label'] == sig_region]['Spearman r'].values[0]:.2f})",
-                    x_label=None,  #' ranked subjects (SHSS)'
-                    colorbar_name=None,
-                    tick_fontsize=60,
-                    label_fontsize=70,
-                    vmin=-vmax,
-                    vmax=vmax,
-                    show_colorbar=False,
-                    # save_path=fig_path,
-                    ticks= None,
-                    dpi=1000 # long to save, chge to 300 for quick
-                )
-
+                if SHOW_MAT:
+                    visu_utils.plot_simmat_isc(
+                        simmat=all_sim_mats_ranked[sig_region],  # last one
+                        title=f"{anatomical_name}\n(rho = {sig_df[sig_df['Label'] == sig_region]['Spearman r'].values[0]:.2f})",
+                        x_label=None,  #' ranked subjects (SHSS)'
+                        colorbar_name=None,
+                        tick_fontsize=60,
+                        label_fontsize=70,
+                        vmin=-vmax,
+                        vmax=vmax,
+                        show_colorbar=False,
+                        save_path=fig_path,
+                        ticks= None,
+                        dpi=400 # long to save, chge to 300 for quick
+                    )
 
 
 # %%
@@ -835,7 +847,11 @@ cb_ab = visu_utils.save_colorbar(
 # plot second level maps per regions
 # %%
 # Visualize second-level contrast for pain
-pain_conditions = ["ANA_shock_minus_N_ANA_shock", "HYPER_shock_minus_N_HYPER_shock"]
+from nilearn.glm.thresholding import threshold_stats_img
+
+seond_lev_pain_conditions = ["ANA_shock_minus_N_ANA_shock",
+                              "HYPER_shock_minus_N_HYPER_shock",
+                              "neutral_shock"] 
 
 condition_names = {
     "ANA_sugg": "Analgesia",
@@ -846,14 +862,21 @@ condition_names = {
 # test = "/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/GLM/model3_final-isc_23subjects_nuis_nodrift_31-03-25/second_level/ANA_shock_minus_N_ANA_shock_all_effects.pkl"
 second_lev_dir = os.path.join(results_dir, "second_level")
 t_imgs = {}
-for cond in pain_conditions:
+for cond in seond_lev_pain_conditions:
 
     pkl = isc_utils.load_pickle(os.path.join(second_lev_dir, cond + "_all_effects.pkl"))
-    t_img = pkl["stat"]
+    t_img = pkl["z_score"]  # or 'effect_size' for cohen d
     img = nib.load(os.path.join(second_lev_dir, "group_" + cond + ".nii.gz"))
     t_imgs[cond] = t_img
 
-view_img(t_img)
+hypo_stat_img = t_imgs['ANA_shock_minus_N_ANA_shock']
+hyper_stat_img = t_imgs['HYPER_shock_minus_N_HYPER_shock']
+
+corrected_hypo_modulation, thresh_hypo = threshold_stats_img(hypo_stat_img, alpha=0.05, height_control='fdr')
+corrected_hyper_modulation, thresh_hyper = threshold_stats_img(hyper_stat_img, alpha=0.05, height_control='fdr')
+
+view_img(corrected_hypo_modulation)
+#%%
 
 #%%
 from nilearn.image import new_img_like
@@ -899,14 +922,15 @@ def combine_roi_maps(roi_pattern_dct, roi_ids, stats_img):
     # combined_data = (combined_data != 0).astype(float)
     return new_img_like(stats_img, combined_data)
 
-all_ana_sig_rois = list(rsa_tables_mvpa_fdr['euclidean_ANA_shock_minus_N_ANA_shock']['ROI'].values) + list(
-    rsa_tables_mvpa_fdr['annak_ANA_shock_minus_N_ANA_shock']['ROI'].values)
-
+# all_ana_sig_rois = list(rsa_tables_mvpa_fdr['euclidean_ANA_shock_minus_N_ANA_shock']['ROI'].values) + list(
+#     rsa_tables_mvpa_fdr['annak_ANA_shock_minus_N_ANA_shock']['ROI'].values)
+all_ana_sig_rois = list(rsa_tables_mvpa_fdr['annak_ANA_shock_minus_N_ANA_shock']['ROI'].values)
 ana_sig_roi_map = combine_roi_maps(roi_pattern_dct_ana, all_ana_sig_rois, t_imgs['ANA_shock_minus_N_ANA_shock'])
 
-all_hyper_sig_rois = list(rsa_tables_mvpa_fdr['euclidean_HYPER_shock_minus_N_HYPER_shock']['ROI'].values) + list(
-    rsa_tables_mvpa_fdr['annak_HYPER_shock_minus_N_HYPER_shock']['ROI'].values)
-hyper_sig_roi_map = combine_roi_maps(roi_pattern_dct_hyper, all_hyper_sig_rois, t_imgs['HYPER_shock_minus_N_HYPER_shock'])
+if 'HYPER' in rsa_tables_mvpa_fdr.keys():
+    all_hyper_sig_rois = list(rsa_tables_mvpa_fdr['euclidean_HYPER_shock_minus_N_HYPER_shock']['ROI'].values) + list(
+        rsa_tables_mvpa_fdr['annak_HYPER_shock_minus_N_HYPER_shock']['ROI'].values)
+    hyper_sig_roi_map = combine_roi_maps(roi_pattern_dct_hyper, all_hyper_sig_rois, t_imgs['HYPER_shock_minus_N_HYPER_shock'])
 
 #%%
 # SUPPLEMENTARY MATERIAL: second level pattern in sig regions from IS-RSA
@@ -1007,6 +1031,8 @@ for sub in subjects:
                                                                     stat_img,
                                                         only_labels=labels_roi_selected_hyper
                                                         )
+
+                                        
 #%%
 # get similarity matrices per roi to find pairs of subject to plot MV patterns
 phc_roi = id_labels_dct[100]
@@ -1425,3 +1451,61 @@ for NEURAL_SIM in ['dot']: #, 'dot']: #, 'cosine']: #, 'dot']: #['euclidean', 'd
         similarity_matrices_dct = isc_utils.load_pickle(os.path.join(
             save_path, f"similarity_mat_IS-RSA-mvpa_pain-{NEURAL_SIM}_behav-{BEHAV_ID}_{n_perm_rsa}perm.pkl"
         ))
+
+
+#%%
+# PUBLICATION: CORREL ~ mean beta weight in PHG vs SHSS score and pain modulation
+reload(visu_utils)
+
+phg_id = 100
+
+# extract non 0 values patterns and get mean
+mean_phg_weight = {}
+for sub in extracted_mv_pattern_per_roi_ana.keys():
+    img = extracted_mv_pattern_per_roi_ana[sub][phg_id]
+    data = img.get_fdata()
+    mean_val = np.mean(data[data != 0])
+    mean_phg_weight[sub] = mean_val
+
+# plot scatter
+visu_utils.jointplot(x = np.array(behav_interest['pain_diff_Ana'].ravel()),
+           y = np.array(list(mean_phg_weight.values())).ravel(),
+              x_label='Hypoalgesia (pain difference)',
+                y_label='Mean PHGeffect (698 vox.)',
+                density_color_x="#1f47ac",
+                density_color_y="#8faa91",
+                plot_w = 12,
+                plot_h = 12,
+
+
+           )
+
+#%% PUBLICATION SCATTER SIMILARITY phg ~ pain diff sim
+# plot scatter for similarity pair on pain ratings and similarity in region
+ana_annak = annak_sim_matrices['pain_diff_Ana']
+phg_simat = all_sim_mats['7Networks_LH_Default_PHC_1']
+correl_phg = 0.43
+def scatter_pairwise_sim(sim_mat1, sim_mat2, title= None, xlabel=None, ylabel=None, save_path=None):
+    # extract upper triangle values
+    np.fill_diagonal(sim_mat1, 0)
+    np.fill_diagonal(sim_mat2, 0)
+    triu_indices = np.triu_indices_from(sim_mat1, k=1)
+    x = sim_mat1[triu_indices]
+    y = sim_mat2[triu_indices]
+
+    # plot scatter
+    plt.figure(figsize=(6, 6))
+    sns.regplot(x=x, y=y, scatter_kws={'s':10}, line_kws={'color':'red'})
+    if title is not None:
+        plt.title(title)
+    if xlabel is not None:
+        plt.xlabel(xlabel)
+    if ylabel is not None:
+        plt.ylabel(ylabel)
+    if save_path:
+        plt.savefig(save_path, dpi=300)
+    plt.show()
+
+scatter_pairwise_sim(ana_annak, phg_simat)
+visu_utils.jointplot(ana_annak, phg_simat,
+                     )
