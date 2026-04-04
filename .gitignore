@@ -19,6 +19,12 @@ results/
 *.sqlite3
 *.csv
 
+masks/mvpa_signatures/
+#NPS 
+weights_NSF_grouppred_cvpcr.hdr  
+weights_NSF_grouppred_cvpcr.img
+nonnoc_v11_4_137subjmap_weighted_mean.nii
+
 # Jupyter Notebook checkpoints
 .ipynb_checkpoints/
 
