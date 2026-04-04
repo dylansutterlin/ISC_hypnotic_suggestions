@@ -725,7 +725,6 @@ else:
 
     for test_cond in tqdm(isc_mvpa_cond_family, desc="Conditions"):
 
-
         seed_regions_id_name = seed_roi_all_conditions[test_cond]
         seed_isc_matrices = seed_regions_isc_matrices[test_cond]
 
@@ -806,33 +805,33 @@ else:
 # VISUALIZATION 
 reload(visu_utils)
 
-# cond_p_values = {}
-# global_p_values = []
-# combined_seed_dfs = {}
-# for cond in combined_conditions:
-#     cond_results = rsa_isc_mvpa_results[cond]
-#     cond_p_values[cond] = []
-#     if 'ana' in cond: #manual addition 24 oct.
-#         restrict_target_rois = list(target_roi_ana.values())
-#     else:
-#         restrict_target_rois = list(target_roi_hyper.values())
-    
-#     for seed_name in cond_results.keys():
-#         seed_df = cond_results[seed_name]
-#         #restrict
-#         seed_df = seed_df[seed_df['label'].isin(restrict_target_rois)]
-#         cond_p_values[cond].extend(seed_df['p_values'].values)
-#         combined_seed_dfs[f"{cond}_{seed_name}"] = seed_df
-#     cond_p_values[cond] = np.array(cond_p_values[cond])
+cond_p_values = {}
+global_p_values = []
+combined_seed_dfs = {}
 
-#     global_p_values.extend(cond_p_values[cond])
-#     fdr_cond = isc_utils.fdr(cond_p_values[cond], q=0.05)
-#     print(f"within condition FDR threshold for {cond} : {fdr_cond:.4f}")
+for test_cond in isc_mvpa_cond_family:
 
-# global_p_thresh = isc_utils.fdr(np.array(global_p_values), q=0.05)
-# print(f"Global FDR threshold across conditions : {global_p_thresh:.4f}")
+    cond_results = rsa_isc_mvpa_results[test_cond]
+    cond_p_values[test_cond] = []
 
-# correction = "FDR"  # "unc01", "within_FDR", "cond-wise_FDR", "FDR", "bonf"
+    for seed_name in cond_results.keys():
+        seed_df = cond_results[seed_name]
+        cond_p_values[test_cond].extend(seed_df['p_values'].values)
+        #restrict
+        # seed_df = seed_df[seed_df['label'].isin(restrict_target_rois)]
+        # cond_p_values[cond].extend(seed_df['p_values'].values)
+        # combined_seed_dfs[f"{cond}_{seed_name}"] = seed_df
+
+    cond_p_values[test_cond] = np.array(cond_p_values[test_cond])
+
+    global_p_values.extend(cond_p_values[test_cond])
+    fdr_cond = isc_utils.fdr(cond_p_values[test_cond], q=0.05)
+    print(f"within condition FDR threshold for {test_cond} : {fdr_cond:.4f}")
+
+global_p_thresh = isc_utils.fdr(np.array(global_p_values), q=0.05)
+print(f"Global FDR threshold across conditions : {global_p_thresh:.4f}")
+
+correction = "FDR"  # "unc01", "within_FDR", "cond-wise_FDR", "FDR", "bonf"
 #%%
 liberal_rsa_imgs = {}
 fdr_rsa_imgs = {}
@@ -845,7 +844,7 @@ def find_dct_key_by_value(dct, value):
             return k
     return None
 
-for correction in ['within_FDR', 'unc01']:
+for correction in ['family-wise_FDR']: #'within_FDR', 'FDR', 
     print(f'\n Correction : {correction}')
 
     for test_cond in rsa_isc_mvpa_results.keys():
@@ -854,16 +853,18 @@ for correction in ['within_FDR', 'unc01']:
         cond_results = rsa_isc_mvpa_results[test_cond]
 
         # extract p values the test_condition
-        cond_p_values = []
+        family_wise_p_values = []
         for seed_name in cond_results.keys():
             seed_df = cond_results[seed_name]
-            cond_p_values.extend(seed_df['p_values'].values)
-        cond_p_values = np.array(cond_p_values)
-        global_p_thresh = isc_utils.fdr(cond_p_values, q=0.05)
-        print(f"Global FDR threshold for {test_cond} : {global_p_thresh:.4f}")
+            family_wise_p_values.extend(seed_df['p_values'].values)
+        
+        family_wise_p_values_p_values = np.array(family_wise_p_values)
+        family_wise_thresh = isc_utils.fdr(family_wise_p_values_p_values, q=0.05)
+        print(f"Family-wise FDR threshold for {test_cond} : {family_wise_thresh:.4f}")
 
         sig_seed_dfs[test_cond] = {}
         target_dfs = {}
+
         for seed_name in cond_results.keys():
             seed_id = find_dct_key_by_value(id_labels_dct, seed_name)
             print(f"Seed region (id): {seed_name} ({seed_id}) \n")
@@ -872,14 +873,7 @@ for correction in ['within_FDR', 'unc01']:
             seed_df = cond_results[seed_name]
             target_dfs[seed_name] = seed_df
             possible_regions_ids = {int(roi_id): roi_name for roi_id, roi_name in target_roi_all_conditions[test_cond].items()}
-            # full_brain_correlations = seed_df["spearman_r"].values
-            # full_brain_p_values = seed_df["p_values"].values
-            
-            # # constraining to certain predifined ROIs (from sig/unc MVPA RSA during pain)
-            # print('restrincting tests to target ROIS : ', restrict_rois_names)
-            # seed_df_restricted_target = seed_df[seed_df['ROI'].isin(restrict_rois_ids_int)]
-            # target_indices = list(seed_df_restricted_target['ROI'].isin(restrict_rois_ids_int).index)
-            # target_rois_p_values = full_brain_p_values[target_indices]
+
             brain_correlations = seed_df["spearman_r"].values
             brain_p_values = seed_df["p_values"].values
 
@@ -889,11 +883,19 @@ for correction in ['within_FDR', 'unc01']:
                 show = True
                 print(f"FDR threshold for {test_cond} - {seed_name}: {p_thresh:.4f}")
 
+            elif correction == "family-wise_FDR":
+                print('Family wise correlation !!')
+                p_thresh = family_wise_thresh
+                p_thresh_str = "family-wise_FDR" + str(round(p_thresh, 4))
+                show = True
+                print(f"Family-wise FDR threshold for {test_cond} - {seed_name}: {p_thresh:.4f}")
+
             elif correction == "within_FDR":
                 p_thresh = isc_utils.fdr(brain_p_values, q=0.05) # only on tested target rois
                 p_thresh_str = "within_FDR" + str(round(p_thresh, 4))
                 print(f"Within FDR threshold for {test_cond} - {seed_name}: {p_thresh:.4f}")
                 show = True
+
             elif correction == "unc01":
                 p_thresh = 0.01
                 p_thresh_str = "0.01"
@@ -936,7 +938,7 @@ for correction in ['within_FDR', 'unc01']:
             if correction == "unc01":
                 fdr_rsa_imgs[f"{test_cond}_{seed_name}"] = (rsa_img, rsa_thresh)
 
-            if sig_df.shape[0]>0:
+            if sig_df.shape[0]>0 and correction == "family-wise_FDR":
                 sig_df = sig_df.sort_values('r Difference', ascending=False)
                 sig_df.columns = [
                     "ROI",
@@ -968,485 +970,3 @@ for correction in ['within_FDR', 'unc01']:
                     )
                 )
 
-#%%
-# #--==============================================================================
-# # %%
-
-# y_conditions = [
-#     "SHSS_score",
-#     "raw_change_ANA",
-#     "raw_change_HYPER",
-#     "total_chge_pain_hypAna",
-# ]
-
-
-# def plot_simmat(simmat, sim_method="Eucledian", y_name="SHSS_score"):
-#     plt.figure(figsize=(10, 8))
-#     plt.imshow(simmat, vmin=0, vmax=1, cmap="coolwarm")
-#     plt.colorbar(label="Similarity")
-#     plt.title(f"{sim_method} {y_name} similarity matrix")
-#     plt.xlabel("Subject rank")
-#     plt.ylabel("Subject rank")
-#     plt.show()
-
-
-# for metric in ["euclidean", "annak"]:
-#     for y_name in ["SHSS_score"]:
-
-#         y = Y[y_name].values
-#         y = (y - np.mean(y)) / np.std(y)
-#         sim_behav = isc_utils.compute_behav_similarity(
-#             y, metric=metric, vectorize=False
-#         )
-
-#         ranks = np.argsort(y)  # gives indices that sort behavior low → high
-#         sim_ranked = sim_behav[np.ix_(ranks, ranks)]
-
-#         plot_simmat(sim_ranked, sim_method="Eucledian", y_name=y_name)
-
-# # %%
-# # ================================
-# # Multivariate behavioral similarity
-# # ================================
-# from sklearn.preprocessing import StandardScaler
-
-# sugg_cols = [
-#     "SHSS_score",
-#     "Chge_hypnotic_depth",
-#     "Mental_relax_absChange",
-#     "Abs_diff_automaticity",
-# ]
-
-# # pain_cols = [
-# #     "VAS_Nana_Int",
-# #     "VAS_Ana_Int",
-# #     "VAS_Nhyper_Int",
-# #     "VAS_Hyper_Int",
-# #     "VAS_Nana_UnP",
-# #     "VAS_Ana_UnP",
-# #     "VAS_Nhyper_UnP",
-# #     "VAS_Hyper_UnP"
-# # ]
-
-# pain_cols = ["raw_change_HYPER", "raw_change_ANA"]
-
-# scaler = StandardScaler()
-# Y_sugg = scaler.fit_transform(np.array(Y[sugg_cols].values, dtype=float))
-# Y_pain = scaler.fit_transform(np.array(Y[pain_cols].values, dtype=float))
-
-# plt.figure()
-# plt.imshow(Y_sugg)
-# plt.colorbar(label="scores")
-# plt.xticks(np.arange(len(sugg_cols)), sugg_cols, rotation=45, ha="right")
-# plt.yticks(np.arange(Y.shape[0]), Y.index)
-# plt.title("Behavioral Features Heatmap")
-# plt.tight_layout()
-
-# plt.figure()
-# plt.imshow(Y_pain)
-# plt.colorbar(label="scores")
-# plt.xticks(np.arange(len(pain_cols)), pain_cols, rotation=45, ha="right")
-# plt.yticks(np.arange(Y.shape[0]), Y.index)
-# plt.title("Behavioral Features Heatmap")
-# plt.tight_layout()
-
-# # Compute pairwise cosine similarity using the previously defined function
-# cosine_sim_sugg = isc_utils.compute_behav_similarity(
-#     Y_sugg, metric="cosine", vectorize=False
-# )
-# cosine_sim_pain = isc_utils.compute_behav_similarity(
-#     Y_pain, metric="cosine", vectorize=False
-# )
-
-# plt.figure()
-# plt.imshow(cosine_sim_sugg, cmap="coolwarm")
-# plt.colorbar(label="Cosine Similarity")
-# plt.title("Cosine Similarity: multivariate hypnonic scores")
-# plt.tight_layout()
-
-# plt.figure()
-# plt.imshow(cosine_sim_pain, cmap="coolwarm")
-# plt.colorbar(label="Cosine Similarity")
-# plt.title("Cosine Similarity: multivariate pain scores")
-# plt.tight_layout()
-
-# # test correlation between univariate and multivariate similarity
-
-# # suggestion
-# y = Y["SHSS_score"].values
-# y = (y - np.mean(y)) / np.std(y)
-# sim_behav_vec = isc_utils.compute_behav_similarity(
-#     y, metric="euclidean", vectorize=True
-# )
-# cosine_vec_sugg = isc_utils.compute_behav_similarity(
-#     Y_sugg, metric="cosine", vectorize=True
-# )
-# r, p = spearmanr(cosine_vec_sugg, sim_behav_vec)
-# print(
-#     f"Spearman correlation between uni - multivariate SUGG var.: {r:.4f}, p-value: {p:.4f}"
-# )
-
-# y = Y["total_chge_pain_hypAna"].values
-# y = (y - np.mean(y)) / np.std(y)
-# sim_behav_vec = isc_utils.compute_behav_similarity(
-#     y, metric="euclidean", vectorize=True
-# )
-# cosine_vec_pain = isc_utils.compute_behav_similarity(
-#     Y_pain, metric="cosine", vectorize=True
-# )
-
-# r, p = spearmanr(cosine_vec_pain, sim_behav_vec)
-# print(
-#     f"Spearman correlation between uni - multivariate PAIN var.: {r:.4f}, p-value: {p:.4f}"
-# )
-
-# # %%
-
-# # sns.clustermap(sim_sugg,
-# #                metric='euclidean',
-# #                method='average',
-# #                cmap='coolwarm',
-# #                xticklabels=True,
-# #                yticklabels=True)
-
-# # %%
-# # ================================
-# # Atlas
-# # ================================
-# SCHAEFER_ONLY = True
-
-# atlas = nib.load(
-#     "/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/masks/Tian2020_schaeffer200_subcortical16/combined_schaefer200_tian16_DSG.nii.gz"
-# )
-# id_labels_dct = isc_utils.load_json(
-#     "/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/masks/Tian2020_schaeffer200_subcortical16/roi_labels_dict_DSG.json"
-# )
-# # remove background
-# id_labels_dct.pop("0")
-# labels = list(id_labels_dct.values())
-# roi_index = list(id_labels_dct.keys())
-
-# atlas_masker = NiftiLabelsMasker(labels_img=atlas, labels=labels, standardize=False)
-# atlas_masker.fit()
-
-# if SCHAEFER_ONLY:
-#     atlas_data = fetch_atlas_schaefer_2018(n_rois=200, resolution_mm=2)
-#     atlas = nib.load(atlas_data["maps"])
-#     # atlas_path = atlas_data['maps'] #os.path.join(project_dir,os.path.join(project_dir, 'masks', 'k50_2mm', '*.nii*'))
-#     # labels_bytes = list(atlas_data['labels'])
-#     labels = [
-#         str(label, "utf-8") if isinstance(label, bytes) else str(label)
-#         for label in atlas_data["labels"]
-#     ]
-#     roi_index = [i + 1 for i in range(len(labels))]  # no background, 0
-#     atlas_labels = dict(zip(roi_index, labels))
-
-# else:
-#     atlas_masker = NiftiLabelsMasker(
-#         labels_img=atlas, atlas_labels=labels, standardize=False
-#     )
-#     atlas_masker.fit()
-#     atlas_labels = dict(zip(roi_index, labels))
-#     labels = list(atlas_labels.values())
-
-# coords = find_parcellation_cut_coords(labels_img=atlas)
-# # #%% VISU
-# # from nilearn import plotting
-# # reload(visu_utils)
-
-# # rsa_path = '/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/RSA/2025-05-21_23'
-# # # rsa_isc = isc_utils.load_pickle(os.path.join(save_path, f'rsa_isc_pain-behav_sugg-pain_{n_perm_rsa}perm.pkl'))
-# # rsa_isc = isc_utils.load_pickle('/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/RSA/rsa_pain-behav_sugg-pain_10000perm.pkl')
-# # rsa_isc_sugg = isc_utils.load_pickle(os.path.join(rsa_path, 'rsa_cosine-sugg-behav_isc-sugg5000perm.pkl' ))
-
-# # views={}
-# # for cond in ['HYPER', 'ANA', 'all_sugg', 'neutral']:
-
-# #     print('cond', cond)
-# #     rsa_df = rsa_isc[cond].sort_index(ascending=True) # to match the atlas labels
-
-# #     # === Prepare variables for projection ===
-# #     correlations = rsa_df['spearman_r'].values
-# #     p_values = rsa_df['p_values'].values
-# #     roi_labels = rsa_df['ROI'].values  # assumes label matches atlas
-# #     fdr_p = isc_utils.fdr(p_values, q=0.05)
-# #     print(f'FDR threshold: {fdr_p:.4f}')
-
-# #     # === Map ROI label names to atlas index ===
-# #     label_to_index = {label: idx for idx, label in enumerate(labels)}
-# #     roi_indices = [label_to_index[roi] for roi in roi_labels]
-
-# #     # === Create full-length arrays aligned with atlas ===
-# #     # full_r_values = np.zeros(len(labels))
-# #     # full_p_values = np.ones(len(labels))
-
-# #     # for idx, roi_idx in enumerate(roi_indices):
-# #     #     full_r_values[roi_idx] = correlations[idx]
-# #     #     full_p_values[roi_idx] = p_values[idx]
-
-# #     unc_p = 0.01
-# #     # === Visualize with your existing function ===
-# #     rsa_img, rsa_thresh, sig_labels = visu_utils.project_isc_to_brain_perm(
-# #         atlas_img=atlas,
-# #         isc_median=correlations,
-# #         atlas_labels=atlas_labels,
-# #         roi_coords = coords,
-# #         p_values=p_values,
-# #         p_threshold=fdr_p, #!!
-# #         title=None, #"RSA-ISC: Suggestion-Pain Similarity (FDR<.05)",
-# #         save_path=None,
-# #         show=True,
-# #         display_mode='x',
-# #         cut_coords_plot=None, #(-52, -40, 34),
-# #         color='Reds'
-# #     )
-
-# #     views[cond] = plotting.view_img(rsa_img, threshold=rsa_thresh, title=f"RSA suggestion - pain similarity {cond}", colorbar=True,symmetric_cmap=False, cmap = 'Reds')
-
-
-# # %%
-# # =================================
-# # IS-RSA for ISC-SUGGESTION  & ISC-PAIN
-
-# do_brain_sugg_with_pain = False
-# if do_brain_sugg_with_pain:
-
-#     model_sugg = model_names["model1_sugg_200_run"]
-#     model_pain = model_names["model3_shock_200_run"]
-
-#     rsa_per_cond = {}
-#     for cond in tqdm(conditions):
-#         print(f"Running RSA for condition: {cond}")
-#         # sugg_path = f'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/ISC/{model_sugg}/concat_suggs_1samp_boot/isc_results_{cond}_{n_perm}boot_pairWiseTrue.pkl'
-#         # pain_path = f'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/ISC/{model_pain}/concat_suggs_1samp_boot/isc_results_{cond}_{n_perm}boot_pairWiseTrue.pkl'
-
-#         if cond in ["ANA", "HYPER", "NANA"]:
-#             sugg_path = f"/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/ISC/{model_sugg}/{cond}/isc_results_{cond}_{n_perm}boot_pairWiseTrue.pkl"
-#             pain_path = f"/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/ISC/{model_pain}/{cond}/isc_results_{cond}_{n_perm}boot_pairWiseTrue.pkl"
-#         else:
-#             sugg_path = f"/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/ISC/{model_sugg}/concat_suggs_1samp_boot/isc_results_{cond}_{n_perm}boot_pairWiseTrue.pkl"
-#             pain_path = f"/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/ISC/{model_pain}/concat_suggs_1samp_boot/isc_results_{cond}_{n_perm}boot_pairWiseTrue.pkl"
-
-#         isc_sugg = pd.DataFrame(isc_utils.load_pickle(sugg_path)["isc"], columns=labels)
-#         isc_pain = pd.DataFrame(isc_utils.load_pickle(pain_path)["isc"], columns=labels)
-
-#         assert isc_sugg.shape == isc_pain.shape
-
-#         rsa_rows = []  # build df
-#         for roi_idx, roi in enumerate(isc_sugg.columns):
-#             sugg_vec = isc_sugg[roi].values
-#             pain_vec = isc_pain[roi].values
-#             r, p, dist = isc_utils.matrix_permutation(
-#                 sugg_vec,
-#                 pain_vec,
-#                 n_permute=n_perm_rsa,
-#                 metric="spearman",
-#                 how="upper",
-#                 tail=n_tail_rsa,
-#                 return_perms=True,
-#             )
-
-#             rsa_rows.append(
-#                 {
-#                     "ROI": roi,
-#                     "spearman_r": r,
-#                     "p_values": round(p, 5),
-#                     "x": coords[roi_idx][0],
-#                     "y": coords[roi_idx][1],
-#                     "z": coords[roi_idx][2],
-#                 }
-#             )
-
-#         rsa_per_cond[cond] = pd.DataFrame(rsa_rows).sort_values(
-#             by="spearman_r", ascending=False
-#         )
-#         print(
-#             "Max r, mean and fdr",
-#             rsa_per_cond[cond]["spearman_r"].max(),
-#             rsa_per_cond[cond]["spearman_r"].mean(),
-#             isc_utils.fdr(rsa_per_cond[cond]["p_values"].to_numpy()),
-#         )
-
-#     save_to = os.path.join(save_path, f"rsa_isc-sugg_isc-pain_{n_perm_rsa}perm.pkl")
-#     isc_utils.save_data(save_to, rsa_per_cond)
-#     print(f"Saved RSA results to {save_to}")
-#     print("-----Done with rsa!-----")
-
-# # #%%
-# # # RSA ISFC
-# # reload(isc_utils)
-# # isfc_rsa_per_cond = {}
-
-# # isfc_model_sugg = model_names['model5_isfc_sugg']
-# # isfc_model_pain = model_names['model5_isfc_shock']
-# # n_perm = 5000 # for loading
-
-# # for cond in conditions:
-# #     print(f'Running ISFC RSA for condition: {cond}')
-# #     sugg_path = f'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/ISC/{model_sugg}/concat_suggs_1samp_boot/isc_results_{cond}_{n_perm}boot_pairWiseTrue.pkl'
-# #     pain_path = f'/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/ISC/{model_pain}/concat_suggs_1samp_boot/isc_results_{cond}_{n_perm}boot_pairWiseTrue.pkl'
-
-# #     isfc_sugg = pd.DataFrame(isc_utils.load_pickle(sugg_path)['isc'], columns=labels)
-# #     isfc_pain = pd.DataFrame(isc_utils.load_pickle(pain_path)['isc'], columns=labels)
-
-# #     assert isc_sugg.shape == isfc_pain.shape
-
-# #     rsa_rows = [] # build df
-# #     for roi_idx, roi in enumerate(isc_sugg.columns):
-# #         sugg_vec = isfc_sugg[roi].values
-# #         pain_vec = isfc_pain[roi].values
-# #         r, p, dist = isc_utils.matrix_permutation(sugg_vec, pain_vec, n_permute=n_perm_rsa, metric="spearman", how="upper", tail=n_tail_rsa, return_perms=True)
-
-# #         rsa_rows.append({
-# #             'ROI': roi,
-# #             'spearman_r': r,
-# #             'p_values': round(p, 5),
-# #             'x': coords[roi_idx][0],
-# #             'y': coords[roi_idx][1],
-# #             'z': coords[roi_idx][2]
-# #         })
-
-# #     isfc_rsa_per_cond[cond] = pd.DataFrame(rsa_rows).sort_values(by='spearman_r', ascending=False)
-# #     print('Max r, mean and fdr', isfc_rsa_per_cond[cond]['spearman_r'].max(), isfc_rsa_per_cond[cond]['spearman_r'].mean(), isc_utils.fdr(isfc_rsa_per_cond[cond]['p_values'].to_numpy()))
-
-# # save_to = os.path.join(save_path, f'rsa_isfc_sugg-pain_{n_perm_rsa}perm.pkl')
-# # isc_utils.save_data(save_to, isfc_rsa_per_cond)
-# # print(f'Saved RSA results to {save_to}')
-# # print('-----Done with ISFC rsa!-----')
-
-# # %%
-# reload(isc_utils)
-# from tqdm import tqdm
-
-# # =================================
-# # IS-RSA for SUGGESTION (behav suggestion + behav pain)
-# # =================================
-
-# # check if all cond are in isc_results
-# save_to = os.path.join(save_path, f"rsa_cosine-behav_isc-sugg{n_perm_rsa}perm.pkl")
-# pairwise_behav = {"sugg": cosine_vec_sugg, "pain": cosine_vec_pain}
-# rsa_behav_per_cond = {}
-
-# for domain in pairwise_behav.keys():
-#     rsa_behav_per_cond[domain] = {}
-#     # conditions = ['ANA', 'HYPER', 'all_sugg'] # 'neutral']
-#     for cond in conditions:
-#         if cond in ["ANA", "HYPER", "NANA"]:
-#             pain_path = f"/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/ISC/{model_sugg}/{cond}/isc_results_{cond}_{n_perm}boot_pairWiseTrue.pkl"
-#         else:
-#             pain_path = f"/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/ISC/{model_sugg}/concat_suggs_1samp_boot/isc_results_{cond}_{n_perm}boot_pairWiseTrue.pkl"
-
-#         vec_behav_sim = pairwise_behav[domain]  # specify if sugg or pain
-#         isc_pairwise = pd.DataFrame(
-#             isc_utils.load_pickle(pain_path)["isc"], columns=labels
-#         )
-
-#         rsa_rows = []  # build df
-#         for roi_idx, roi in tqdm(
-#             enumerate(isc_pairwise.columns), total=len(isc_pairwise.columns)
-#         ):
-#             isc_roi = isc_pairwise[roi].values
-#             r, p, dist = isc_utils.matrix_permutation(
-#                 vec_behav_sim,
-#                 isc_roi,
-#                 n_permute=n_perm_rsa,
-#                 metric="spearman",
-#                 how="upper",
-#                 tail=n_tail_rsa,
-#                 return_perms=True,
-#             )
-
-#             rsa_rows.append(
-#                 {
-#                     "ROI": roi,
-#                     "spearman_r": r,
-#                     "p_values": round(p, 5),
-#                     "x": coords[roi_idx][0],
-#                     "y": coords[roi_idx][1],
-#                     "z": coords[roi_idx][2],
-#                 }
-#             )
-
-#         rsa_behav_per_cond[domain][cond] = pd.DataFrame(rsa_rows).sort_values(
-#             by="spearman_r", ascending=False
-#         )
-#         print(
-#             "Max r, mean and fdr",
-#             rsa_behav_per_cond[domain][cond]["spearman_r"].max(),
-#             rsa_behav_per_cond[domain][cond]["spearman_r"].mean(),
-#             isc_utils.fdr(rsa_behav_per_cond[domain][cond]["p_values"].to_numpy()),
-#         )
-
-# isc_utils.save_data(save_to, rsa_behav_per_cond)
-# print(f"Saved RSA results to {save_to}")
-
-
-# # %%
-# # =================================
-# # IS-RSA for PAIN
-# # =================================
-
-# # check if all cond are in isc_results
-# save_to = os.path.join(save_path, f"rsa_cosine-behav_isc-pain{n_perm_rsa}perm.pkl")
-# conditions = ["ANA", "NANA", "HYPER", "modulation", "all_sugg", "neutral"]
-# pairwise_behav = {"sugg-sim": cosine_vec_sugg, "pain-sim": cosine_vec_pain}
-# rsa_behav_per_cond = {}
-
-# for domain in pairwise_behav.keys():
-#     rsa_behav_per_cond[domain] = {}
-
-#     for cond in conditions:
-#         if cond in ["ANA", "HYPER", "NANA"]:
-#             pain_path = f"/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/ISC/{model_pain}/{cond}/isc_results_{cond}_{n_perm}boot_pairWiseTrue.pkl"
-#         else:
-#             pain_path = f"/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/ISC/{model_pain}/concat_suggs_1samp_boot/isc_results_{cond}_{n_perm}boot_pairWiseTrue.pkl"
-
-#         vec_behav_sim = pairwise_behav[domain]  # specify if sugg or pain
-#         isc_pairwise = pd.DataFrame(
-#             isc_utils.load_pickle(pain_path)["isc"], columns=labels
-#         )
-
-#         rsa_rows = []  # build df
-#         for roi_idx, roi in enumerate(isc_pairwise.columns):
-#             isc_roi = isc_pairwise[roi].values
-#             r, p, dist = isc_utils.matrix_permutation(
-#                 vec_behav_sim,
-#                 isc_roi,
-#                 n_permute=n_perm_rsa,
-#                 metric="spearman",
-#                 how="upper",
-#                 tail=n_tail_rsa,
-#                 return_perms=True,
-#             )
-
-#             rsa_rows.append(
-#                 {
-#                     "ROI": roi,
-#                     "spearman_r": r,
-#                     "p_values": round(p, 5),
-#                     "x": coords[roi_idx][0],
-#                     "y": coords[roi_idx][1],
-#                     "z": coords[roi_idx][2],
-#                 }
-#             )
-
-#         rsa_behav_per_cond[domain][cond] = pd.DataFrame(rsa_rows).sort_values(
-#             by="spearman_r", ascending=False
-#         )
-#         print(
-#             "Max r, mean and fdr",
-#             rsa_behav_per_cond[domain][cond]["spearman_r"].max(),
-#             rsa_behav_per_cond[domain][cond]["spearman_r"].mean(),
-#             isc_utils.fdr(rsa_behav_per_cond[domain][cond]["p_values"].to_numpy()),
-#         )
-
-# isc_utils.save_data(save_to, rsa_behav_per_cond)
-# print(f"Saved RSA results to {save_to}")
-
-
-# # %%
-# print(f"Saved all RSA results to {save_path}")
-# print("Done with all RSA!")
-# # %%
-
-# %%
