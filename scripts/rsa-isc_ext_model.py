@@ -59,11 +59,11 @@ setup = isc_utils.load_json(os.path.join(results_dir, "setup_parameters.json"))
 subjects = setup["subjects"]
 
 
-SAVE_PATH = f"/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/RSA/isc-RSA_tian216_sugg-pain_2tails"
+SAVE_PATH = f"/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/RSA/isc-RSA_tian216_sugg-pain_combined_conds"
 os.makedirs(SAVE_PATH, exist_ok=True)
 
 # conditions = ['NANA', 'ANA', 'HYPER', 'all_sugg', 'neutral', 'ana_run', 'hyper_run']
-conditions = ["ANA", "HYPER", "ana_run", "hyper_run"]
+conditions = ["ana_run", "hyper_run"]
 
 n_perm = setup["n_perm"]  # to load isc results
 n_perm_rsa = 10000
@@ -90,7 +90,7 @@ subjects = list(setup["subjects"])
 apm_subjects = ["APM" + subj[4:] for subj in subjects]
 print(apm_subjects)
 
-Y = preproc_utils.load_process_y(xlsx_path, subjects)
+Y, rawY = preproc_utils.load_process_y(xlsx_path, subjects)
 y_conditions = [
     "SHSS_score",
     "raw_change_ANA",
@@ -163,7 +163,12 @@ cosine_sim_pain = isc_utils.compute_behav_similarity(
 cosine_vec_pain = isc_utils.compute_behav_similarity(
     Y_pain, metric="cosine", vectorize=True
 )
-
+euclidean_sim_pain = isc_utils.compute_behav_similarity(
+    Y_pain, metric="euclidean", vectorize=False
+)
+euclidean_vec_pain = isc_utils.compute_behav_similarity(
+    Y_pain, metric="euclidean", vectorize=True
+)
 
 # UNIVARIATE pairwise similarities : NN & AnnaK
 y = Y["SHSS_score"].values
@@ -183,6 +188,9 @@ print(
 # pain
 y = Y["total_chge_pain_hypAna"].values
 y = (y - np.mean(y)) / np.std(y)
+sim_behav_pain_mat = isc_utils.compute_behav_similarity(
+    y, metric="euclidean", vectorize=False
+)
 sim_behav_pain_vec = isc_utils.compute_behav_similarity(
     y, metric="euclidean", vectorize=True
 )
@@ -194,6 +202,12 @@ r, p = spearmanr(cosine_vec_pain, sim_behav_vec)
 print(
     f"Spearman correlation between uni - multivariate PAIN var.: {r:.4f}, p-value: {p:.4f}"
 )
+
+r, p = spearmanr(euclidean_vec_pain, sim_behav_pain_vec)
+print(
+    f"Spearman correlation between uni - multivariate PAIN var. (euclidean): {r:.4f}, p-value: {p:.4f}"
+) # good news, correl = 0.92, indicating that the multivariate-eucli. yeild similar mat than univarite total change
+
 
 # %%
 
@@ -374,7 +388,7 @@ if do_brain_sugg_with_pain:
 
 Specific_test = True
 
-if Specific_test is False:
+if Specific_test is True:
     reload(isc_utils)
     from tqdm import tqdm
 
@@ -383,8 +397,8 @@ if Specific_test is False:
     # =================================
 
     # check if all cond are in isc_results
-    save_to = os.path.join(SAVE_PATH, f"rsa_cosine-behav_isc-sugg{n_perm_rsa}perm.pkl")
-    pairwise_behav = {"sugg": cosine_vec_sugg, "pain": cosine_vec_pain}
+    save_to = os.path.join(SAVE_PATH, f"rsa_chge-pain-behav_isc-sugg{n_perm_rsa}perm.pkl")
+    pairwise_behav = {"euclidean": sim_behav_pain_vec, "annak": sim_behav_pain_vec_annak}
     rsa_behav_per_cond = {}
 
     for domain in pairwise_behav.keys():
@@ -443,12 +457,14 @@ if Specific_test is False:
     isc_utils.save_data(save_to, rsa_behav_per_cond)
     print(f"Saved RSA results to {save_to}")
 
-    # %%
+#%%
+run_all = False
+if run_all:
     reload(isc_utils)
     from tqdm import tqdm
 
     # =================================
-    # IS-RSA for ISC-SUGGESTION (UNIVARIATE) behav SHSS + behav pain)
+    # IS-RSA for ISC-SUGGESTION ~ (UNIVARIATE-SHSS) + behav pain)
     # =================================
 
     # check if all cond are in isc_results
@@ -513,213 +529,213 @@ if Specific_test is False:
     print(f"Saved RSA results to {save_to}")
 
 # %%
-# =================================
-# IS-RSA for ISC-PAIN ~ UNIVARIATE SHSS //eucl. + ANNAK
-# =================================
-print("======================================")
-print("Running RSA for PAIN univariate (SHSS)")
+    # =================================
+    # IS-RSA for ISC-PAIN ~ UNIVARIATE SHSS //eucl. + ANNAK
+    # =================================
+    print("======================================")
+    print("Running RSA for PAIN univariate (SHSS)")
 
-# check if all cond are in isc_results
-save_to = os.path.join(SAVE_PATH, f"rsa_SHSS-behav_isc-pain{n_perm_rsa}perm.pkl")
-pairwise_behav = {"euclidean": sim_behav_vec, "annak": sim_behav_vec_annak}
-rsa_behav_per_cond = {}
+    # check if all cond are in isc_results
+    save_to = os.path.join(SAVE_PATH, f"rsa_SHSS-behav_isc-pain{n_perm_rsa}perm.pkl")
+    pairwise_behav = {"euclidean": sim_behav_vec, "annak": sim_behav_vec_annak}
+    rsa_behav_per_cond = {}
 
-for domain in pairwise_behav.keys():
-    rsa_behav_per_cond[domain] = {}
-    print(f"Running RSA for domain: {domain}")
+    for domain in pairwise_behav.keys():
+        rsa_behav_per_cond[domain] = {}
+        print(f"Running RSA for domain: {domain}")
 
-    for cond in conditions:
-        if cond in ["ANA", "HYPER", "NANA", "NHYPER"]:
-            pain_path = f"/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/ISC/{model_pain}/{cond}/isc_results_{cond}_{n_perm}boot_pairWiseTrue.pkl"
-        else:
-            pain_path = f"/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/ISC/{model_pain}/concat_suggs_1samp_boot/isc_results_{cond}_{n_perm}boot_pairWiseTrue.pkl"
+        for cond in conditions:
+            if cond in ["ANA", "HYPER", "NANA", "NHYPER"]:
+                pain_path = f"/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/ISC/{model_pain}/{cond}/isc_results_{cond}_{n_perm}boot_pairWiseTrue.pkl"
+            else:
+                pain_path = f"/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/ISC/{model_pain}/concat_suggs_1samp_boot/isc_results_{cond}_{n_perm}boot_pairWiseTrue.pkl"
 
-        vec_behav_sim = pairwise_behav[domain]  # specify if sugg or pain
-        isc_pairwise = pd.DataFrame(
-            isc_utils.load_pickle(pain_path)["isc"], columns=labels
-        )
-
-        rsa_rows = []  # build df
-        for roi_idx, roi in enumerate(isc_pairwise.columns):
-            isc_roi = isc_pairwise[roi].values
-            r, p, dist = isc_utils.matrix_permutation(
-                vec_behav_sim,
-                isc_roi,
-                n_permute=n_perm_rsa,
-                metric="spearman",
-                how="upper",
-                tail=n_tail_rsa,
-                n_jobs=n_jobs,
-                return_perms=True,
+            vec_behav_sim = pairwise_behav[domain]  # specify if sugg or pain
+            isc_pairwise = pd.DataFrame(
+                isc_utils.load_pickle(pain_path)["isc"], columns=labels
             )
 
-            rsa_rows.append(
-                {
-                    "ROI": roi_idx + 1,  # adjust for 0 background
-                    "Labels": roi,
-                    "spearman_r": r,
-                    "p_values": round(p, 5),
-                    "x": coords[roi_idx][0],
-                    "y": coords[roi_idx][1],
-                    "z": coords[roi_idx][2],
-                }
+            rsa_rows = []  # build df
+            for roi_idx, roi in enumerate(isc_pairwise.columns):
+                isc_roi = isc_pairwise[roi].values
+                r, p, dist = isc_utils.matrix_permutation(
+                    vec_behav_sim,
+                    isc_roi,
+                    n_permute=n_perm_rsa,
+                    metric="spearman",
+                    how="upper",
+                    tail=n_tail_rsa,
+                    n_jobs=n_jobs,
+                    return_perms=True,
+                )
+
+                rsa_rows.append(
+                    {
+                        "ROI": roi_idx + 1,  # adjust for 0 background
+                        "Labels": roi,
+                        "spearman_r": r,
+                        "p_values": round(p, 5),
+                        "x": coords[roi_idx][0],
+                        "y": coords[roi_idx][1],
+                        "z": coords[roi_idx][2],
+                    }
+                )
+
+            rsa_behav_per_cond[domain][cond] = pd.DataFrame(rsa_rows).sort_values(
+                by="spearman_r", ascending=False
+            )
+            print(f"Condition: {cond}")
+            print(
+                "Max r, mean and fdr",
+                rsa_behav_per_cond[domain][cond]["spearman_r"].max(),
+                rsa_behav_per_cond[domain][cond]["spearman_r"].mean(),
+                isc_utils.fdr(rsa_behav_per_cond[domain][cond]["p_values"].to_numpy()),
             )
 
-        rsa_behav_per_cond[domain][cond] = pd.DataFrame(rsa_rows).sort_values(
-            by="spearman_r", ascending=False
-        )
-        print(f"Condition: {cond}")
-        print(
-            "Max r, mean and fdr",
-            rsa_behav_per_cond[domain][cond]["spearman_r"].max(),
-            rsa_behav_per_cond[domain][cond]["spearman_r"].mean(),
-            isc_utils.fdr(rsa_behav_per_cond[domain][cond]["p_values"].to_numpy()),
-        )
+    isc_utils.save_data(save_to, rsa_behav_per_cond)
+    print(f"Saved RSA results to {save_to}")
 
-isc_utils.save_data(save_to, rsa_behav_per_cond)
-print(f"Saved RSA results to {save_to}")
+    # =================================
+    # IS-RSA for ISC-PAIN  ~ UNIVARIATE PAIN-behav
+    # =================================
+    print("======================================")
+    print("Running RSA for PAIN univariate (Change PAIN)")
 
-# =================================
-# IS-RSA for ISC-PAIN  ~ UNIVARIATE PAIN-behav
-# =================================
-print("======================================")
-print("Running RSA for PAIN univariate (Change PAIN)")
+    # check if all cond are in isc_results
+    save_to = os.path.join(SAVE_PATH, f"rsa_SHSS-behav_isc-pain{n_perm_rsa}perm.pkl")
+    pairwise_behav = {"euclidean": sim_behav_pain_vec, "annak": sim_behav_pain_vec_annak}
+    rsa_behav_per_cond = {}
 
-# check if all cond are in isc_results
-save_to = os.path.join(SAVE_PATH, f"rsa_SHSS-behav_isc-pain{n_perm_rsa}perm.pkl")
-pairwise_behav = {"euclidean": sim_behav_pain_vec, "annak": sim_behav_pain_vec_annak}
-rsa_behav_per_cond = {}
+    for domain in pairwise_behav.keys():
+        rsa_behav_per_cond[domain] = {}
+        print(f"Running RSA for domain: {domain}")
 
-for domain in pairwise_behav.keys():
-    rsa_behav_per_cond[domain] = {}
-    print(f"Running RSA for domain: {domain}")
+        for cond in conditions:
+            if cond in ["ANA", "HYPER", "NANA", "NHYPER"]:
+                pain_path = f"/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/ISC/{model_pain}/{cond}/isc_results_{cond}_{n_perm}boot_pairWiseTrue.pkl"
+            else:
+                pain_path = f"/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/ISC/{model_pain}/concat_suggs_1samp_boot/isc_results_{cond}_{n_perm}boot_pairWiseTrue.pkl"
 
-    for cond in conditions:
-        if cond in ["ANA", "HYPER", "NANA", "NHYPER"]:
-            pain_path = f"/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/ISC/{model_pain}/{cond}/isc_results_{cond}_{n_perm}boot_pairWiseTrue.pkl"
-        else:
-            pain_path = f"/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/ISC/{model_pain}/concat_suggs_1samp_boot/isc_results_{cond}_{n_perm}boot_pairWiseTrue.pkl"
-
-        vec_behav_sim = pairwise_behav[domain]  # specify if sugg or pain
-        isc_pairwise = pd.DataFrame(
-            isc_utils.load_pickle(pain_path)["isc"], columns=labels
-        )
-
-        rsa_rows = []  # build df
-        for roi_idx, roi in enumerate(isc_pairwise.columns):
-            isc_roi = isc_pairwise[roi].values
-            r, p, dist = isc_utils.matrix_permutation(
-                vec_behav_sim,
-                isc_roi,
-                n_permute=n_perm_rsa,
-                metric="spearman",
-                how="upper",
-                tail=n_tail_rsa,
-                n_jobs=n_jobs,
-                return_perms=True,
+            vec_behav_sim = pairwise_behav[domain]  # specify if sugg or pain
+            isc_pairwise = pd.DataFrame(
+                isc_utils.load_pickle(pain_path)["isc"], columns=labels
             )
 
-            rsa_rows.append(
-                {
-                    "ROI": roi_idx + 1,
-                    "Labels": roi,
-                    "spearman_r": r,
-                    "p_values": round(p, 5),
-                    "x": coords[roi_idx][0],
-                    "y": coords[roi_idx][1],
-                    "z": coords[roi_idx][2],
-                }
+            rsa_rows = []  # build df
+            for roi_idx, roi in enumerate(isc_pairwise.columns):
+                isc_roi = isc_pairwise[roi].values
+                r, p, dist = isc_utils.matrix_permutation(
+                    vec_behav_sim,
+                    isc_roi,
+                    n_permute=n_perm_rsa,
+                    metric="spearman",
+                    how="upper",
+                    tail=n_tail_rsa,
+                    n_jobs=n_jobs,
+                    return_perms=True,
+                )
+
+                rsa_rows.append(
+                    {
+                        "ROI": roi_idx + 1,
+                        "Labels": roi,
+                        "spearman_r": r,
+                        "p_values": round(p, 5),
+                        "x": coords[roi_idx][0],
+                        "y": coords[roi_idx][1],
+                        "z": coords[roi_idx][2],
+                    }
+                )
+
+            rsa_behav_per_cond[domain][cond] = pd.DataFrame(rsa_rows).sort_values(
+                by="spearman_r", ascending=False
+            )
+            print(f"Condition: {cond}")
+            print(
+                "Max r, mean and fdr",
+                rsa_behav_per_cond[domain][cond]["spearman_r"].max(),
+                rsa_behav_per_cond[domain][cond]["spearman_r"].mean(),
+                isc_utils.fdr(rsa_behav_per_cond[domain][cond]["p_values"].to_numpy()),
             )
 
-        rsa_behav_per_cond[domain][cond] = pd.DataFrame(rsa_rows).sort_values(
-            by="spearman_r", ascending=False
-        )
-        print(f"Condition: {cond}")
-        print(
-            "Max r, mean and fdr",
-            rsa_behav_per_cond[domain][cond]["spearman_r"].max(),
-            rsa_behav_per_cond[domain][cond]["spearman_r"].mean(),
-            isc_utils.fdr(rsa_behav_per_cond[domain][cond]["p_values"].to_numpy()),
-        )
-
-isc_utils.save_data(save_to, rsa_behav_per_cond)
-print(f"Saved RSA results to {save_to}")
+    isc_utils.save_data(save_to, rsa_behav_per_cond)
+    print(f"Saved RSA results to {save_to}")
 
 
-# %%
-# =================================
-# IS-RSA for PAIN COSINE suggestion behavrioal
-# =================================
-print("======================================")
-print("Running RSA for PAIN ~ cosine (hypnosis)")
+    # %%
+    # =================================
+    # IS-RSA for PAIN COSINE suggestion behavrioal
+    # =================================
+    print("======================================")
+    print("Running RSA for PAIN ~ cosine (hypnosis)")
 
-# check if all cond are in isc_results
-save_to = os.path.join(SAVE_PATH, f"rsa_cosine-behav_isc-pain{n_perm_rsa}perm.pkl")
-pairwise_behav = {"cosine": cosine_vec_pain}
-rsa_behav_per_cond = {}
+    # check if all cond are in isc_results
+    save_to = os.path.join(SAVE_PATH, f"rsa_cosine-behav_isc-pain{n_perm_rsa}perm.pkl")
+    pairwise_behav = {"cosine": cosine_vec_pain}
+    rsa_behav_per_cond = {}
 
-for domain in pairwise_behav.keys():
-    rsa_behav_per_cond[domain] = {}
+    for domain in pairwise_behav.keys():
+        rsa_behav_per_cond[domain] = {}
 
-    for cond in conditions:
-        if cond in ["ANA", "HYPER", "NANA", "NHYPER"]:
-            pain_path = f"/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/ISC/{model_pain}/{cond}/isc_results_{cond}_{n_perm}boot_pairWiseTrue.pkl"
-        else:
-            pain_path = f"/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/ISC/{model_pain}/concat_suggs_1samp_boot/isc_results_{cond}_{n_perm}boot_pairWiseTrue.pkl"
+        for cond in conditions:
+            if cond in ["ANA", "HYPER", "NANA", "NHYPER"]:
+                pain_path = f"/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/ISC/{model_pain}/{cond}/isc_results_{cond}_{n_perm}boot_pairWiseTrue.pkl"
+            else:
+                pain_path = f"/data/rainville/dSutterlin/projects/ISC_hypnotic_suggestions/results/imaging/ISC/{model_pain}/concat_suggs_1samp_boot/isc_results_{cond}_{n_perm}boot_pairWiseTrue.pkl"
 
-        vec_behav_sim = pairwise_behav[domain]  # specify if sugg or pain
-        isc_pairwise = pd.DataFrame(
-            isc_utils.load_pickle(pain_path)["isc"], columns=labels
-        )
-
-        rsa_rows = []  # build df
-        for roi_idx, roi in enumerate(isc_pairwise.columns):
-            isc_roi = isc_pairwise[roi].values
-            r, p, dist = isc_utils.matrix_permutation(
-                vec_behav_sim,
-                isc_roi,
-                n_permute=n_perm_rsa,
-                metric="spearman",
-                how="upper",
-                tail=n_tail_rsa,
-                n_jobs=n_jobs,
-                return_perms=True,
+            vec_behav_sim = pairwise_behav[domain]  # specify if sugg or pain
+            isc_pairwise = pd.DataFrame(
+                isc_utils.load_pickle(pain_path)["isc"], columns=labels
             )
 
-            rsa_rows.append(
-                {
-                    "ROI": roi_idx + 1,
-                    "Labels": roi,
-                    "spearman_r": r,
-                    "p_values": round(p, 5),
-                    "x": coords[roi_idx][0],
-                    "y": coords[roi_idx][1],
-                    "z": coords[roi_idx][2],
-                }
+            rsa_rows = []  # build df
+            for roi_idx, roi in enumerate(isc_pairwise.columns):
+                isc_roi = isc_pairwise[roi].values
+                r, p, dist = isc_utils.matrix_permutation(
+                    vec_behav_sim,
+                    isc_roi,
+                    n_permute=n_perm_rsa,
+                    metric="spearman",
+                    how="upper",
+                    tail=n_tail_rsa,
+                    n_jobs=n_jobs,
+                    return_perms=True,
+                )
+
+                rsa_rows.append(
+                    {
+                        "ROI": roi_idx + 1,
+                        "Labels": roi,
+                        "spearman_r": r,
+                        "p_values": round(p, 5),
+                        "x": coords[roi_idx][0],
+                        "y": coords[roi_idx][1],
+                        "z": coords[roi_idx][2],
+                    }
+                )
+
+            rsa_behav_per_cond[domain][cond] = pd.DataFrame(rsa_rows).sort_values(
+                by="spearman_r", ascending=False
+            )
+            print(f"Condition: {cond}")
+            print(
+                "Max r, mean and fdr",
+                rsa_behav_per_cond[domain][cond]["spearman_r"].max(),
+                rsa_behav_per_cond[domain][cond]["spearman_r"].mean(),
+                isc_utils.fdr(rsa_behav_per_cond[domain][cond]["p_values"].to_numpy()),
             )
 
-        rsa_behav_per_cond[domain][cond] = pd.DataFrame(rsa_rows).sort_values(
-            by="spearman_r", ascending=False
-        )
-        print(f"Condition: {cond}")
-        print(
-            "Max r, mean and fdr",
-            rsa_behav_per_cond[domain][cond]["spearman_r"].max(),
-            rsa_behav_per_cond[domain][cond]["spearman_r"].mean(),
-            isc_utils.fdr(rsa_behav_per_cond[domain][cond]["p_values"].to_numpy()),
-        )
-
-isc_utils.save_data(save_to, rsa_behav_per_cond)
-print(f"Saved RSA results to {save_to}")
+    isc_utils.save_data(save_to, rsa_behav_per_cond)
+    print(f"Saved RSA results to {save_to}")
 
 
-# %%
+    # %%
 
-try:
-    shutil.copy(current_script_path, destination_path)
-    print(f"Script copied to: {destination_path}")
-except Exception as e:
-    print(f"Failed to copy script: {e}")
+    try:
+        shutil.copy(current_script_path, destination_path)
+        print(f"Script copied to: {destination_path}")
+    except Exception as e:
+        print(f"Failed to copy script: {e}")
 
 
 print(f"Saved all RSA results to {SAVE_PATH}")
