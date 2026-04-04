@@ -94,12 +94,11 @@ plt.show()
 # %%
 # PUBLICATION JOINTPLOTS
 # regression SHSS ~ change in pain 
-from src.visu_utils import jointplot
 reload(visu_utils)
 reload(isc_utils)
+from src.visu_utils import jointplot
 
-color_conds = {"Ana": "#004197", "Hyper": "#df265e", "Neutral": "#a1a0a0", "SHSS": "#79ab8d"}
-
+color_conds = {"Ana": "#004197", "Hyper": "#df265e", "Neutral_hypo": "#a1a0a0","Neutral_hyper" : "#a1a0a0", "SHSS": "#76afcf"}
 
 red_blue = ["#df265e", "#004197"]  # red blue green blue
 shss_color = "#98c3db"
@@ -110,35 +109,20 @@ x_shss = np.array(Y["SHSS_score"]).astype(float)
 for y_name in ["raw_change_ANA", "raw_change_HYPER"]:
 
     fig_id = "jointplot_SHSS" + y_name + ".png"
-    y_label = "Change in pain " if y_name == "raw_change_HYPER" else "Change in pain"
-    y_color = red_blue[0] if y_name == "raw_change_HYPER" else red_blue[1]
+    y_label = "Δ pain (Hyperalgesia) " if y_name == "raw_change_HYPER" else "Δ pain (Hypoalgesia)"
+    y_color = color_conds['Hyper'] if y_name == "raw_change_HYPER" else color_conds['Ana']
+
     g = jointplot(
         x_shss,
         np.array(Y[y_name]).astype(float),
-        x_label="Hypnotic susceptibility",
+        x_label="Hypnotic suggestibility",
         y_label=y_label,
         title=None,
-        density_color_x=shss_color,
+        density_color_x=color_conds['SHSS'],
         density_color_y=y_color,
-        alpha=0.75,
+        alpha=0.60,
     )
-    g.savefig(os.path.join(save_behav, fig_id), dpi=300, bbox_inches="tight")
-
-# joint plot for total change in pain
-fig_id = "jointplot_SHSS" + 'total_change_pain' + ".png"
-y_label = "Change in pain " if y_name == "raw_change_HYPER" else "Change in pain"
-y_color = red_blue[0] if y_name == "raw_change_HYPER" else red_blue[1]
-g = jointplot(
-    x_shss,
-    np.array(Y['total_chge_pain_hypAna']).astype(float),
-    x_label="Hypnotic susceptibility",
-    y_label=y_label,
-    title=None,
-    density_color_x=shss_color,
-    density_color_y=y_color,
-    alpha=0.75,
-)
-g.savefig(os.path.join(save_behav, fig_id), dpi=300, bbox_inches="tight")
+    g.savefig(os.path.join(save_behav, fig_id), dpi=1000, bbox_inches="tight")
 
 
 # %%
@@ -159,6 +143,54 @@ y = np.array(Y["raw_change_ANA"]).astype(float)
 
 model = sm.OLS(y, X).fit()
 print(model.summary())
+#%%
+# load preproc dataframe
+# implementation ~10 oct. while testing filal IS-RSA pain models
+
+from sklearn.preprocessing import StandardScaler
+xlsx_preproc = os.path.join(project_dir, 'masks/Preprocessed_sugg_pain_behavioral.xlsx' )
+behavioral_df = pd.read_excel(xlsx_preproc)  
+scaler = StandardScaler(with_std=False) # keep variance, just mean center
+
+behav_interest = {}
+# behav_interest['pain_diff_Ana'] = scaler.fit_transform(np.array(behavioral_df['pain_diff_Ana'], dtype='float').reshape(-1,1))
+# behav_interest['pain_diff_Hyper'] = scaler.fit_transform(np.array(behavioral_df['pain_diff_Hyper'], dtype='float').reshape(-1,1))
+# behav_interest['total_change_pain'] = scaler.fit_transform(np.array(behavioral_df['total_chge_pain_hypAna'], dtype='float').reshape(-1,1))
+# behav_interest['SHSS_score'] = scaler.fit_transform(np.array(behavioral_df['SHSS_score'], dtype='float').reshape(-1,1))
+# behav_interest['resid_pain_diff_Ana'] = scaler.fit_transform(np.array(behavioral_df['resid_pain_diff_Ana'], dtype='float').reshape(-1,1))
+# behav_interest['resid_pain_diff_Hyper'] = scaler.fit_transform(np.array(behavioral_df['resid_pain_diff_Hyper'], dtype='float').reshape(-1,1))
+
+behav_interest['pain_diff_Ana'] = np.array(behavioral_df['pain_diff_Ana'], dtype='float')
+behav_interest['pain_diff_Hyper'] = np.array(behavioral_df['pain_diff_Hyper'], dtype='float')
+behav_interest['total_change_pain'] = np.array(behavioral_df['total_chge_pain_hypAna'], dtype='float')
+behav_interest['SHSS_score'] = np.array(behavioral_df['SHSS_score'], dtype='float')
+behav_interest['resid_pain_diff_Ana'] = np.array(behavioral_df['resid_pain_diff_Ana'], dtype='float')
+behav_interest['resid_pain_diff_Hyper'] = np.array(behavioral_df['resid_pain_diff_Hyper'], dtype='float')
+
+chge_ana = np.array(behavioral_df['pain_diff_Ana'], dtype='float')
+chge_hyper = np.array(behavioral_df['pain_diff_Hyper'], dtype='float')
+chge_ana[chge_ana > 0] = 0 #cap to 0 for no modulation
+chge_hyper[chge_hyper < 0] = 0
+absolute_pain_modulation = np.abs(chge_ana) + np.abs(chge_hyper)
+sc_absolute_pain_modulation = scaler.fit_transform(absolute_pain_modulation.reshape(-1,1))
+
+# secondary pain variables
+ANNAK_VERSION = 'mean'
+annak_sim_matrices = {}
+annak_sim_matrices['SHSS_score'] = isc_utils.compute_behav_similarity(y, metric="annak", annak_version=ANNAK_VERSION, vectorize=False)
+annak_sim_matrices['total_change_pain'] = isc_utils.compute_behav_similarity(behav_interest['total_change_pain'], metric="annak", annak_version=ANNAK_VERSION, vectorize=False)
+# annak_sim_matrices['resid_pain_diff_Ana'] = isc_utils.compute_behav_similarity(behav_interest['resid_pain_diff_Ana'], metric="annak", vectorize=False)
+# annak_sim_matrices['resid_pain_diff_Hyper'] = isc_utils.compute_behav_similarity(behav_interest['resid_pain_diff_Hyper'], metric="annak", vectorize=False)
+annak_sim_matrices['pain_diff_Ana'] = isc_utils.compute_behav_similarity(behav_interest['pain_diff_Ana'], metric="annak", annak_version=ANNAK_VERSION, vectorize=False)
+annak_sim_matrices['pain_diff_Hyper'] = isc_utils.compute_behav_similarity(behav_interest['pain_diff_Hyper'], metric="annak", annak_version=ANNAK_VERSION, vectorize=False)
+# # annak_sim_matrices['Ana_diff_global_neutral'] = isc_utils.compute_behav_similarity(behav_interest['Ana_diff_global_neutral'], metric="annak", vectorize=False)
+
+NN_sim_matrices = {}
+NN_sim_matrices['SHSS_score'] = isc_utils.compute_behav_similarity(y, metric="euclidean", vectorize=False)
+# NN_sim_matrices['total_change_pain'] = isc_utils.compute_behav_similarity(behav_interest['total_change_pain'], metric="euclidean", vectorize=False)
+NN_sim_matrices['pain_diff_Ana'] = isc_utils.compute_behav_similarity(behav_interest['pain_diff_Ana'], metric="euclidean", vectorize=False)
+NN_sim_matrices['pain_diff_Hyper'] = isc_utils.compute_behav_similarity(behav_interest['pain_diff_Hyper'], metric="euclidean", vectorize=False)
+
 
 # %%
 # PUBLICATION PAIN RATINGS PLOT
@@ -180,6 +212,11 @@ for label, cols in variables.items():
     print(cols)
     cond_means[label] = Y[cols].mean(axis=1)
 
+Y['int_diff_Ana'] = -(Y['mean_VAS_ana_int'] - Y['mean_VAS_Nana_int'])
+Y['unp_diff_Ana'] = -(Y['mean_VAS_ana_UnP'] - Y['mean_VAS_Nana_UnP'])
+Y['int_diff_Hyper'] = Y['mean_VAS_hyper_int'] - Y['mean_VAS_Nhyper_int']
+Y['unp_diff_Hyper'] = Y['mean_VAS_hyper_UnP'] - Y['mean_VAS_Nhyper_UnP']
+
 # Convert to DataFrame
 mean_df = pd.DataFrame(cond_means)
 conditions = mean_df.columns.tolist()
@@ -200,18 +237,122 @@ palette = ["#df265e", "#a1a0a0", "#004197", "#a1a0a0"]  # red blue green blue
 reload(visu_utils)
 fig = visu_utils.plot_four_condition_violin(
     data_dict={
-        "Analgesia": mean_df["Analgesia"],
-        "Neutral\n(Ana.)": mean_df["Neutral (Ana.)"],
+        "Hypoalgesia": mean_df["Analgesia"],
+        "Neutral\n(Hypo)": mean_df["Neutral (Ana.)"],
         "Hyperalgesia": mean_df["Hyperalgesia"],
-        "Neutral\n(Hyper.)": mean_df["Neutral (Hyper.)"],
+        "Neutral\n(Hyper)": mean_df["Neutral (Hyper.)"],
     },
-    palette=palette,
+    x_name = 'Verbal suggestion conditions',
+    palette=[color_conds['Ana'], color_conds['Neutral_hypo'], color_conds['Hyper'], color_conds['Neutral_hyper']],
     title=None,
 )
 
 fig.savefig(
     os.path.join(save_behav, "pain_ratings_violin.png"), dpi=1000, bbox_inches="tight"
 )
+
+#%%
+# REPRODUCING Desmarteaux et al., 2021:NEW VARIABLES IN DF : SAME as JENI 
+Y['pain_diff_Ana'] =  -(cond_means["Neutral (Ana.)"] - cond_means["Analgesia"]) 
+Y['pain_diff_Hyper'] = cond_means["Hyperalgesia"] - cond_means["Neutral (Hyper.)"] 
+
+from sklearn.linear_model import LinearRegression
+
+X = mean_df["Neutral (Ana.)"].values.reshape(-1, 1)
+y = Y["pain_diff_Ana"].values
+reg = LinearRegression().fit(X, y)
+mod_resid = y - reg.predict(X)
+Y['resid_pain_diff_Ana'] = mod_resid
+X = mean_df["Neutral (Hyper.)"].values.reshape(-1, 1)
+y = Y["pain_diff_Hyper"].values
+reg = LinearRegression().fit(X, y)
+mod_resid = y - reg.predict(X)
+Y['resid_pain_diff_Hyper'] = mod_resid
+Y['resid_total_chge_pain_hypAna'] = Y['resid_pain_diff_Hyper'] - Y['resid_pain_diff_Ana']
+
+g = jointplot(
+    np.array(Y['pain_diff_Ana']).astype(float),
+    np.array(Y['raw_change_ANA']).astype(float),
+    x_label="Hypnotic susceptibility",
+    y_label=y_label,
+    title=None,
+    density_color_x=shss_color,
+    density_color_y=y_color,
+    alpha=0.75,
+)
+
+# SAVE MODIFIED Y
+Y.to_excel(os.path.join(project_dir , 'masks/Preprocessed_sugg_pain_behavioral.xlsx' ))
+Y.to_csv(os.path.join(project_dir , 'masks/Preprocessed_sugg_pain_behavioral.csv' ))
+
+#%%
+# REprocude DEsmaarteaux et al., 2021 (used pain INT only: r=0.56 with SHSS)
+g = jointplot(
+    np.array(Y['pain_diff_Ana']).astype(float),
+    np.array(Y['SHSS_score']).astype(float),
+    x_label="Hypnotic susceptibility",
+    y_label=y_label,
+    title=None,
+    density_color_x=shss_color,
+    density_color_y=y_color,
+    alpha=0.75,
+)
+
+g = jointplot(
+    np.array(behav_interest['pain_diff_Ana']).astype(float),
+    np.array(Y['SHSS_score']).astype(float),
+    x_label="Hypnotic susceptibility",
+    y_label=y_label,
+    title=None,
+    density_color_x=shss_color,
+    density_color_y=y_color,
+    alpha=0.75,
+)
+#%% Correlation matrix for updated Y
+corr_matrix = Y.corr()
+plt.figure(figsize=(20, 15))
+sns.heatmap(
+    corr_matrix,
+    annot=True,
+    fmt=".2f",
+    cmap="coolwarm",
+    square=True,
+    linewidths=0.5,
+    cbar_kws={"label": "Pearson r"},
+)
+plt.title("Correlation Matrix of Behavioral Variables", fontsize=14)
+plt.xticks(rotation=45, ha="right")
+plt.tight_layout()
+plt.show()
+
+#%%
+from sklearn.preprocessing import MinMaxScaler
+from numpy.linalg import norm
+reload(isc_utils)
+
+minmax_scaler = MinMaxScaler(feature_range=(-1, 1))
+
+var = pd.concat([Y['int_diff_Ana'], Y['unp_diff_Ana'] ], axis=1)
+var = Y['pain_diff_Hyper']
+# var = minmax_scaler.fit_transform(var.values.reshape(-1, 1)).ravel()
+# min max scaler on each column
+
+sim_mat = isc_utils.compute_behav_similarity(var, metric="annak", standardize = True,annak_version= 'mean', vectorize=False)
+#rescale to [-1,1]
+sim_mat = (sim_mat * 2) - 1
+
+# ranked_indices = np.argsort(norm(np.asarray(var.values, dtype='float'), axis=1))
+
+ranked_indices = np.argsort(var.values.ravel())
+ord_mat = sim_mat[np.ix_(ranked_indices, ranked_indices)]
+visu_utils.plot_simmat_isc(
+    simmat=ord_mat,
+    x_label=None,  #' ranked subjects (SHSS)'
+    show_colorbar = True,
+)
+
+#%%
+
 
 #%%
 # checking correlation between int and unp
@@ -266,7 +407,20 @@ plt.grid(True)
 plt.tight_layout()
 plt.show()
 
-
+#%%
+# absolute change in pain ratings from Ana > Hyper
+# !reproduced! the metric change in pain by Jeni !!!
+total_change_pain = pain_change_hyper - pain_change_ana
+plt.figure(figsize=(8, 6))
+scatter = plt.scatter(
+    total_change_pain,
+    Y['total_chge_pain_hypAna'],
+    c=shss_scores,
+    cmap="viridis",  # or try "plasma", "coolwarm", etc.
+    edgecolor="k",
+    s=80
+)
+Y['total_chge_pain_hypAna_local'] = total_change_pain
 # %%
 # Similarity matrices SHSS (ANNAK | Euclidean)
 reload(visu_utils)
@@ -324,10 +478,30 @@ visu_utils.plot_simmat_isc(
 #%%
 # Pain variable
 # compute pairwise beahv for pain modualtion
+reload(isc_utils)
+from sklearn.preprocessing import MinMaxScaler
+def rescale_matrix(mat, feature_range=(-1, 1)):
+    scaler = MinMaxScaler(feature_range=feature_range)
+    flat = mat.flatten().reshape(-1, 1)
+    scaled = scaler.fit_transform(flat).reshape(mat.shape)
+    return scaled
 
-for pain_var in ["total_chge_pain_hypAna", "raw_change_ANA", "raw_change_HYPER"]:
-    y_pain = Y[pain_var].values
-    y_pain = (y_pain - np.mean(y_pain)) / np.std(y_pain)
+
+clean_pain_var_names = {
+    "pain_diff_Ana": "Hypo. pain modulation",
+    "pain_diff_Hyper": "Hyper. pain modulation",
+    "total_chge_pain_hypAna": "Total pain change",
+    "raw_change_ANA": "Pain change Ana",
+    "raw_change_HYPER": "Pain change Hyper",
+}
+for pain_var in ["pain_diff_Ana", "pain_diff_Hyper", "total_chge_pain_hypAna", "raw_change_ANA", "raw_change_HYPER"]:
+    if pain_var == 'pain_diff_Ana':
+        y_pain = behav_interest['pain_diff_Ana']
+    elif pain_var == 'pain_diff_Hyper':
+        y_pain = behav_interest['pain_diff_Hyper']
+    else:
+        y_pain = Y[pain_var].values
+        y_pain = (y_pain - np.mean(y_pain)) / np.std(y_pain)
 
     sim_behav_pain = isc_utils.compute_behav_similarity(
         y_pain, metric="euclidean", vectorize=False
@@ -335,7 +509,9 @@ for pain_var in ["total_chge_pain_hypAna", "raw_change_ANA", "raw_change_HYPER"]
     sim_behav_annak_pain = isc_utils.compute_behav_similarity(
         y_pain, metric="annak", vectorize=False
     )
-    sim_behav_pain = (sim_behav_pain * 2) - 1  # Rescale to [-1,1]
+    # sim_behav_pain = (sim_behav_pain * 2) - 1  # Rescale to [-1,1]
+    sim_behav_pain = rescale_matrix(sim_behav_pain, feature_range=(-1, 1))
+    # sim_behav_annak_pain = rescale_matrix(sim_behav_annak_pain, feature_range=(-1, 1))
     all_sim_mats_unranked[f"{pain_var}_Euclidean"] = sim_behav_pain
     all_sim_mats_unranked[f"{pain_var}_AnnaK"] = sim_behav_annak_pain
 
@@ -344,15 +520,14 @@ for pain_var in ["total_chge_pain_hypAna", "raw_change_ANA", "raw_change_HYPER"]
     sim_annak_ranked = sim_behav_annak_pain[np.ix_(ranked_indices, ranked_indices)]
     sim_euclidean_ranked = sim_behav_pain[np.ix_(ranked_indices, ranked_indices)]
 
-
     visu_utils.plot_simmat_isc(
         simmat=sim_annak_ranked,
         x_label=None,  #' ranked subjects (SHSS)'
         colorbar_name=None,
         tick_fontsize=60,
-        ticks=False,
-        label_fontsize=70,
-        title=f"annak {pain_var}",
+        ticks=None,
+        label_fontsize=80,
+        title= None, # POSTER SPRclean_pain_var_names[pain_var],
         vmin=-1,
         vmax=1,
         show_colorbar=False,
@@ -363,8 +538,8 @@ for pain_var in ["total_chge_pain_hypAna", "raw_change_ANA", "raw_change_HYPER"]
         x_label=None,  #' ranked subjects (SHSS)'
         colorbar_name=None,
         tick_fontsize=60,
-        ticks=False,
-        label_fontsize=70,
+        ticks=None,
+        label_fontsize=80,
         title=f"NN {pain_var}",
         vmin=-1,
         vmax=1,
@@ -420,7 +595,7 @@ annak_matrix = annak_matrix * 2 - 1  # Rescale to [-1,1]
 # Plot both
 from src.visu_utils import plot_simmat_behav, plot_simmat_isc
 reload(visu_utils)
-cmap = '    '
+cmap = 'RdBu_r'
 plot_simmat_isc(euclidean_matrix, cmap=cmap)
 plot_simmat_isc(annak_matrix, cmap=cmap)
 
