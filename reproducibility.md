@@ -106,7 +106,7 @@ FILE: rsa_mvpa_from_glm_pain_variables.py
 
 ### Visualization for `rsa_mvpa_from_glm_pain_variables.py`
 
-
+`visualization_is-rsa_final.py` : produces publication plots for IS-RSA (dot sim., t maps) for MVPS pain modulation patterns ~ SHSS and ~ (behavioral sim. pain model)
 
 (old earlier script V)
 ### Multivariate spatial IS-RSA from GLM
