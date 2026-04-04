@@ -389,8 +389,8 @@ sim_mat_amcc_ranked = pd.DataFrame(sim_mat_amcc_ranked, index=ranked_subjects, c
 # phg_high_high_indices = (subjects.index('sub-27'),subjects.index('sub-20'))  # from sim mat inspection
 # phg_low_low_indices = (subjects.index('sub-16'),subjects.index('sub-37'))
 phg_high_high_subjects = ('sub-27','sub-20')
-phg_low_low_subjects = ('sub-36','sub-37')
-    
+phg_low_low_subjects = ('sub-36','sub-16')
+
 amcc_high_high_subjects = ('sub-20','sub-29') #('sub-28','sub-42')
 amcc_low_low_subjects = ('sub-26','sub-37')
 # amcc_high_high_indices = (subjects.index('sub-28'),subjects.index('sub-42'))  # from sim mat inspection
@@ -612,7 +612,7 @@ visu_utils.plot_isc_colorbar(
     vmin=-1,
     vmax=1,
     cmap=cmap,
-    figsize=(8,3),
+    figsize=(7, 2.1),
     label=None,
     tick_fontsize=tick_fontsize,
     tick_labels=tick_labels,
@@ -650,8 +650,8 @@ plot_subject_dyad_heatmaps(amcc_slices_low[0], amcc_slices_low[1],
                            title2='Low Similarity – Subject 02')
 tick_labels = [np.round(np.min(amcc_slices_low),2), "", np.round(-np.min(amcc_slices_low),2)]
 visu_utils.plot_isc_colorbar(
-    vmin=np.ceil(np.min(amcc_slices_high)),
-    vmax=np.ceil(-np.min(amcc_slices_high)),
+    vmin=-1,
+    vmax=1,
     cmap=cmap,
     figsize=(7,2.1),
     label=None,
