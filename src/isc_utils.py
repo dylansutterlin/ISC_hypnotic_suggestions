@@ -682,24 +682,29 @@ def group_permutation(isc_values, group_ids, n_perm, do_pairwise, side = 'two-si
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics.pairwise import pairwise_distances, cosine_similarity
 
-def annak_similarity(values, version='min'):
+def annak_similarity(values, version='mean'):
     values = np.asarray(values)
     n = len(values)
     
+    if values.ndim == 2:
+        values = values.mean(axis=1)
+        print("Input is 2D; using mean across columns for each subject.")
+
     if version == 'min':
         sim = np.minimum.outer(values, values)
     elif version == 'mean':
         max_val = values.max()
         sim = np.add.outer(values, values) / (2 * max_val)
     else:
-        raise ValueError("version must be 'min' or 'mean'")
+        raise ValueError("Version must be 'min' or 'mean'")
     
     return sim
 
 def compute_behav_similarity(behavior, 
                              metric='euclidean', 
                              standardize=True, 
-                             vectorize=False):
+                             vectorize=False,
+                             annak_version='mean'):
     """
     Compute a subject-by-subject similarity matrix from 1D or multi-D behavioral data.
 
@@ -740,19 +745,20 @@ def compute_behav_similarity(behavior,
         sim = 1 - (D / D.max())
 
     elif metric == 'annak':
-        if X.shape[1] > 1:
-            raise ValueError("AnnaK only supported for univariate input.")
+        # if X.shape[1] > 1:
+        #     raise ValueError("AnnaK only supported for univariate input.")
         # values = X.ravel()
         # max_val = values.max()
         # sim = np.zeros((n_subj, n_subj))
         # for i in range(n_subj):
         #     for j in range(n_subj):
         #         sim[i, j] = (values[i] + values[j]) / (2 * max_val)
-        sim = annak_similarity(X.ravel(), version='mean')
+        sim = annak_similarity(X.ravel(), version=annak_version)
 
     elif metric == 'cosine':
         sim = cosine_similarity(X)
-
+    elif metric == 'dot':
+        sim = np.dot(X, X.T)
     else:
         raise ValueError(f"Unsupported metric '{metric}'. "
                          "Choose from 'euclidean', 'annak', 'cosine'")
@@ -1094,6 +1100,9 @@ def check_confounfs_isc(confounds_ls, subjects, conditions, show=True):
 
 from scipy.spatial.distance import squareform
 
+def isc_matrix_to_vector(mat):
+    vec = squareform(mat, checks=True)  # vectorize symmetric matrix, exclude diag
+    return vec
 
 def vector_to_isc_matrix(vec, diag=1):
     mat = squareform(vec)           # reconstruct symmetric matrix, zeros on diag
