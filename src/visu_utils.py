@@ -398,6 +398,7 @@ def project_isc_to_brain(
     save_fig_as=None,
     cut_coords_plot=None,
     display_mode="z",
+    CI = None
 ):
     """
     Projects ISC values to brain space and optionally thresholds by significance.
@@ -437,10 +438,11 @@ def project_isc_to_brain(
 
     # Create an empty volume to store ISC values
     isc_vol = np.zeros_like(atlas_data, dtype=float)
+    img_unthresholded = np.zeros_like(atlas_data, dtype=float)
     non_sig_max_isc = []
     sig_isc_values = []
     sig_labels_data = []
-
+    
     # Assign ISC values to corresponding atlas regions
     for roi_idx, label in atlas_labels.items():
 
@@ -462,13 +464,18 @@ def project_isc_to_brain(
                     "Coordinates": tuple(np.round(roi_coords[i], 0).astype(int)),
                 }
             )
-
+    
         else:
             # Track the highest ISC value for non-significant ROIs
             non_sig_max_isc.append(isc_median[i])
 
-    isc_img = nib.Nifti1Image(isc_vol, atlas_img.affine, atlas_img.header)
+        # img_unthresholded[roi_mask] = np.arctanh(isc_median[i]) #r to z transfrom
+        img_unthresholded[roi_mask] = isc_median[i] #r to z transfrom
 
+    isc_img = nib.Nifti1Image(isc_vol, atlas_img.affine, atlas_img.header)
+    z_img_unthresholded = nib.Nifti1Image(
+        img_unthresholded, atlas_img.affine, atlas_img.header
+    )
     # max_isc_thresh = np.max(np.array(non_sig_max_isc))
     if len(sig_isc_values) > 0:
         min_sig = np.min(np.array(sig_isc_values)) - 0.01
@@ -506,7 +513,7 @@ def project_isc_to_brain(
             print(f"ISC projection plot saved to {save_fig_as}")
         plt.show()
 
-    return isc_img, min_sig, pd.DataFrame(sig_labels_data)
+    return isc_img, min_sig, pd.DataFrame(sig_labels_data), z_img_unthresholded
 
 
 def project_isc_to_brain_perm(
@@ -565,10 +572,10 @@ def project_isc_to_brain_perm(
     sig_min_isc = []
 
     # Assign ISC values to corresponding atlas regions
-    for roi_idx, label in atlas_labels.items():
+    for i, (roi_id, label) in enumerate(atlas_labels.items()):
 
-        i = int(roi_idx) - 1  # Adjust for zero-based indexing
-        roi_mask = atlas_data == int(roi_idx)
+        # i = int(roi_idx) - 1  # Adjust for zero-based indexing
+        roi_mask = atlas_data == int(roi_id)
 
         if isc_median[i] == 0:
             isc_median[i] = 0.0000
@@ -579,7 +586,7 @@ def project_isc_to_brain_perm(
             sig_min_isc.append(isc_median[i])
             sig_labels_data.append(
                 {
-                    "ROI": roi_idx,
+                    "ROI": roi_id,
                     "Label": label,
                     "r Difference": round(isc_median[i], 2),
                     "p-value": f"{p_values[i]:.4f}",
@@ -975,7 +982,6 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 from scipy.stats import linregress
 
-
 def jointplot(
     x,
     y,
@@ -986,12 +992,146 @@ def jointplot(
     density_color_x="#4c80ff",
     density_color_y="#fd6262",
     alpha=1,
+    plot_w=10,
+    plot_h=11,
+    dash_horz=None,
+    dash_vert=None,
+):
+    import numpy as np
+    import seaborn as sns
+    import matplotlib.pyplot as plt
+    from scipy.stats import linregress
+
+    # Clean inputs
+    valid_mask = ~np.isnan(x) & ~np.isnan(y)
+    x_valid = x[valid_mask]
+    y_valid = y[valid_mask]
+
+    # Compute correlation
+    slope, intercept, r_value, p_value, _ = linregress(x_valid, y_valid)
+    if p_value < 0.001:
+        corr_label = f"r = {r_value:.2f}***"
+    elif p_value < 0.01:
+        corr_label = f"r = {r_value:.2f}**"
+    elif p_value < 0.05:
+        corr_label = f"r = {r_value:.2f}*"
+    else:
+        corr_label = f"r = {r_value:.2f}, p = {p_value:.3f}"
+
+    # Axis limits with margin
+    x_margin = (x_valid.max() - x_valid.min()) * 0.05
+    y_margin = (y_valid.max() - y_valid.min()) * 0.05
+    xlim = (x_valid.min() - x_margin, x_valid.max() + x_margin)
+    ylim = (y_valid.min() - y_valid.min()) * 0.05
+    ylim = (y_valid.min() - y_margin, y_valid.max() + y_margin)
+
+    # Create plot
+    g = sns.JointGrid(x=x_valid, y=y_valid, height=10, xlim=xlim, ylim=ylim)
+    g.fig.set_size_inches(plot_w, plot_h)
+
+    # Main scatter plot
+    g.ax_joint.scatter(
+        x_valid,
+        y_valid,
+        alpha=0.7,
+        s=200,
+        edgecolor="black",
+        linewidth=2,
+        color=default_color,
+    )
+
+    # Regression line
+    sns.regplot(
+        x=x_valid,
+        y=y_valid,
+        scatter=False,
+        ax=g.ax_joint,
+        line_kws={"color": "black", "linewidth": 5},
+    )
+
+    # KDE marginals
+    sns.kdeplot(x=x_valid, ax=g.ax_marg_x, fill=True, color=density_color_x, alpha=alpha)
+    sns.kdeplot(y=y_valid, ax=g.ax_marg_y, fill=True, color=density_color_y, alpha=alpha)
+
+    # Optional reference lines
+    if dash_vert is not None:
+        g.ax_joint.axvline(dash_vert, linestyle="--", color="black", linewidth=3)
+        g.ax_joint.set_xlim(min(xlim[0], dash_vert), max(xlim[1], dash_vert))
+    if dash_horz is not None:
+        g.ax_joint.axhline(dash_horz, linestyle="--", color="black", linewidth=3)
+        g.ax_joint.set_ylim(min(ylim[0], dash_horz), max(ylim[1], dash_horz))
+
+    # Ticks on both sides
+    g.ax_joint.tick_params(
+        axis='both',
+        which='major',
+        labelsize=40,
+        width=2.5,
+        length=10,             # Length of the ticks
+        direction='inout',     # Ticks inside and outside
+    )
+
+    # Thicker spines
+    for spine in g.ax_joint.spines.values():
+        spine.set_linewidth(3.5)
+
+    # Correlation text position based on sign
+    if r_value >= 0:
+        text_x = 0.05
+        text_y = 0.95
+        v_align = "top"
+    else:
+        text_x = 0.05
+        text_y = 0.05
+        v_align = "bottom"
+
+    g.ax_joint.text(
+        text_x,
+        text_y,
+        corr_label,
+        transform=g.ax_joint.transAxes,
+        fontsize=45,
+        verticalalignment=v_align,
+        bbox=dict(
+            boxstyle="round,pad=0.48",
+            alpha=0.5,
+            facecolor="lightgray"
+        ),
+    )
+
+    # Labels and title
+    g.ax_joint.set_xlabel(x_label, fontsize=45, labelpad=24)
+    g.ax_joint.set_ylabel(y_label, fontsize=45)
+    if title:
+        g.fig.suptitle(title, fontsize=36, y=0.97)
+
+    plt.tight_layout()
+    plt.show()
+
+    return g
+
+def jointplot_brain_correl(
+    x,
+    y,
+    x_label="X",
+    y_label="Y",
+    title=None,
+    default_color=[0.2, 0.5, 1],
+    density_color_x="#4c80ff",
+    density_color_y="#fd6262",
+    alpha=1,
+    plot_w=10,
+    plot_h=11,
+    dash_horz=None,
+    dash_vert=None,
+    input_correl_text=None,
+    text_legend=None  # NEW PARAMETER
 ):
     """
     Create a jointplot with regression line for X and Y with KDE marginals.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     x : array-like
         Predictor variable.
     y : array-like
@@ -1008,47 +1148,50 @@ def jointplot(
         Color code for the X-axis marginal KDE distribution.
     density_color_y : str
         Color code for the Y-axis marginal KDE distribution.
+    dash_horz : number or None
+        If provided, draw a horizontal dashed line at this y value.
+    dash_vert : number or None
+        If provided, draw a vertical dashed line at this x value.
+    input_correl_text : str or None
+        Custom correlation text override.
+    text_legend : str or None
+        If provided, adds a color legend dot with this text.
 
-    Returns:
-    --------
+    Returns
+    -------
     g : seaborn.axisgrid.JointGrid
         The seaborn jointplot object.
     """
-    # Handle NaNs
     valid_mask = ~np.isnan(x) & ~np.isnan(y)
-
     x_valid = x[valid_mask]
     y_valid = y[valid_mask]
 
     # Compute correlation
     slope, intercept, r_value, p_value, _ = linregress(x_valid, y_valid)
-
-    corr_label = f"r = {r_value:.2f}"
-    if p_value < 0.001:
-        sig_star = "***"
-        corr_label += sig_star
-    elif p_value < 0.01:
-        sig_star = "**"
-        corr_label += sig_star
-    elif p_value < 0.05:
-        sig_star = "*"
-        corr_label += sig_star
+    if isinstance(input_correl_text, str):
+        corr_label = input_correl_text
     else:
-        corr_label = f"r = {r_value:.2f}, p = {p_value:.3f}"
-    # Determine consistent limits
+        corr_label = f"r = {r_value:.2f}"
+        if p_value < 0.001:
+            corr_label += "***"
+        elif p_value < 0.01:
+            corr_label += "**"
+        elif p_value < 0.05:
+            corr_label += "*"
+        else:
+            corr_label = f"r = {r_value:.2f}, p = {p_value:.3f}"
+
+    # Axis limits
     x_margin = (x_valid.max() - x_valid.min()) * 0.05
     y_margin = (y_valid.max() - y_valid.min()) * 0.05
     xlim = (x_valid.min() - x_margin, x_valid.max() + x_margin)
     ylim = (y_valid.min() - y_margin, y_valid.max() + y_margin)
 
-    # Create JointGrid with fixed axis limits
-    g = sns.JointGrid(
-        x=x_valid, y=y_valid, height=10, xlim=xlim, ylim=ylim
-    )  # height to increase box size
-    # g.fig.set_size_inches(10, 11)  # width, height in inches
+    # Create jointplot
+    g = sns.JointGrid(x=x_valid, y=y_valid, height=10, xlim=xlim, ylim=ylim)
+    g.fig.set_size_inches(plot_w, plot_h)
 
-    # Scatter plot
-    # g.ax_joint.scatter(x_valid, y_valid, alpha=0.7, s=50, edgecolor='black', color=default_color)
+    # Scatter points
     g.ax_joint.scatter(
         x_valid,
         y_valid,
@@ -1059,14 +1202,10 @@ def jointplot(
         color=default_color,
     )
 
-    g.ax_joint.tick_params(
-        axis="both", which="major", labelsize=40, width=2.5, length=8
-    )
-
     for spine in g.ax_joint.spines.values():
         spine.set_linewidth(3.5)
 
-    # Add regression line
+    # Regression line
     sns.regplot(
         x=x_valid,
         y=y_valid,
@@ -1075,16 +1214,22 @@ def jointplot(
         line_kws={"color": "black", "linewidth": 5},
     )
 
-    # KDE marginal distributions with separate colors
+    # KDE marginal distributions
+    sns.kdeplot(x=x_valid, ax=g.ax_marg_x, fill=True, color=density_color_x, alpha=alpha)
+    sns.kdeplot(y=y_valid, ax=g.ax_marg_y, fill=True, color=density_color_y, alpha=alpha)
 
-    sns.kdeplot(
-        x=x_valid, ax=g.ax_marg_x, fill=True, color=density_color_x, alpha=alpha
-    )
-    sns.kdeplot(
-        y=y_valid, ax=g.ax_marg_y, fill=True, color=density_color_y, alpha=alpha
-    )
+    # Optional dashed lines
+    if dash_vert is not None:
+        g.ax_joint.axvline(dash_vert, linestyle="--", color="black", linewidth=3)
+        xmin, xmax = g.ax_joint.get_xlim()
+        g.ax_joint.set_xlim(min(xmin, dash_vert), max(xmax, dash_vert))
 
-    # Add correlation text with larger box
+    if dash_horz is not None:
+        g.ax_joint.axhline(dash_horz, linestyle="--", color="black", linewidth=3)
+        ymin, ymax = g.ax_joint.get_ylim()
+        g.ax_joint.set_ylim(min(ymin, dash_horz), max(ymax, dash_horz))
+
+    # Correlation text
     g.ax_joint.text(
         0.05,
         0.95,
@@ -1095,18 +1240,68 @@ def jointplot(
         bbox=dict(boxstyle="round,pad=0.48", alpha=0.5, facecolor="lightgray"),
     )
 
-    # Add labels and title
+    # Axis labels and title
     g.ax_joint.set_xlabel(x_label, fontsize=45, labelpad=24)
     g.ax_joint.set_ylabel(y_label, fontsize=45)
     if title:
         g.fig.suptitle(title, fontsize=36, y=0.97)
 
+    # Tick styling
+    for axis in ['x', 'y']:
+        g.ax_joint.tick_params(
+            axis=axis,
+            which='both',
+            direction='inout',
+            length=8,
+            width=2.5,
+            labelsize=40,
+            bottom=True, top=False,
+            left=True, right=False,
+        )
+
+    if text_legend is not None:
+        legend_fontsize = 32
+        dot_size = 260
+
+        legend_y_pos = 0.075  # ⬆️ Shifted slightly up
+
+        # Render text and calculate bounding box
+        text_obj = g.ax_joint.text(
+            0.98, legend_y_pos,
+            f"  {text_legend}",
+            transform=g.ax_joint.transAxes,
+            fontsize=legend_fontsize,
+            verticalalignment="center",
+            horizontalalignment="right",
+            bbox=dict(
+                boxstyle="round,pad=0.55",
+                facecolor="white",
+                edgecolor="black",
+                linewidth=1.8,
+                alpha=0.85
+            ),
+            zorder=9
+        )
+
+        # Dynamically position dot to left of text
+        renderer = g.fig.canvas.get_renderer()
+        bbox = text_obj.get_window_extent(renderer=renderer).transformed(g.ax_joint.transAxes.inverted())
+        dot_x_pos = bbox.x0 - 0.015
+        dot_y_pos = legend_y_pos  # Keep aligned with shifted text
+
+        g.ax_joint.scatter(
+            [dot_x_pos], [dot_y_pos],
+            transform=g.ax_joint.transAxes,
+            s=dot_size,
+            color=default_color,
+            edgecolor="black",
+            linewidth=2,
+            zorder=10
+        )
+
     plt.tight_layout()
-
     plt.show()
-
     return g
-
 
 # Re-import necessary modules after kernel reset
 import numpy as np
@@ -1316,7 +1511,7 @@ def plot_delta_condition_violin(
         ]
         palette = default_palette[:n_conditions]
 
-    fig, ax = plt.subplots(figsize=(14, 10))
+    fig, ax = plt.subplots(figsize=(14.5, 10))
     sns.set_style("white")
 
     sns.violinplot(
@@ -1718,7 +1913,7 @@ def plot_simmat_behav(
     title,
     title_id="SHSS",
     y_label=None,
-    x_label="Subjects",
+    x_label=None,
     cmap="RdBu_r",
     colorbar_name="Similarity",
     save_path=None,
@@ -1782,20 +1977,19 @@ def plot_simmat_behav(
 
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 
-
 def plot_simmat_isc(
     simmat,
-    title,
+    title=None,
     title_id="SHSS",
     y_label=None,
     x_label="Subjects",
     cmap="RdBu_r",
     colorbar_name="Similarity",
-    show_colorbar=True,
+    show_colorbar=False,
     vmin=None,
     vmax=None,
     save_path=None,
-    dpi=1000,
+    dpi=300,
     figsize=(10, 10),
     tick_fontsize=40,
     cbar_ticks=None,
@@ -1816,7 +2010,6 @@ def plot_simmat_isc(
 
     im = ax.imshow(simmat, vmin=vmin, vmax=vmax, cmap=cmap, aspect="equal")
 
-    # Optional colorbar
     if show_colorbar:
         divider = make_axes_locatable(ax)
         cax = inset_axes(
@@ -1839,7 +2032,7 @@ def plot_simmat_isc(
         else:
             cbar.ax.yaxis.label.set_visible(False)
 
-    if ticks is False:
+    if ticks is None:
         ax.set_xticks([])
         ax.set_yticks([])
     else:
@@ -1851,6 +2044,9 @@ def plot_simmat_isc(
         ax.set_xticklabels(ticks, fontsize=tick_fontsize)
         ax.set_yticklabels(ticks, fontsize=tick_fontsize)
         ax.tick_params(length=8, width=3)
+
+    if title is not None:
+        ax.set_title(title, fontsize=label_fontsize, pad=20)
 
     plt.tight_layout()
 
@@ -2123,7 +2319,7 @@ from matplotlib.colors import Normalize
 
 
 def save_colorbar(
-    img, cmap, outpath, symmetric_cbar=False, offset=None, n_ticks=5, transparent=True
+    img, cmap, fontsize = 16, outpath=None, symmetric_cbar=False, offset=None, n_ticks=5, transparent=True
 ):
     img_data = img.get_fdata()
 
@@ -2155,22 +2351,84 @@ def save_colorbar(
     ticks = np.linspace(cbar_vmin, cbar_vmax, n_ticks)
 
     # Plotting the standalone colorbar
-    fig, ax = plt.subplots(figsize=(0.4, 4))
+    fig, ax = plt.subplots(figsize=(0.4, 3.5))
     norm = Normalize(vmin=cbar_vmin, vmax=cbar_vmax)
     cb = ColorbarBase(ax, cmap=cmap, norm=norm, ticks=ticks, orientation="vertical")
-    cb.ax.set_yticklabels([f"{t:.2f}" for t in ticks], fontsize=16)
+    cb.ax.set_yticklabels([f"{t:.2f}" for t in ticks], fontsize=fontsize)
 
     cb.ax.yaxis.set_ticks_position("left")
     cb.ax.yaxis.set_label_position("left")
     cb.outline.set_visible(False)
 
-    fig.savefig(outpath, transparent=transparent, bbox_inches="tight", dpi=300)
-    plt.close(fig)
+    if outpath is None:
+        plt.show()
+    else:
+        fig.savefig(outpath, transparent=transparent, bbox_inches="tight", dpi=300)
+        plt.close(fig)
 
     return fig
 
+# VIAULIZATION ROI IN ATLAS
+#----------------------------
+from nilearn.image import math_img, new_img_like
+from nilearn import plotting
 
-# src/atlas_utils.py
+def filter_atlas(atlas_img, atlas_labels_dict, keep_ids):
+    atlas_data = atlas_img.get_fdata()
+    mask_data = np.isin(atlas_data, keep_ids) * atlas_data
+    filtered_img = new_img_like(atlas_img, mask_data)
+
+    # Build new labels dict for the kept IDs
+    new_labels = {
+        roi: label for roi, label in atlas_labels_dict.items() if roi in keep_ids
+    }
+    return filtered_img, new_labels
+
+
+# Plot the filtered atlas with clear discrete colorbar
+def plot_filtered_atlas(filtered_img, filtered_labels, cmap="tab20"):
+    label_ids = list(filtered_labels.keys())
+    label_names = list(filtered_labels.values())
+
+    return plotting.view_img(
+        filtered_img,
+        cmap=cmap,
+        colorbar=True,
+        title="Filtered Atlas",
+        symmetric_cmap=False,
+    )
+
+def plot_single_roi(atlas_img, roi_id, atlas_labels=None, title=None, show = True):
+
+    mask_img = math_img(f"img == {roi_id}", img=atlas_img)
+
+    title = f"ROI {roi_id}"
+    if atlas_labels and roi_id in atlas_labels:
+        title += f" {atlas_labels[roi_id]}"
+
+    print(f"Displaying region {roi_id}: {title}")
+
+    if show is False:
+        return mask_img
+    else:
+        return mask_img, plotting.view_img(
+            mask_img, cmap="Reds", title=title, colorbar=False
+        )
+
+def plot_many_roi(atlas_img, roi_ids, atlas_labels=None, title=None):
+
+    combined_data = np.isin(atlas_img.get_fdata(), roi_ids) * atlas_img.get_fdata()
+    combined_img = new_img_like(atlas_img, combined_data)
+
+    title = "Selected ROIs"
+    if title:
+        title += f": {title}"
+
+    return combined_img, plotting.view_img(
+        combined_img, cmap="tab20", title=title, colorbar=True, symmetric_cmap=False
+    )
+
+
 
 schaeffer_region_mapping = {
     "7Networks_LH_SomMot_1": {
@@ -2190,7 +2448,7 @@ schaeffer_region_mapping = {
         "region_index": 21,
     },  # validation 4 sept.
     "7Networks_LH_SomMot_14": {
-        "anatomical_label": "Left Premotor cortex",
+        "anatomical_label": "Left SMA",
         "region_index": 28,
     },  # validation 4 sept.
     "7Networks_LH_SomMot_15": {
@@ -2202,9 +2460,17 @@ schaeffer_region_mapping = {
         "region_index": 30,
     },
     "7Networks_LH_SalVentAttn_ParOper_1": {
-        "anatomical_label": "Left parietal operculum",
+        "anatomical_label": "Parietal operculum",
         "region_index": 44,
     },
+    "7Networks_LH_SalVentAttn_FrOperIns_1": {
+        "anatomical_label": "L insula",
+        "region_index": 47,
+    },  # validation 30 sept.
+    "7Networks_LH_SalVentAttn_FrOperIns_4": {
+        "anatomical_label": "Frontal operculum",
+        "region_index": 50,
+    }, # validation 14 oct.
     "7Networks_LH_SalVentAttn_Med_1": {"anatomical_label": "aMCC", "region_index": 52},
     "7Networks_LH_SalVentAttn_Med_3": {"anatomical_label": "SMA", "region_index": 54},
     "7Networks_LH_Limbic_OFC_1" : {
@@ -2220,7 +2486,7 @@ schaeffer_region_mapping = {
         "region_index": 77,
     },  # validation 4 sept.
     "7Networks_LH_Default_Temp_5": {
-        "anatomical_label": "Left post. STG",
+        "anatomical_label": "Left pSTG",
         "region_index": 78,
     },  # validation 4 sept.
     "7Networks_LH_Default_PFC_3": {
@@ -2251,6 +2517,10 @@ schaeffer_region_mapping = {
         "anatomical_label": "Right inf. Lateral Motor Cortex",
         "region_index": 122,
     },
+    "7Networks_RH_SomMot_8": {
+        "anatomical_label": "MCC",
+        "region_index": 123,
+    },  # valid. 14 oct.
     "7Networks_RH_SomMot_16": {
         "anatomical_label": "Right Motor Cortex",
         "region_index": 131,
@@ -2260,13 +2530,21 @@ schaeffer_region_mapping = {
         "region_index": 132,
     },
     "7Networks_RH_DorsAttn_Post_4": {
-        "anatomical_label": "Right supramarginal gyrus",
+        "anatomical_label": "R supramarginal gyrus",
         "region_index": 138,
     }, # validation 13 sept.
     "7Networks_RH_SalVentAttn_TempOccPar_2": {
-        "anatomical_label": "Right angular gyrus",
+        "anatomical_label": "STG/SMG",
         "region_index": 149,
     },
+    "7Networks_RH_SalVentAttn_FrOperIns_4": {
+        "anatomical_label": "Frontal operculum",
+        "region_index": 155,
+    },  # valid. 14 oct.
+    "7Networks_RH_SalVentAttn_Med_1": {
+        "anatomical_label": " aMCC",
+        "region_index": 156,
+    }, # validation 30 sept.
     "7Networks_RH_SalVentAttn_Med_2": {
         "anatomical_label": "anterior PCC",
         "region_index": 157,
@@ -2280,20 +2558,30 @@ schaeffer_region_mapping = {
         "region_index": 169,
     },  # validation 4 sept.
     "7Networks_RH_Cont_PFCl_4": {"anatomical_label": "Right MFG", "region_index": 173},
+    "7Networks_RH_Cont_PFCmp_1": {
+        "anatomical_label": "aMCC",
+        "region_index": 180,
+    },  # validation 30 sept.
+    "7Networks_RH_Default_Par_3": {
+        "anatomical_label": "Right angular gyrus",
+        "region_index": 184,
+    },  # validation 30 sept.
     "7Networks_RH_Default_Temp_3": {
         "anatomical_label": "Right anterior STG",
         "region_index": 187,
     },  # validation 4 sept.
     "7Networks_RH_Default_Temp_4": {
-        "anatomical_label": "Right post. MTG",
+        "anatomical_label": "Right pMTG",
         "region_index": 188,
     },  # validation 4 sept.
     "7Networks_RH_Default_Temp_5": {
-        "anatomical_label": "Right post. STS",
+        "anatomical_label": "Right pSTS",
         "region_index": 189,
     },  # validation 4 sept.
     "7Networks_RH_Default_PFCdPFCm_6": {
-        "anatomical_label": "R dlPFC",
+        "anatomical_label": "Right dlPFC",
         "region_index": 196,
     },
+    "PUT-rh": {"anatomical_label": "Right Putamen", "region_index": 207
+} # 30 sept.
 }
