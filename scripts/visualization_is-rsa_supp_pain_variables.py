@@ -637,7 +637,7 @@ Y_names = {
 reload(visu_utils)
 from src.visu_utils import schaeffer_region_mapping
 
-VISU_METRIC = 'cosine'
+VISU_METRIC = 'dot'
 save_sim_mat_shock_shss = os.path.join(save_path, RSA_MODEL_NAME, f"sig_{VISU_METRIC}_similarity_matrices")
 os.makedirs(save_sim_mat_shock_shss, exist_ok=True)
 #%%
@@ -654,10 +654,11 @@ def rescale_matrix(mat, feature_range=(-1, 1)):
     return scaled
 
 SHOW_MAT  = True
+VISU_BEHAV = 'pain_diff_Ana'  # 'SHSS_score'  # 'pain_diff_Ana'  # 'pain_diff_Hyper'
 all_sim_mats = {}
 all_sim_mats_ranked = {}
 
-for sim_model in results_dct_all[VISU_METRIC].keys():
+for sim_model in results_dct_all[VISU_BEHAV].keys():
 
     for cond in results_dct[sim_model].keys():
         rsa_cond = sim_model + "_" + cond
@@ -665,7 +666,7 @@ for sim_model in results_dct_all[VISU_METRIC].keys():
 
         if rsa_cond in rsa_tables_mvpa_fdr.keys(): # save sig conditions only
             sig_df = rsa_tables_mvpa_fdr[rsa_cond]
-            sim_mats_ids = similarity_matrices_dct_all[VISU_METRIC][sim_model][cond]  # mvpa similarity matrices dct
+            sim_mats_ids = similarity_matrices_dct_all[VISU_BEHAV][sim_model][cond]  # mvpa similarity matrices dct
             sim_mats = {labels_roi_dct[id]: mat for id, mat in sim_mats_ids.items()}  # rename keys
             
             for sig_region in sig_df["Label"]:
@@ -678,7 +679,7 @@ for sim_model in results_dct_all[VISU_METRIC].keys():
                     region_id = roi_id
                
                 mat = np.array(sim_mats[sig_region])
-                ranked_indices = np.argsort(behav_interest[Y_names[BEHAV_ID]].ravel())  # ranked by SHSS
+                ranked_indices = np.argsort(behav_interest[Y_names[VISU_BEHAV]].ravel())  # ranked by SHSS
                 ranked_subjects = [subjects[i] for i in ranked_indices]
                 sim_mat = mat[np.ix_(ranked_indices, ranked_indices)]  # reorder
                 np.fill_diagonal(sim_mat, 0)  # for visualization purposes

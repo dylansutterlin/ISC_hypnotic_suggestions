@@ -20,6 +20,7 @@ results/
 *.csv
 
 masks/mvpa_signatures/
+
 #NPS 
 weights_NSF_grouppred_cvpcr.hdr  
 weights_NSF_grouppred_cvpcr.img

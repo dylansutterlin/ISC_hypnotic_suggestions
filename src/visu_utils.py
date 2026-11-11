@@ -2428,7 +2428,64 @@ def plot_many_roi(atlas_img, roi_ids, atlas_labels=None, title=None):
         combined_img, cmap="tab20", title=title, colorbar=True, symmetric_cmap=False
     )
 
+####################
+# PLOTTING 
+####################
+from nilearn.plotting import plot_surf_stat_map
+from nilearn import datasets, surface
 
+def plot_surface_views(z_map, output_dir, threshold=3.1, fine_resolution=False, vmax = None):
+    """
+    Project a volumetric map to fsaverage surface and save:
+    - left/right hemispheres
+    - lateral + medial views
+    """
+
+    print("Loading fsaverage surface...")
+    if fine_resolution:
+        fsaverage = datasets.fetch_surf_fsaverage(mesh="fsaverage7")
+    else:
+        fsaverage = datasets.fetch_surf_fsaverage()
+
+    print("Projecting volume to surface...")
+    texture_left = surface.vol_to_surf(z_map, fsaverage.pial_left)
+    texture_right = surface.vol_to_surf(z_map, fsaverage.pial_right)
+
+    # Define views to iterate over
+    hemis = [
+        ("left", fsaverage.infl_left, texture_left),
+        ("right", fsaverage.infl_right, texture_right),
+    ]
+
+    views = ["lateral"] # "medial"]
+
+    for hemi_name, surf_mesh, texture in hemis:
+        for view in views:
+
+            fig = plt.figure(figsize=(4, 4))
+
+            plot_surf_stat_map(
+                surf_mesh,
+                texture,
+                hemi=hemi_name,
+                view=view,
+                threshold=threshold,
+                cmap="Reds",
+                colorbar=True,
+                bg_map=fsaverage.sulc_left if hemi_name == "left" else fsaverage.sulc_right,
+                figure=fig,
+                vmax=vmax,
+            )
+
+            fname = f"surface_{hemi_name}_{view}.png"
+            path = os.path.join(output_dir, fname)
+
+            plt.savefig(path, dpi=1000, bbox_inches="tight")
+            plt.close()
+
+            print(f"Saved: {path}")
+
+#===========================
 
 schaeffer_region_mapping = {
     "7Networks_LH_SomMot_1": {
@@ -2585,3 +2642,5 @@ schaeffer_region_mapping = {
     "PUT-rh": {"anatomical_label": "Right Putamen", "region_index": 207
 } # 30 sept.
 }
+
+

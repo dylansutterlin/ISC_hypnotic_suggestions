@@ -180,6 +180,7 @@ im = plotting.plot_surf_stat_map(
     output_file=os.path.join(post_hoc_dir, "schaefer200_surface.png"),
 )
 
+
 # %%
 # Load behavioral data
 from src import preproc_utils
@@ -463,7 +464,24 @@ for i, (cond, (isc_img, isc_thresh)) in enumerate(fdr_isc_imgs.items()):
     )
 cbar
 
+#%%
+# PUBLICATION Surface plot per ISC conditions
+from src import visu_utils
+import importlib
+importlib.reload(visu_utils)
 
+for i, (cond, (isc_img, isc_thresh)) in enumerate(fdr_isc_imgs.items()):
+    
+    surface_plot_dir = os.path.join(save_plots_1sample, f"surface_{cond}_FDR05.png")
+    os.makedirs(surface_plot_dir, exist_ok=True)
+    visu_utils.plot_surface_views(isc_img,
+                                 output_dir=surface_plot_dir,
+                                 threshold = isc_thresh,
+                                 fine_resolution = True,
+                                 vmax = np.max(all_iscs))
+
+                       
+    
 # %%
 # PUBLICATION violin plots of median ISC across all contrasts conditions
 reload(visu_utils)

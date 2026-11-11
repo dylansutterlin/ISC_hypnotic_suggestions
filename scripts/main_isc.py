@@ -54,7 +54,6 @@ reload(isc_utils)
 def is_interactive():
     return hasattr(sys, "ps1") or "ipykernel" in sys.modules
 
-
 # Use CLI arguments if running as a script, otherwise set a default setup
 if not is_interactive():
     import argparse
@@ -76,7 +75,6 @@ if not is_interactive():
 else:
     print("Running in interactive mode. Using default setup: `debug_setup`")
     setup_name = "setups.debug_setup"  # Default setup when running cells
-
 
 print("Current working directory:", os.getcwd())
 
